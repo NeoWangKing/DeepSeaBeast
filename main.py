@@ -1731,7 +1731,16 @@ class QqPeakGate(Star):
                   "tools_text": self._agent_tools_text(), "tools_send": True})
         _menu = self._sticker_menu_text("private" if private else key)
         system_prompt = _txt + (("\n\n" + _menu) if _menu else "")
-        t = self._agent_tools(event)
+        # 每一轮都用**全新**的工具会话：否则上一轮的 sent/finished 会累积，
+        # 既让日志出现"说了 5 条"，还会让陈旧 spoke 把这一轮的多轮工具调用掐掉
+        _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
+        t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(event), self._agent_cfg())
+        try:
+            if len(self._agent_sessions) > 200:
+                self._agent_sessions.clear()
+            self._agent_sessions[_akey] = t
+        except Exception:
+            pass
         schema = agent.loop.spec_to_openai(self._agent_tool_specs())
         if not schema:
             self._log("agent loop：没有可用工具，交回原流程")
