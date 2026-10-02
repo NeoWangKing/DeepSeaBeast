@@ -1442,8 +1442,8 @@ class QqPeakGate(Star):
             else:
                 asyncio.create_task(coro)
 
-        def _send_text(text, reply_to_id="", at_user_id=""):
-            _spawn(self._agent_send(event, text, reply_to_id, at_user_id))
+        def _send_text(text, reply_to_id="", at_user_id="", face=""):
+            _spawn(self._agent_send(event, text, reply_to_id, at_user_id, face))
 
         def _send_sticker(sid, reply_to_id=""):
             it = None
@@ -1674,7 +1674,8 @@ class QqPeakGate(Star):
             self._agent_sessions[key] = t
         return t
 
-    async def _agent_send(self, event, text: str, reply_to_id: str = "", at_user_id: str = "") -> None:
+    async def _agent_send(self, event, text: str, reply_to_id: str = "",
+                          at_user_id: str = "", face: str = "") -> None:
         try:
             comps = []
             if reply_to_id:
@@ -1682,8 +1683,15 @@ class QqPeakGate(Star):
             if at_user_id:
                 comps.append(At(qq=str(at_user_id)))
             comps.append(Plain(str(text)))
+            _fid = self._face_id_by_name(face) if face else 0
+            if _fid and Face is not None:
+                try:
+                    comps.append(Face(id=_fid))
+                except Exception:
+                    pass
             await event.send(MessageChain(comps))
-            self._log("agent：发出「%s」" % str(text)[:40])
+            self._log("agent：发出「%s」%s" % (str(text)[:40],
+                                              ("+QQ表情#%d" % _fid) if _fid else ""))
         except Exception as e:
             self._log("agent：发送失败 %r" % (e,))
 
@@ -1859,6 +1867,17 @@ class QqPeakGate(Star):
         try:
             if _face_note:
                 user += " " + _face_note
+        except Exception:
+            pass
+        # 消息里带了 unicode 表情（🥺😭👍…）：给她中文名，免得她猜
+        try:
+            _UNI = {"🥺": "可怜", "😊": "微笑", "😌": "得意", "😂": "笑哭", "🤣": "笑哭",
+                    "😭": "大哭", "👍": "赞", "👎": "踩", "❤️": "爱心", "🐶": "狗头",
+                    "🙏": "抱拳", "😅": "冷汗", "😎": "酷", "😴": "睡", "🤔": "疑问",
+                    "😳": "害羞", "😡": "发怒", "🤡": "小丑", "😍": "色", "🥰": "亲亲"}
+            _hits = [(e, n) for e, n in _UNI.items() if e in str(getattr(event, "message_str", "") or "")]
+            if _hits:
+                user += "（他消息里的表情：" + "、".join("%s=%s" % (e, n) for e, n in _hits) + "）"
         except Exception:
             pass
         # 她自己写的记忆：最近几条注入到提示词末尾

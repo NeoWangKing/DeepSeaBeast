@@ -34,7 +34,7 @@ class Tools:
             parts = [raw.strip()]
         return parts[:MAX_PARTS]
 
-    def send_message(self, text="", reply_to_id="", at_user_id="") -> str:
+    def send_message(self, text="", reply_to_id="", at_user_id="", face="") -> str:
         parts = self._split(text)
         if not parts:
             return "没发：text 是空的"
@@ -45,9 +45,11 @@ class Tools:
         if not fn:
             return "没发：发送通道不可用"
         ok = 0
-        for p in parts:
+        for _i, p in enumerate(parts):
             try:
-                fn(p, reply_to_id=str(reply_to_id or ""), at_user_id=str(at_user_id or ""))
+                # face 挂在最后一条上（"话说完了随手带个表情"最自然）
+                _fc = str(face or "").strip() if _i == len(parts) - 1 else ""
+                fn(p, reply_to_id=str(reply_to_id or ""), at_user_id=str(at_user_id or ""), face=_fc)
                 self.sent.append(("text", p))
                 ok += 1
             except Exception as e:
@@ -218,7 +220,9 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                       [{"type": "string", "name": "text",
                         "description": "【必填】要说的话（**这是唯一的发言方式**，写在正文里的话不会发出去）；"
                                        "想分成多条就用 ||| 分隔（最多 4 条、总共 400 字内）"},
-                       {"type": "string", "name": "reply_to_id", "description": "可选：要引用哪条消息的 id"}],
+                       {"type": "string", "name": "reply_to_id", "description": "可选：要引用哪条消息的 id"},
+                       {"type": "string", "name": "face",
+                        "description": "可选：同一个气泡里再带一个 QQ 自带表情，写官方名（如 汪汪/得意/吃糖）"}],
                       "发言：你写的正文永远不会发出去，说话只能调这个工具", "send_message"))
     if on("sticker") and send_tools:
         specs.append(("send_sticker",
