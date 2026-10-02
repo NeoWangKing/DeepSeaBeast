@@ -17,19 +17,27 @@ AstrBot 群聊机器人插件：**群聊门控 + 人格卡 + 长期记忆 + 本�
 ## 目录结构
 
 ```
-main.py                    插件入口：门控 / 人格 / 记忆 / 资料库 / 表情包 / 玩法调度
-scoring.py  kb.py  stickers.py   三个核心模块：回复打分 / 本地资料库 / 表情包收藏
-prompts/                   人格提示词（personas/ 是群人格卡，内容不入库）
-games/                     玩法插件目录：games/turtle_soup/ = 海龟汤
-memory/                    长期记忆（群印象 / 人物档案 / 定时刷新）
-tools/  tests/             运维脚本 / 离线测试台（gate_sim.py）
-deploy/                    部署层：CLI 工具、systemd 单元、install.sh、示例配置
-docs/OPS.md                运维手册（数据流 / 命令 / 排障 / 成本 / 隐私）
-config.json                插件配置（群号、白名单、开关；不含密钥）
-data/                      运行数据：记忆 / 对局 / 表情 / 资料库 / 日志（内容全部不入库）
+DeepSeaBeast/
+├── main.py                        插件入口（门控 / 人格 / 记忆 / 资料库 / 玩法调度）
+├── scoring.py  kb.py  stickers.py 回复打分器 / 本地资料库 / 表情包收藏
+├── config.json  requirements.txt  metadata.yaml
+│
+├── prompts/                       人格提示词
+│   └── personas/                  群人格卡（内容不入库）
+├── games/                         玩法插件目录（一个玩法一个包）
+│   └── turtle_soup/               海龟汤
+├── memory/                        长期记忆（群印象 / 人物档案）
+│
+├── tools/                         运维脚本
+├── tests/                         离线测试台
+├── deploy/                        部署层（CLI / systemd / install.sh）
+├── docs/                          文档（OPS.md 运维手册）
+│
+└── data/                          运行数据（内容全部不入库）
+    ├── memory/  games/  stickers/  kb/  chatlog/
 ```
 
-每个文件/目录的详细说明见 [docs/OPS.md](docs/OPS.md)。
+细节（每个文件做什么）见 [docs/OPS.md](docs/OPS.md)。
 
 ## 快速开始
 
