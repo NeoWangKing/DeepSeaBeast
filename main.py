@@ -1523,7 +1523,7 @@ class QqPeakGate(Star):
                     return "没收藏：图取不下来"
                 g = stickers.tag_image(path, str((self.cfg.get("stickers") or {}).get(
                     "vision_model") or "glm-4v-flash"))
-                it = stickers.add_file(path, self._chat_key(event), str(note or g.get("desc") or ""),
+                it = stickers.add_file(path, _gid, str(note or g.get("desc") or ""),
                                        g.get("tags") or [], "", int((self.cfg.get("stickers") or {}).get(
                                            "max_store", 300) or 300), g)
                 if not it:
@@ -1626,8 +1626,8 @@ class QqPeakGate(Star):
                 if gid and gid != "0":
                     shapes.append({"user_id": int(uid), "group_id": int(gid)})
                 shapes.append({"user_id": int(uid)})
-                for holder in (getattr(event, "bot", None), getattr(event, "api", None),
-                               getattr(event, "_bot", None)):
+                for holder in (getattr(ev, "bot", None), getattr(ev, "api", None),
+                               getattr(ev, "_bot", None)):
                     ca = getattr(holder, "call_action", None)
                     if ca is None:
                         continue
@@ -1702,7 +1702,7 @@ class QqPeakGate(Star):
             try:
                 item = {"umo": _umo,
                         "due": time.time() + int(sec), "say": str(say)[:200],
-                        "reason": str(reason or "")[:60], "gid": self._chat_key(event),
+                        "reason": str(reason or "")[:60], "gid": _gid,
                         "mode": str(mode or "say"), "every": int(every or 0),
                         "poke_uid": _uid}
                 items = self._wake_load()
@@ -1742,7 +1742,13 @@ class QqPeakGate(Star):
                "view_sticker": _view_sticker, "sticker_note": _sticker_note,
                "schedule_wake": _schedule_wake, "cancel_wake": _cancel_wake,
                "memory_append": _memory_append}
-        if self._agent_send_allowed(event):
+        try:                       # 允许发表情/工具？按会话判断（event 不在时也能算，定时轮用得上）
+            _ac = self._agent_cfg()
+            _gs = [str(x) for x in (_ac.get("send_tools_groups") or [])]
+            _send_ok = bool(_ac.get("send_tools")) and ((not _gs) or (_gid in _gs))
+        except Exception:
+            _send_ok = False
+        if _send_ok:
             # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
             cbs.update({"send_text": _send_text, "send_sticker": _send_sticker,
                         "collect_sticker": _collect, "send_ok": True})
