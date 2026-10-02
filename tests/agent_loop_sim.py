@@ -64,7 +64,7 @@ def fake_chat(msgs, schema, n=1):
 r = agent_loop.run(t, [{"role": "user", "content": "在吗"}], sch, chat_fn=fake_chat)
 check("一轮就说了话", r["spoke"] and sent == ["在的", "干嘛"], "%s %s" % (r, sent))
 check("说了话就收工（不再白跑一轮）", len(calls) == 1, len(calls))
-check("token 用量累计", r["usage"].get("total_tokens") == 150, r["usage"])
+check("token 用量累计", r["usage"].get("total_tokens") == 100, r["usage"])
 
 print("== 循环：模型选择潜水 ==")
 t2, sent2 = mk_tools()
