@@ -1546,18 +1546,35 @@ class QqPeakGate(Star):
                 return False
 
             async def _do():
+                last = None
+                # ① 组件方式（最通用）：直接把 Poke 组件发出去
+                if Poke is not None:
+                    try:
+                        await event.send(MessageChain([Poke(id=int(uid))]))
+                        self._log("agent：拍了一下（Poke 组件 → %s）" % uid)
+                        return True
+                    except Exception as e:
+                        last = e
+                        self._log("agent：Poke 组件失败 %r" % (e,))
+                # ② 兜底：找适配器上的 call_action
                 shapes = []
                 if gid and gid != "0":
                     shapes.append({"user_id": int(uid), "group_id": int(gid)})
                 shapes.append({"user_id": int(uid)})
-                last = None
-                for prm in shapes:
-                    try:
-                        await event.call_action("send_poke", **prm)
-                        self._log("agent：拍了一下 %s" % (prm,))
-                        return True
-                    except Exception as e:
-                        last = e
+                for holder in (getattr(event, "bot", None), getattr(event, "api", None),
+                               getattr(event, "_bot", None)):
+                    ca = getattr(holder, "call_action", None)
+                    if ca is None:
+                        continue
+                    for prm in shapes:
+                        try:
+                            _r = ca("send_poke", **prm)
+                            if hasattr(_r, "__await__"):
+                                await _r
+                            self._log("agent：拍了一下（call_action %s）" % (prm,))
+                            return True
+                        except Exception as e:
+                            last = e
                 self._log("agent：拍失败 %r" % (last,))
                 return False
             try:
@@ -1710,7 +1727,7 @@ class QqPeakGate(Star):
                     system_prompt += "\n\n【你自己之前记下的（仅供参考，别硬提）】\n" + "\n".join(_notes)
         except Exception:
             pass
-        # 消息里有图 → 直接把图给多模态模型看（她真的能看到），这一轮临时切模型
+        # 消息里有图 → 走"看图轮"：多模态直接回答（deepseek-flash 带 tools 会 400）
         _img_paths = []
         try:
             _comps = list(event.get_messages() or [])
@@ -1735,9 +1752,45 @@ class QqPeakGate(Star):
                     self._log("agent loop：有图但取不下来（组件=%s）" % _names)
         except Exception as _e:
             self._log("agent loop：取图异常 %r" % (_e,))
+        if _img_paths:
+            _parts = []
+            for _p in _img_paths[:2]:
+                try:
+                    _b64 = base64.b64encode(open(_p, "rb").read()).decode()
+                    _ext = os.path.splitext(_p)[1].lstrip(".").lower() or "jpeg"
+                    _parts.append({"type": "image_url",
+                                   "image_url": {"url": "data:image/%s;base64,%s" % (_ext, _b64)}})
+                except Exception:
+                    pass
+            if _parts:
+                _parts.append({"type": "text", "text": user})
+                _vmodel = agent.vision.vision_model(self.cfg)
+                self._log("agent loop：看图轮（%d 张图 → %s，不用工具）" % (len(_parts) - 1, _vmodel))
+                _vtxt = ""
+                try:
+                    _vtxt = await asyncio.to_thread(
+                        agent.llm.chat_vision,
+                        [{"role": "system", "content": system_prompt},
+                         {"role": "user", "content": _parts}], _vmodel, self.cfg, 400)
+                except Exception as _e:
+                    self._log("agent loop：看图轮失败 %r" % (_e,))
+                _vtxt = str(_vtxt or "").strip()
+                if _vtxt:
+                    _mk = str((self.cfg.get("split_reply") or {}).get("marker", "|||"))
+                    _segs = replyproto.parse(_vtxt, _mk, 4).parts or [_vtxt]
+                    for _seg in _segs[:4]:
+                        await self._agent_send(event, _seg)
+                    self._log("agent loop：看图轮发出 %d 条" % len(_segs[:4]))
+                else:
+                    self._log("agent loop：看图轮没拿到内容")
+                try:
+                    event.set_extra("_agent_loop_done", True)
+                except Exception:
+                    pass
+                return True
         _vmodel = None
         _user_content = user
-        if _img_paths:
+        if False:
             _parts = []
             for _p in _img_paths[:2]:
                 try:
