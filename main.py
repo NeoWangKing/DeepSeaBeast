@@ -1769,6 +1769,11 @@ class QqPeakGate(Star):
         if lines:
             user += "[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines) + "\n"
         user += "[当前消息] " + str(getattr(event, "message_str", "") or "")
+        try:
+            if _face_note:
+                user += " " + _face_note
+        except Exception:
+            pass
         # 她自己写的记忆：最近几条注入到提示词末尾
         try:
             _mf = os.path.join(PLUGIN_DIR, "data", "agent_memory",
@@ -1798,9 +1803,32 @@ class QqPeakGate(Star):
             _txt_now = str(getattr(event, "message_str", "") or "").strip()
             if _names and not _txt_now:
                 self._log("agent loop：消息组件=%s" % _names)
+            _face_hint = ""
             for _m in _comps:
+                _cn = type(_m).__name__
+                if _cn == "Face" or str(getattr(_m, "type", "") or "").lower() == "face":
+                    try:
+                        _fid = int(getattr(_m, "id", 0) or 0)
+                    except Exception:
+                        _fid = 0
+                    if _fid:
+                        _face_hint = (_face_hint + ("、" if _face_hint else "") + "#%d" % _fid)
+                        try:
+                            import tempfile
+                            _url = "https://qzonestyle.gtimg.cn/qzone/em/e%d.gif" % _fid
+                            _rq = urllib.request.Request(_url, headers={"User-Agent": "Mozilla/5.0"})
+                            _data = urllib.request.urlopen(_rq, timeout=8).read()
+                            if _data:
+                                _fd, _tmp = tempfile.mkstemp(suffix=".gif", prefix="face_")
+                                with os.fdopen(_fd, "wb") as _fh:
+                                    _fh.write(_data)
+                                _img_paths.append(_tmp)
+                                self._log("agent loop：QQ表情 #%d 已取图" % _fid)
+                        except Exception as _e:
+                            self._log_debug("QQ表情取图失败 #%s %r" % (_fid, _e))
+                    continue
                 _is_img = (isinstance(_m, Image)
-                           or type(_m).__name__ in ("Image", "Picture", "Face")
+                           or type(_m).__name__ in ("Image", "Picture")
                            or str(getattr(_m, "type", "") or "").lower() == "image")
                 if not _is_img:
                     continue
@@ -1809,6 +1837,10 @@ class QqPeakGate(Star):
                     _img_paths.append(_p)
                 else:
                     self._log("agent loop：有图但取不下来（组件=%s）" % _names)
+            if _face_hint:
+                _face_note = "[对方发来 QQ 自带表情 %s；下面是它的图，能看清就照常接话]" % _face_hint
+            else:
+                _face_note = ""
         except Exception as _e:
             self._log("agent loop：取图异常 %r" % (_e,))
         if _img_paths:
@@ -1822,12 +1854,16 @@ class QqPeakGate(Star):
                         _im = _PIL.open(_p)
                         _w, _h = _im.size
                         if max(_w, _h) < 560:              # 小图放大再送：手势/文字才看得清
-                            _im2 = _im.convert("RGB").resize((_w * 2, _h * 2), _PIL.LANCZOS)
+                            _sc = 2
+                            if min(_w, _h) and min(_w, _h) < 60:      # QQ 表情只有 24px → 放大到 ~200px
+                                _sc = max(2, int(200 / min(_w, _h)) + 1)
+                            _im2 = _im.convert("RGB").resize((_w * _sc, _h * _sc), _PIL.LANCZOS)
                             _buf = _io.BytesIO()
                             _im2.save(_buf, format="JPEG", quality=92)
                             _b64 = base64.b64encode(_buf.getvalue()).decode()
                             _ext = "jpeg"
-                            self._log("agent loop：小图放大 %dx%d → %dx%d 再识别" % (_w, _h, _w * 2, _h * 2))
+                            self._log("agent loop：小图放大 %dx%d → %dx%d 再识别"
+                                      % (_w, _h, _w * _sc, _h * _sc))
                     except Exception:
                         pass
                     if not _b64:
