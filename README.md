@@ -26,7 +26,9 @@ DeepSeaBeast/
 │   └── sections.py                行为层各段（安全 / 输出协议 / 节奏 / 表情策略…）
 ├── replyproto.py                  输出协议解析（||| 分条 / [不说话] / [表情:id]）
 ├── agent/                         agent 工具层（模型输出=思考，动作靠调工具）
-│   └── tools.py                   发言/表情/收藏/翻记录/看人/查记忆/结束本轮（绑定会话）
+│   ├── tools.py                   发言/表情/收藏/翻记录/看人/查记忆/结束本轮（绑定会话）
+│   ├── llm.py                     OpenAI 兼容的工具调用客户端（不依赖 AstrBot 内部）
+│   └── loop.py                    强制工具轮：tool_choice=required + 结果回传
 ├── scoring.py  kb.py  stickers.py 回复打分器 / 本地资料库 / 表情包收藏
 ├── followup.py                    偶尔"接着自己再补一句"
 ├── config.json  requirements.txt  metadata.yaml
