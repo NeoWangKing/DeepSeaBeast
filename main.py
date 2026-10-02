@@ -1925,7 +1925,6 @@ class QqPeakGate(Star):
     async def _wake_loop(self) -> None:
         while True:
             try:
-                await asyncio.sleep(20)
                 now = time.time()
                 items = self._wake_load()
                 due = [x for x in items if float(x.get("due") or 0) <= now]
@@ -1935,12 +1934,18 @@ class QqPeakGate(Star):
                     self._wake_save(keep)
                 for it in due[:5]:
                     await self._wake_fire(it)
-                if keep:
-                    self._ensure_wake_timer()
+                # 动态睡眠：睡到下一个到期时刻（上限 20 秒），这样 5 秒的短延时也能准时
+                try:
+                    _nxt = min([float(x.get("due") or 0) for x in keep])
+                except Exception:
+                    _nxt = 0.0
+                _wait = 20.0 if not _nxt else max(1.0, min(20.0, _nxt - time.time() + 0.2))
+                await asyncio.sleep(_wait)
             except asyncio.CancelledError:
                 return
             except Exception as e:
                 self._log("定时唤醒循环出错(忽略): %r" % (e,))
+                await asyncio.sleep(5)
 
     async def _wake_fire(self, it: dict) -> None:
         try:

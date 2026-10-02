@@ -209,8 +209,8 @@ class Tools:
             sec = int(float(str(after_sec or "0")))
         except Exception:
             sec = 0
-        if sec < 20:
-            return "定不了：after_sec 至少要 20 秒（写秒数，比如 300 = 5 分钟后）"
+        if sec < 5:
+            return "定不了：after_sec 至少要 5 秒（写秒数，比如 300 = 5 分钟后）"
         if sec > 7200:
             sec = 7200
         txt = str(say or "").strip()
@@ -314,7 +314,7 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("wake") and send_tools:
         specs.append(("schedule_wake",
                       [{"type": "string", "name": "after_sec",
-                        "description": "【必填】多少秒后（20~7200，300=5分钟）"},
+                        "description": "【必填】多少秒后（5~7200，300=5分钟）"},
                        {"type": "string", "name": "say", "description": "【必填】到时想说的那句话"},
                        {"type": "string", "name": "reason", "description": "可选：为什么定这个（只给自己看）"}],
                       "定时叫醒自己：过一会儿把 say 发出来（比如“等他说完我再接一句”“过会儿再冒泡”）",
