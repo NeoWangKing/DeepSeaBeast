@@ -200,7 +200,18 @@ class Tools:
             return "写不了：%r" % (e,)
         return "备注写好了：%s → %s" % (sid, nt) if ok else "没找到这张表情：%s" % sid
 
-    def schedule_wake(self, after_sec="", say="", reason="") -> str:
+    def cancel_wake(self, scope="") -> str:
+        """取消定时：scope=all 清掉这个会话的全部定时。"""
+        fn = self.cb.get("cancel_wake")
+        if not fn:
+            return "取不了：这个会话没开定时"
+        try:
+            n = int(fn(str(scope or "")) or 0)
+        except Exception as e:
+            return "取不了：%r" % (e,)
+        return ("取消了 %d 条定时" % n) if n else "没有待办的定时"
+
+    def schedule_wake(self, after_sec="", say="", reason="", mode="auto", every_sec="") -> str:
         """定时叫醒自己：过一会儿把 say 这句话发出来。"""
         fn = self.cb.get("schedule_wake")
         if not fn:
@@ -214,10 +225,26 @@ class Tools:
         if sec > 7200:
             sec = 7200
         txt = str(say or "").strip()
-        if not txt:
-            return "定不了：say 要写清到时想说的话"
+        md = str(mode or "auto").strip().lower()
+        ev = str(every_sec or "").strip()
+        every = 0
+        if ev:
+            try:
+                every = int(float(ev))
+            except Exception:
+                every = 0
+            if every and every < 60:
+                return "定不了：every_sec 最少 60 秒（循环任务别定太密）"
+        if md not in ("auto", "say", "think"):
+            md = "auto"
+        if md == "auto":
+            md = "say" if txt else "think"
+        if md == "say" and not txt:
+            return "定不了：say 模式要写清到时说的话（或写 [拍一拍]/[表情:id]）"
+        if md == "think" and not (txt or str(reason or "").strip()):
+            return "定不了：think 模式至少要给 reason，说明到时想干什么"
         try:
-            return str(fn(sec, txt[:200], str(reason or "")[:60]) or "定好了")
+            return str(fn(sec, txt[:200], str(reason or "")[:60], md, every) or "定好了")
         except Exception as e:
             return "定不了：%r" % (e,)
 
@@ -318,10 +345,18 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                        {"type": "string", "name": "say",
                         "description": "【必填】到时要做的事：普通话说一句；或写 [拍一拍] 到点拍对方一下；"
                                        "或写 [表情:id] 到点发那张收藏表情（可带文字）"},
-                       {"type": "string", "name": "reason", "description": "可选：为什么定这个（只给自己看）"}],
+                       {"type": "string", "name": "reason", "description": "可选：为什么定这个（只给自己看）"},
+                       {"type": "string", "name": "mode",
+                        "description": "say=到点直接发你写的（省钱）；think=到点先自己想一想再发；不填默认：写了 say 就 say，没写就 think"},
+                       {"type": "string", "name": "every_sec",
+                        "description": "可选：每多少秒重复一次（≥60，比如 600=每十分钟；不填=只做一次）"}],
                       "定时叫醒自己：对方说“X 秒后/过一会儿/等我回来再说/叫我一下”时，用它把话定到那个时间点"
                       "（到点自动发出，别现在就说）；也可以自己想“过会儿再冒泡”时用",
                       "schedule_wake"))
+    if on("wake") and send_tools:
+        specs.append(("cancel_wake",
+                      [{"type": "string", "name": "scope", "description": "写 all 取消这个会话的全部定时"}],
+                      "取消之前定的定时（对方说“别提醒了/取消”时用）", "cancel_wake"))
     if on("face") and send_tools:
         specs.append(("send_face",
                       [{"type": "string", "name": "name",

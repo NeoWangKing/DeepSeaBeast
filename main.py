@@ -1663,11 +1663,23 @@ class QqPeakGate(Star):
         def _sticker_note(sid, note):
             return stickers.set_note(str(sid), str(note))
 
-        def _schedule_wake(sec, say, reason):
+        def _cancel_wake(scope=""):
+            try:
+                _gid = self._chat_key(event)
+                items = self._wake_load()
+                keep = [x for x in items if str(x.get("gid") or "") != _gid]
+                n = len(items) - len(keep)
+                self._wake_save(keep)
+                return n
+            except Exception:
+                return 0
+
+        def _schedule_wake(sec, say, reason, mode="auto", every=0):
             try:
                 item = {"umo": str(getattr(event, "unified_msg_origin", "") or ""),
                         "due": time.time() + int(sec), "say": str(say)[:200],
                         "reason": str(reason or "")[:60], "gid": self._chat_key(event),
+                        "mode": str(mode or "say"), "every": int(every or 0),
                         "poke_uid": str(event.get_sender_id() or "")}
                 items = self._wake_load()
                 if len(items) >= 50:
@@ -1675,8 +1687,15 @@ class QqPeakGate(Star):
                 items.append(item)
                 self._wake_save(items)
                 self._ensure_wake_timer()
-                self._log("定时唤醒：%d 秒后发「%s」（%s）" % (int(sec), str(say)[:30], reason))
-                return "定好了：%d 秒后我会发「%s」" % (int(sec), str(say)[:30])
+                self._log("定时唤醒：%d 秒后（mode=%s%s）→「%s」（%s）"
+                          % (int(sec), item["mode"],
+                             "，每 %d 秒一次" % item["every"] if item["every"] else "",
+                             str(say or reason)[:30], reason))
+                if item["mode"] == "think":
+                    return "定好了：%d 秒后我自己想一句发出来" % int(sec)
+                return "定好了：%d 秒后我会发「%s」%s" % (
+                    int(sec), str(say)[:30],
+                    "，之后每 %d 秒一次" % item["every"] if item["every"] else "")
             except Exception as e:
                 return "定不了：%r" % (e,)
 
@@ -1697,7 +1716,7 @@ class QqPeakGate(Star):
                "view_image": _view_image, "send_poke": _send_poke,
                "send_face": _send_face,
                "view_sticker": _view_sticker, "sticker_note": _sticker_note,
-               "schedule_wake": _schedule_wake,
+               "schedule_wake": _schedule_wake, "cancel_wake": _cancel_wake,
                "memory_append": _memory_append}
         if self._agent_send_allowed(event):
             # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
@@ -1956,6 +1975,33 @@ class QqPeakGate(Star):
                 self._log("定时唤醒：没有会话或发送通道，跳过")
                 return
             raw = str(it.get("say") or "").strip()
+            _reason = str(it.get("reason") or "").strip()
+            # 循环任务：先把下一次排进去（先续期，避免中途失败丢了循环）
+            try:
+                _every = int(it.get("every") or 0)
+                if _every >= 60:
+                    items = self._wake_load()
+                    nxt = dict(it)
+                    nxt["due"] = time.time() + _every
+                    items.append(nxt)
+                    self._wake_save(items)
+                    self._log("定时唤醒：循环任务已续期（%d 秒后）" % _every)
+            except Exception as _e4:
+                self._log_debug("定时唤醒：续期失败 %r" % (_e4,))
+
+            # think 模式：先让她自己组织一句（调用一次模型，不带工具）
+            if str(it.get("mode") or "say") == "think":
+                try:
+                    _p = ("你是%s。现在是你自己之前定的时间点，当时你惦记着：%s。"
+                          "用一句自然的口语说出来（≤20字，别解释、别提定时/系统、别用引号）。"
+                          % ((self.cfg.get("prompt") or {}).get("bot_name") or "小鲸鱼",
+                             _reason or raw or "想说点什么"))
+                    _t = await asyncio.to_thread(agent.llm.chat_text,
+                                                 [{"role": "user", "content": _p}], self.cfg, 120)
+                    raw = replyproto.sanitize(str(_t or "").strip(), strip_bar=True)
+                    self._log("定时唤醒：think 生成了「%s」" % raw[:30])
+                except Exception as _e5:
+                    self._log("定时唤醒：think 生成失败 %r" % (_e5,))
             if not raw:
                 self._log("定时唤醒：没有内容，跳过")
                 return
