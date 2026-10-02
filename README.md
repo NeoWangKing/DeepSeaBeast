@@ -17,52 +17,19 @@ AstrBot 群聊机器人插件：**群聊门控 + 人格卡 + 长期记忆 + 本�
 ## 目录结构
 
 ```
-DeepSeaBeast/                    （AstrBot 插件根目录）
-├── main.py                      插件主入口：门控 / 人格 / 记忆 / 资料库 / 表情包 / 玩法调度
-├── scoring.py                   零 token 回复决策打分器
-├── kb.py                        本地资料库（TF-IDF 建索引 + 检索注入）
-├── stickers.py                  表情包收藏（识图打标 / 挑选发送 / 同步 QQ 表情）
-├── config.json                  插件配置（群号、白名单、各功能开关；不含密钥）
-├── requirements.txt             依赖：Pillow / zhconv / PyJWT
-├── metadata.yaml  README.md  .gitignore
-│
-├── prompts/                     提示词与人格
-│   ├── system_prompt.txt             默认群聊人格
-│   ├── system_prompt_friend.txt      "朋友"版（少毒舌、有分寸）
-│   ├── system_prompt_tool.txt        克制版（严格隐私群用）
-│   ├── system_prompt_private.txt     私聊
-│   ├── system_prompt_sharp.txt       毒舌版（备用）
-│   └── personas/                     群人格卡（_template.txt + <群号>.txt，内容不入库）
-│
-├── games/                       玩法插件目录（一个玩法一个包）
-│   ├── __init__.py                   GAMES 登记表（加新玩法在这里登记）
-│   └── turtle_soup/                  海龟汤（turtle soup）
-│       ├── puzzles.py                题库（人工 + AI 现编 + 网络导入）
-│       ├── judge.py                  判题 / 复核 / 提示 / 余温解释
-│       ├── session.py                对局状态
-│       ├── gen.py                    AI 现编（生成→自评→回炉）
-│       └── import_web.py             网络题库导入
-│
-├── turtle/                      兼容层：老写法 from turtle import … 仍可用
-├── memory/                      长期记忆（群印象 / 人物档案 / 定时刷新）
-│
-├── tools/                       运维脚本
-│   ├── group_admin.py                群管理（allow/block/list/new）
-│   ├── extract_memes.py              群黑话提炼
-│   ├── refresh_holidays.py           节假日表刷新
-│   └── score_probe.py                打分器调参
-│
-├── tests/gate_sim.py            离线测试台（60+ 场景，不联网、不碰 QQ）
-├── deploy/                      部署层：CLI 工具、systemd 单元、install.sh、config 示例、文档
-├── docs/OPS.md                  通用运维手册（数据流 / 命令 / 排障 / 成本 / 隐私）
-│
-└── data/                        运行数据（内容全部不入库）
-    ├── memory/                       群印象与人物档案
-    ├── games/turtle_soup/            海龟汤对局状态 + 题库（人工/AI/网导入）
-    ├── stickers/                     表情图 + 标签索引
-    ├── kb/                           资料库源文件 + 索引
-    └── chatlog/                      群聊日志
+main.py                    插件入口：门控 / 人格 / 记忆 / 资料库 / 表情包 / 玩法调度
+scoring.py  kb.py  stickers.py   三个核心模块：回复打分 / 本地资料库 / 表情包收藏
+prompts/                   人格提示词（personas/ 是群人格卡，内容不入库）
+games/                     玩法插件目录：games/turtle_soup/ = 海龟汤
+memory/                    长期记忆（群印象 / 人物档案 / 定时刷新）
+tools/  tests/             运维脚本 / 离线测试台（gate_sim.py）
+deploy/                    部署层：CLI 工具、systemd 单元、install.sh、示例配置
+docs/OPS.md                运维手册（数据流 / 命令 / 排障 / 成本 / 隐私）
+config.json                插件配置（群号、白名单、开关；不含密钥）
+data/                      运行数据：记忆 / 对局 / 表情 / 资料库 / 日志（内容全部不入库）
 ```
+
+每个文件/目录的详细说明见 [docs/OPS.md](docs/OPS.md)。
 
 ## 快速开始
 
