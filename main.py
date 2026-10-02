@@ -2967,7 +2967,7 @@ class QqPeakGate(Star):
                             caps={"vision": bool(self.cfg.get("vision", False)),
                                   "search": bool((self.cfg.get("search") or {}).get("enabled")),
                                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                                  "tools_text": self._agent_tools_text(key),
+                                  "tools_text": self._agent_tools_text(gid),
                                   "tools_send": bool(self._agent_cfg().get("send_tools"))})
                         req.system_prompt = _txt
                         self._log("提示词: 人格=%s 补丁=%s 行为%d段；人格%d字/行为%d字/共%d字；参与=%s 表情档=%s"
