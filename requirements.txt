@@ -1,0 +1,7 @@
+# 装进「AstrBot 所用的那个 Python 环境」，例如：
+#   /opt/astrbot/.local/share/uv/tools/astrbot/bin/pip install -r requirements.txt
+# AstrBot 自身的依赖（aiohttp / pydantic / PyJWT 等）不用在这里重复列。
+
+Pillow>=9.0      # 表情包感知去重（8x8 均值哈希）；不装会退化成 md5
+zhconv>=1.4      # 网络题库导入时的繁→简转换；不做导入可以不装
+PyJWT>=2.0       # qqbot-reload 用来签 SnowLuma 面板 token（AstrBot 一般已自带）
