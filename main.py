@@ -244,6 +244,7 @@ class QqPeakGate(Star):
         self.cfg = load_config()
         self._agent_sessions: dict = {}      # agent loop / 工具会话（每次唤醒一个）
         self._agent_locks: dict = {}         # 每个会话一把锁：loop 串行化（连发时排队）
+        self._img_cache: dict = {}           # 最近收到的图（message_id → 路径），供收藏用
         self.last_auto: dict[str, float] = {}
         self.hour_count: dict[tuple[str, int], int] = {}
         self._nick: str = ""
@@ -1452,14 +1453,27 @@ class QqPeakGate(Star):
             return True
 
         def _collect(message_id, note):
+            path = ""
             try:
-                comps = [m for m in event.get_messages() if isinstance(m, Image)]
+                _ck = self._chat_key(event)
+                for _k, _v in list(getattr(self, "_img_cache", {}).items()):
+                    if _k[0] == _ck and (str(_k[1]) == str(message_id) or not str(message_id)):
+                        if time.time() - _v[0] <= 900 and _v[1]:
+                            path = _v[1][0]
+                            break
             except Exception:
-                comps = []
-            if not comps:
-                return "这条里没有图片可收藏（收藏只能收本批消息里的图）"
-            try:
+                path = ""
+            if not path:
+                try:
+                    comps = [m for m in event.get_messages() if isinstance(m, Image)]
+                except Exception:
+                    comps = []
+                if not comps:
+                    return "这条里没有图片可收藏（只能收刚发过的图）"
                 path = self._save_tmp_image(comps[0])
+                if not path:
+                    return "没收藏：图取不下来"
+            try:
                 if not path:
                     return "没收藏：图取不下来"
                 g = stickers.tag_image(path, str((self.cfg.get("stickers") or {}).get(
@@ -1813,9 +1827,19 @@ class QqPeakGate(Star):
                 _parts.append({"type": "text", "text": (
                     "先在心里看清这张图，然后**只输出两行**（不要别的解释）：\n"
                     "图：<一句话说清图里是什么，≤25字；这行会被你记住，以后聊天能用上>\n"
-                    "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔>")})
+                    "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔>\n"
+                    "收：<是 或 否 —— 这张图以后想不想当表情包用？觉得有意思/用得上就写 是>")})
                 _vmodel = agent.vision.vision_model(self.cfg)
-                self._log("agent loop：看图轮（%d 张图 → %s，不用工具）" % (_n_img, _vmodel))
+                try:
+                    _mid = str(getattr(getattr(event, "message_obj", None), "message_id", "") or "")
+                    _ck = self._chat_key(event)
+                    if _mid and _img_paths:
+                        if len(self._img_cache) > 60:
+                            self._img_cache.clear()
+                        self._img_cache[(_ck, _mid)] = (time.time(), list(_img_paths))
+                    self._log("agent loop：看图轮（%d 张图 → %s，不用工具）" % (_n_img, _vmodel))
+                except Exception:
+                    pass
                 _vtxt = ""
                 try:
                     _vtxt = await asyncio.to_thread(
@@ -1832,7 +1856,7 @@ class QqPeakGate(Star):
                             return _line.split(_sep, 1)[1].strip()
                     return _line
 
-                _desc, _say = "", ""
+                _desc, _say, _keep = "", "", False
                 for _line in _vtxt.splitlines():
                     _l = _line.strip()
                     if not _l:
@@ -1841,6 +1865,8 @@ class QqPeakGate(Star):
                         _desc = _after(_l)
                     elif _l.startswith("回") and not _say:
                         _say = _after(_l)
+                    elif _l.startswith("收"):
+                        _keep = _after(_l).strip().lower().startswith(("是", "y", "收", "1", "true", "要"))
                 if not _say:
                     _say = _vtxt                      # 没按格式 → 整段当回复
                 if _desc:
@@ -1863,6 +1889,31 @@ class QqPeakGate(Star):
                         self._log("agent loop：图片已记住 —— %s" % _desc[:40])
                     except Exception as _e:
                         self._log("agent loop：图片记忆写入失败 %r" % (_e,))
+                if _keep and _desc and _img_paths:
+                    try:
+                        _sc = self.cfg.get("stickers") or {}
+                        _key = self._chat_key(event)
+                        _lim = int((_sc.get("private_max_per_hour", 50) if _key.startswith("p:")
+                                    else _sc.get("collect_max_per_hour", 10)) or 10)
+                        _now = time.time()
+                        _hist = getattr(self, "sticker_collect_ts", None)
+                        if _hist is None:
+                            _hist = self.sticker_collect_ts = {}
+                        _hits = _hist.setdefault(_key, [])
+                        _hits[:] = [x for x in _hits if _now - x <= 3600]
+                        if len(_hits) >= _lim:
+                            self._log("看图轮：这个小时收藏够了，先不收")
+                        else:
+                            _it = stickers.add_file(_img_paths[0], _key, _desc, [], "",
+                                                    int(_sc.get("max_store", 300) or 300), None)
+                            if _it:
+                                _hits.append(_now)
+                                self._log("看图轮：收下表情 %s《%s》（她觉得有意思）"
+                                          % (_it.get("id"), _desc[:24]))
+                            else:
+                                self._log("看图轮：想收但没入库（可能重复）")
+                    except Exception as _e:
+                        self._log("看图轮：收藏出错 %r" % (_e,))
                 if _say:
                     _mk = str((self.cfg.get("split_reply") or {}).get("marker", "|||"))
                     _segs = replyproto.parse(_say, _mk, 4).parts or [_say]
