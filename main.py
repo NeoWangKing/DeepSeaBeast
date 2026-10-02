@@ -27,7 +27,7 @@ except Exception:
 from astrbot.api.star import Context, Star, register
 
 try:
-    from . import scoring, stickers, kb as local_kb   # AstrBot 以包形式加载插件
+    from . import scoring, stickers, kb as local_kb, followup   # AstrBot 以包形式加载插件
     from .memory import store as mem_store     # 记忆产物只读访问
     from .games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
 except Exception:                              # 兜底：直接当脚本/被 py_compile 时
@@ -36,6 +36,7 @@ except Exception:                              # 兜底：直接当脚本/被 py
     import scoring
     import stickers
     import kb as local_kb
+    import followup
     from memory import store as mem_store
     from games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
     from games.turtle_soup import gen as turtle_gen
@@ -106,6 +107,8 @@ DEFAULTS = {
             "max_per_hour": 3,       # 每小时最多发几张
             "collect_max_per_hour": 10,       # 群聊里每小时最多收几张
             "collect_private": True,          # 私聊发图也收（自己人发的多半是精选）
+            "collect_prob": 0.7,              # 群聊里每张合格的图有多大概率被收下（不是全收）
+            "private_collect_prob": 0.95,     # 私聊的收录概率（自己发的多半是精选，几乎都收）
             "private_max_per_hour": 50,       # 私聊每小时上限放宽
             "send_private": True,             # 私聊也能发表情包
             "vision_model": "glm-4v-flash",
@@ -207,6 +210,25 @@ def in_offpeak(cfg: dict) -> bool:
 
 
 @register("qq_peak_gate", "local", "高峰只允许@触发，低峰允许智能接话", "0.1.0")
+def _safe_cut(t: str, pos: int) -> int:
+    """把切分位置挪开英文单词/数字中间（否则会把 BigFish 切成 BigFa / sh）。"""
+    n = len(t)
+    pos = max(1, min(n - 1, int(pos)))
+
+    def _w(ch):
+        return ch.isalnum() and ord(ch) < 128
+
+    if pos < n and _w(t[pos - 1]) and _w(t[pos]):
+        i = pos
+        while i < n and _w(t[i]):
+            i += 1
+        j = pos
+        while j > 0 and _w(t[j - 1]):
+            j -= 1
+        return i if (i - pos) <= (pos - j) else j
+    return pos
+
+
 class QqPeakGate(Star):
     def __init__(self, context: Context, config: dict | None = None):
         super().__init__(context)
@@ -408,15 +430,34 @@ class QqPeakGate(Star):
         if not t:
             return []
         chars = []
-        for ch in t:
+        i = 0
+        n = len(t)
+        _tail = "._-&"
+        while i < n:
+            ch = t[i]
             if chars and ch in "，。！？!?、；;…~— ":
                 chars[-1] += ch
-            else:
-                chars.append(ch)
+                i += 1
+                continue
+            if ch.isalnum() and ord(ch) < 128:      # 英文单词/数字整块，别拆成 BigF + ish
+                j = i + 1
+                while j < n and ((t[j].isalnum() and ord(t[j]) < 128) or (
+                        t[j] in _tail and j + 1 < n and t[j + 1].isalnum()
+                        and ord(t[j + 1]) < 128)):
+                    j += 1
+                chars.append(t[i:j])
+                i = j
+                continue
+            chars.append(ch)
+            i += 1
         chars = [c for c in chars if c.strip()]
         if len(chars) > max_parts:                     # 超上限就把尾巴合成一条
             chars = chars[:max_parts - 1] + ["".join(chars[max_parts - 1:])]
         return chars
+
+    @staticmethod
+    def _safe_cut(t: str, pos: int) -> int:
+        return _safe_cut(t, pos)
 
     @staticmethod
     def _split_text(text: str, max_parts: int = 5, min_chars: int = 12) -> list:
@@ -429,8 +470,17 @@ class QqPeakGate(Star):
         if len(segs) < 2:
             segs = [x for x in _re.split(r"(?<=[，,；;])\s*", t) if x.strip()]
         if len(segs) < 2:
-            mid = max(1, len(t) // 2)
-            segs = [t[:mid], t[mid:]]
+            # 没有任何标点时按长度切：优先切在「小句开头」处（我/你/它/不过…），
+            # 实在找不到再退回长度中点（并且绝不断英文单词）
+            cut = 0
+            _start = "我你他她它这那其但而所因不过所以然后而且还有就是"
+            for _p in range(max(2, len(t) // 4), len(t) - 2):
+                if t[_p] in _start and not (t[_p - 1].isalnum() and ord(t[_p - 1]) < 128):
+                    cut = _p
+                    break
+            if not cut:
+                cut = _safe_cut(t, max(1, len(t) // 2))
+            segs = [t[:cut], t[cut:]]
         while len(segs) > max_parts:
             i = min(range(len(segs) - 1), key=lambda k: len(segs[k]) + len(segs[k + 1]))
             segs[i:i + 2] = [segs[i] + segs[i + 1]]
@@ -1235,6 +1285,66 @@ class QqPeakGate(Star):
         except Exception as e:
             self._log("remember_reply ERROR: %r" % (e,))
 
+    def _followup_cfg(self) -> dict:
+        c = dict(self.cfg.get("followup") or {})
+        c.setdefault("enabled", True)
+        c.setdefault("chance", 0.12)
+        c.setdefault("max_per_hour", 2)
+        c.setdefault("delay_ms", 2600)
+        c.setdefault("exclude_groups", ["966812151"])
+        return c
+
+    def _maybe_followup(self, event: AstrMessageEvent) -> None:
+        """偶尔像真人一样，接着自己刚发的那条再补一句。只做概率判断，不花 token。"""
+        try:
+            c = self._followup_cfg()
+            if not c.get("enabled"):
+                return
+            gid = self._chat_key(event)
+            if not gid or self._in("no_context_groups", gid):
+                return
+            if gid in [str(x) for x in (c.get("exclude_groups") or [])]:
+                return
+            result = event.get_result()
+            txt = ""
+            for x in (getattr(result, "chain", None) or []):
+                if isinstance(x, Plain):
+                    txt += x.text or ""
+            txt = " ".join(txt.split())
+            if len(txt) < 6 or len(txt) > 300:
+                return
+            if random.random() > float(c.get("chance", 0.12) or 0):
+                return
+            now = time.time()
+            hits = self.__dict__.setdefault("_followup_hits", {}).setdefault(gid, [])
+            hits[:] = [x for x in hits if now - x <= 3600]
+            if len(hits) >= int(c.get("max_per_hour", 2) or 2):
+                self._log_debug("followup: 这个小时补够了")
+                return
+            hits.append(now)
+            asyncio.create_task(self._do_followup(event, txt, c))
+        except Exception as e:
+            self._log("followup 调度失败(忽略): %r" % (e,))
+
+    async def _do_followup(self, event: AstrMessageEvent, prev: str, c: dict) -> None:
+        try:
+            base = float(c.get("delay_ms", 2600) or 2600) / 1000.0
+            await asyncio.sleep(max(0.6, base * random.uniform(0.7, 1.4)))
+            note = await asyncio.to_thread(followup.make_note, prev)
+            if not note:
+                return
+            await event.send(MessageChain([Plain(note)]))
+            self._log("followup: 接着自己补一句 —— %s" % note)
+            try:
+                _k = str(event.get_group_id() or "")
+                buf = self.recent.get(_k)
+                if buf is not None:
+                    buf.append(("我", note, ""))
+            except Exception:
+                pass
+        except Exception as e:
+            self._log("followup 发送失败(忽略): %r" % (e,))
+
     def _quote_reason(self, event: AstrMessageEvent) -> str:
         """什么时候像真人一样用引用：只有"我回的这条已经被后来的消息顶上去了"才引用。"""
         gid = str(event.get_group_id() or "")
@@ -1258,6 +1368,7 @@ class QqPeakGate(Star):
         try:
             self._remember_reply(event)
             await self._maybe_sticker(event)
+            self._maybe_followup(event)          # 偶尔接着自己刚发的再补一句
             if not self.cfg.get("smart_quote", True):
                 return
             gid = str(event.get_group_id() or "")
@@ -1705,6 +1816,13 @@ class QqPeakGate(Star):
                                 not g.get("is_meme") and _kind in ("", "other") and False)):
                             self._log("表情包：不适合作表情，没收藏（kind=%s desc=%s）"
                                       % (_kind or "?", g.get("desc") or "?"))
+                            continue
+                        # 不是每张都收：按概率抽签（私聊概率更高，自己发的多半是精选）
+                        _p = float((cfg.get("private_collect_prob", 0.95) if private
+                                    else cfg.get("collect_prob", 0.7)) or 0)
+                        if _p <= 0 or random.random() > _p:
+                            self._log("表情包：抽签没中，这次不收（p=%.2f%s）"
+                                      % (_p, "，私聊" if private else ""))
                             continue
                         it = await asyncio.to_thread(
                             stickers.add_file, path, gid, g.get("desc", ""), g.get("tags") or [],
