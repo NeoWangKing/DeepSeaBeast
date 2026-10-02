@@ -222,7 +222,8 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                                        "想分成多条就用 ||| 分隔（最多 4 条、总共 400 字内）"},
                        {"type": "string", "name": "reply_to_id", "description": "可选：要引用哪条消息的 id"},
                        {"type": "string", "name": "face",
-                        "description": "可选：同一个气泡里再带一个 QQ 自带表情，写官方名（如 汪汪/得意/吃糖）"}],
+                        "description": "可选：在句尾再补一个 QQ 自带表情（官方名）。想插在句子中间/插多个，"
+                                       "直接在 text 里写 [QQ表情:名字]，可以写任意多个、放任意位置"}],
                       "发言：你写的正文永远不会发出去，说话只能调这个工具", "send_message"))
     if on("sticker") and send_tools:
         specs.append(("send_sticker",

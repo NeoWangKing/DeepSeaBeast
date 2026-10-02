@@ -107,3 +107,24 @@ def parse(text, marker: str = "|||", max_parts: int = 5, allow_lines: bool = Tru
 def join_marker_prefix(prompt_hint: str = "") -> str:
     """给排查用的说明文本（可选）。"""
     return prompt_hint or "多条用 ||| 分隔；不想说就整条只输出 [不说话]"
+
+FACE_RE = re.compile(r"\[(?:QQ表情|qq表情|QQ脸|qface|face)\s*[:：]\s*([^\]\n]{1,16})\]")
+
+
+def has_face_mark(text) -> bool:
+    return bool(FACE_RE.search(str(text or "")))
+
+
+def split_faces(text) -> list:
+    """把文字按内联 QQ 表情标记切开：[("text", 文字), ("face", 名字), ...]。"""
+    out, pos, raw = [], 0, str(text or "")
+    for m in FACE_RE.finditer(raw):
+        if m.start() > pos:
+            out.append(("text", raw[pos:m.start()]))
+        out.append(("face", (m.group(1) or "").strip()))
+        pos = m.end()
+    if pos < len(raw):
+        out.append(("text", raw[pos:]))
+    if not out:
+        out = [("text", raw)]
+    return out

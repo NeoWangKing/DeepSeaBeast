@@ -1682,16 +1682,33 @@ class QqPeakGate(Star):
                 comps.append(Reply(id=str(reply_to_id)))
             if at_user_id:
                 comps.append(At(qq=str(at_user_id)))
-            comps.append(Plain(str(text)))
-            _fid = self._face_id_by_name(face) if face else 0
-            if _fid and Face is not None:
+            _faces = []
+            try:
+                for _kind, _val in replyproto.split_faces(text):
+                    if _kind == "text":
+                        if _val.strip():
+                            comps.append(Plain(_val))
+                    else:
+                        _fid = self._face_id_by_name(_val)
+                        if _fid and Face is not None:
+                            comps.append(Face(id=_fid))
+                            _faces.append(_val)
+                        else:
+                            _faces.append("?" + _val)
+            except Exception:
+                comps.append(Plain(str(text)))
+            if not comps:
+                comps.append(Plain(str(text)))
+            _tail = self._face_id_by_name(face) if face else 0
+            if _tail and Face is not None:
                 try:
-                    comps.append(Face(id=_fid))
+                    comps.append(Face(id=_tail))
+                    _faces.append(face)
                 except Exception:
                     pass
             await event.send(MessageChain(comps))
             self._log("agent：发出「%s」%s" % (str(text)[:40],
-                                              ("+QQ表情#%d" % _fid) if _fid else ""))
+                                              ("＋表情%s" % "、".join(_faces)) if _faces else ""))
         except Exception as e:
             self._log("agent：发送失败 %r" % (e,))
 
