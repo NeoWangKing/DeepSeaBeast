@@ -557,6 +557,7 @@ class QqPeakGate(Star):
                     disk = json.load(f) or {}
             except Exception:
                 disk = {}
+            _before = set(disk.keys())
             for k, v in (self.cfg or {}).items():
                 if isinstance(v, dict) and isinstance(disk.get(k), dict):
                     merged = dict(disk[k])
@@ -564,6 +565,24 @@ class QqPeakGate(Star):
                     disk[k] = merged
                 else:
                     disk[k] = v
+            _lost = _before - set(disk.keys())
+            if _lost:
+                self._log("⚠️ 写配置会丢键 %s → 已放弃这次写入（保护配置）" % sorted(_lost))
+                return
+            try:                                   # 写前留个时间戳备份，方便回溯
+                if os.path.isfile(CONFIG_PATH):
+                    import shutil
+                    import time as _t
+                    shutil.copy2(CONFIG_PATH, "%s.bak-%d" % (CONFIG_PATH, int(_t.time())))
+                    import glob
+                    _baks = sorted(glob.glob(CONFIG_PATH + ".bak-*"))
+                    for _b in _baks[:-5]:
+                        try:
+                            os.remove(_b)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             tmp = CONFIG_PATH + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(disk, f, ensure_ascii=False, indent=1)
@@ -1626,6 +1645,7 @@ class QqPeakGate(Star):
                             except Exception as e:
                                 last = e
                 self._log("agent：拍失败 %r" % (last,))
+                self._fault("poke_fail", repr(last))
                 return False
             try:
                 if _loop is not None and _loop.is_running():
@@ -1735,6 +1755,24 @@ class QqPeakGate(Star):
             return event.get_extra(key, default)
         except Exception:
             return default
+
+    def _fault(self, name: str, detail: str = "") -> None:
+        """故障计数：内存 + 落盘 data/agent_faults.json（20 秒最多写一次）。"""
+        try:
+            if not hasattr(self, "_faults"):
+                self._faults = {}
+                self._faults_ts = 0.0
+            self._faults[name] = int(self._faults.get(name, 0)) + 1
+            self._log("⚠️ 故障 %s=%d %s" % (name, self._faults[name], detail[:80]))
+            now = time.time()
+            if now - getattr(self, "_faults_ts", 0) > 20:
+                self._faults_ts = now
+                _d = os.path.join(PLUGIN_DIR, "data")
+                os.makedirs(_d, exist_ok=True)
+                with open(os.path.join(_d, "agent_faults.json"), "w", encoding="utf-8") as f:
+                    json.dump({"updated": int(now), "counts": self._faults}, f, ensure_ascii=False, indent=1)
+        except Exception:
+            pass
 
     def _agent_target(self, event=None, target=None, **kw) -> dict:
         t = dict(target or {})
@@ -1850,6 +1888,7 @@ class QqPeakGate(Star):
                     pass
             if not comps:
                 self._log("发送口兜底：内容全是内部标记，这条不发")
+                self._fault("marker_only_text")
                 return
             await self._transport_send(target, MessageChain(comps))
             self._log("agent：发出「%s」%s" % (str(text)[:40],
@@ -1878,10 +1917,10 @@ class QqPeakGate(Star):
         except Exception as e:
             self._log("agent：发表情失败 %r" % (e,))
 
-    def _agent_tools_text(self) -> str:
-        """给提示词用的工具清单（只在 agent 打开时给）。"""
+    def _agent_tools_text(self, key: str = "") -> str:
+        """给提示词用的工具清单（只在 agent 打开时给；给了 key 就按会话裁剪）。"""
         try:
-            specs = self._agent_tool_specs()
+            specs = self._agent_specs_for(key) if key else self._agent_tool_specs()
             if not specs:
                 return ""
             return "\n".join("- %s：%s" % (n, d) for n, _a, d, _m in specs)
@@ -2020,7 +2059,7 @@ class QqPeakGate(Star):
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else gid, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                  "tools_text": self._agent_tools_text(), "tools_send": True})
+                  "tools_text": self._agent_tools_text(gid), "tools_send": True})
         _menu = self._sticker_menu_text("private" if private else gid)
         if _menu:
             _txt += "\n\n" + _menu
@@ -2079,6 +2118,7 @@ class QqPeakGate(Star):
                     await self._agent_proactive(it, _reason or raw)
                 except Exception as _e5:
                     self._log("定时唤醒：主动轮失败 %r" % (_e5,))
+                    self._fault("proactive_fail", repr(_e5))
                 return
             if not raw:
                 self._log("定时唤醒：没有内容，跳过")
@@ -2182,6 +2222,18 @@ class QqPeakGate(Star):
     def _agent_specs_for(self, key: str) -> list:
         """按会话过滤工具清单：不发表情图的群（send/collect_exclude_groups）滤掉表情图工具。"""
         specs = self._agent_tool_specs()
+        # 按会话裁剪工具（省前缀 token）：tool_profile_by_group 指到哪个档，就只留那一档的工具
+        try:
+            _acfg = self._agent_cfg()
+            _prof = (_acfg.get("tool_profile_by_group") or {}).get(str(key))
+            if _prof:
+                _allow = (_acfg.get("tool_profiles") or {}).get(str(_prof))
+                if _allow:
+                    _keep = {str(x) for x in _allow}
+                    specs = [x for x in specs if x[0] in _keep]
+                    self._log_debug("agent：%s 用工具档 %s（%d 个）" % (key, _prof, len(specs)))
+        except Exception:
+            pass
         try:
             _scfg = self.cfg.get("stickers") or {}
             _no_stk = (key in [str(x) for x in (_scfg.get("send_exclude_groups") or [])]
@@ -2394,6 +2446,7 @@ class QqPeakGate(Star):
                          {"role": "user", "content": _parts}], _vmodel, self.cfg, 500)
                 except Exception as _e:
                     self._log("agent loop：看图轮失败 %r" % (_e,))
+                    self._fault("vision_fail", repr(_e))
                 _vtxt = str(_vtxt or "").strip()
 
                 def _after(_line):
@@ -2745,6 +2798,7 @@ class QqPeakGate(Star):
                     if _wrote.strip():
                         self._log("agent：漏发！写了正文但没调 send_message（%d 字，正文不发）：%s"
                                   % (len(_wrote), _wrote[:40]))
+                        self._fault("dropped_text", _wrote[:40])
                     else:
                         self._log("agent：本轮没发言也没调 finish → 视为沉默")
                     return
@@ -3460,6 +3514,7 @@ class QqPeakGate(Star):
                     event.stop_event()
             except Exception as e:
                 self._log("agent loop 出错，回退原流程: %r" % (e,))
+                self._fault("loop_fallback", repr(e))
 
     def _at_me(self, event: AstrMessageEvent) -> bool:
         me = str(event.get_self_id())
