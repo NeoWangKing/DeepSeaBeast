@@ -132,7 +132,8 @@ def split_faces(text) -> list:
 _PROTO_LINE = re.compile(r"^\s*(图|回|回复|答|收)\s*[:：]\s*")
 
 
-def sanitize(text, strip_bar: bool = True, strip_faces: bool = False) -> str:
+def sanitize(text, strip_bar: bool = True, strip_faces: bool = False,
+             strip_stickers: bool = True) -> str:
     """发送前的统一兜底：清掉内部协议标记，**默认保留 [QQ表情:…]**（那是要变成真表情的）。
 
     - 清：沉默标记、[表情:id]（图片表情标记）、以 图/回/收 开头的那几行、多余的 |||
@@ -141,7 +142,8 @@ def sanitize(text, strip_bar: bool = True, strip_faces: bool = False) -> str:
     t = str(text or "")
     for _m in SILENT_MARKERS:
         t = re.sub(re.escape(_m), "", t, flags=re.I)
-    t = STICKER_RE.sub("", t)
+    if strip_stickers:
+        t = STICKER_RE.sub("", t)
     if strip_faces:
         t = FACE_RE.sub("", t)
     if strip_bar:

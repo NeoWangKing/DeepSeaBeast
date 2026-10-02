@@ -1704,14 +1704,6 @@ class QqPeakGate(Star):
                 comps.append(Reply(id=str(reply_to_id)))
             if at_user_id:
                 comps.append(At(qq=str(at_user_id)))
-            # ① 统一兜底：清掉内部标记（**保留 [QQ表情:…]**，那是要变成真表情的）
-            try:
-                _clean = replyproto.sanitize(text, strip_bar=True)
-                if _clean != str(text or ""):
-                    self._log_debug("发送口兜底：清洗 %r → %r" % (str(text or "")[:40], _clean[:40]))
-                text = _clean
-            except Exception:
-                pass
             # 文字里如果夹着 [表情:id]（图片表情），抽出来单独发一条，别当文字发出去
             _imgs = []
             try:
@@ -1721,6 +1713,14 @@ class QqPeakGate(Star):
                 text = _re2.sub(r"\[表情(?::[^\]\n]{1,24})?\]", "", str(text or "")).strip()
             except Exception:
                 _imgs = []
+            # 抽完图片表情再统一清洗（[QQ表情:…] 保留，那是要变成真表情的）
+            try:
+                _clean = replyproto.sanitize(text, strip_bar=True)
+                if _clean != str(text or ""):
+                    self._log_debug("发送口兜底：清洗 %r → %r" % (str(text or "")[:40], _clean[:40]))
+                text = _clean
+            except Exception:
+                pass
             _faces = []
             try:
                 for _kind, _val in replyproto.split_faces(text):
@@ -2449,7 +2449,7 @@ class QqPeakGate(Star):
             try:
                 for _c in (getattr(event.get_result(), "chain", None) or []):
                     if isinstance(_c, Plain) and str(_c.text or "").strip():
-                        _c.text = replyproto.sanitize(_c.text, strip_bar=False)
+                        _c.text = replyproto.sanitize(_c.text, strip_bar=False, strip_stickers=False)
             except Exception:
                 pass
             self._remember_reply(event)
