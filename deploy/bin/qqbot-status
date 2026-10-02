@@ -25,6 +25,46 @@ try:
 except Exception as e:
     print("  人格读取失败:", e)
 PY
+echo "=== 机器人故障计数（agent）==="
+python3 - <<PY
+import json, time
+p = "/opt/astrbot/data/plugins/qq_peak_gate/data/agent_faults.json"
+try:
+    d = json.load(open(p, encoding="utf-8"))
+except Exception:
+    d = {}
+c = (d.get("counts") or {})
+if not c:
+    print("  暂无故障 ✅")
+else:
+    order = ["dropped_text", "loop_fallback", "marker_only_text", "poke_fail", "vision_fail", "proactive_fail"]
+    for k in sorted(c, key=lambda x: (order.index(x) if x in order else 99, -int(c[x]))):
+        print("  %-18s %d" % (k, c[k]))
+    up = d.get("updated") or 0
+    print("  更新时间:", time.strftime("%m-%d %H:%M", time.localtime(up)) if up else "-")
+    warn = [k for k in ("dropped_text", "loop_fallback") if int(c.get(k, 0)) >= 5]
+    if warn:
+        print("  ⚠️ 需要关注:", "、".join(warn))
+PY
+echo "=== 定时 / 表情库 ==="
+python3 - <<PY
+import json, time
+base = "/opt/astrbot/data/plugins/qq_peak_gate/data/"
+try:
+    items = json.load(open(base + "agent_wake.json", encoding="utf-8")) or []
+except Exception:
+    items = []
+print("  待办定时:", len(items), end="")
+dues = [float(x.get("due") or 0) for x in items]
+if dues:
+    print("  最近一条:", time.strftime("%H:%M:%S", time.localtime(min(dues))), end="")
+print()
+try:
+    idx = json.load(open(base + "stickers/index.json", encoding="utf-8"))
+    print("  表情库:", len(idx.get("items") or []), "张")
+except Exception:
+    print("  表情库: 读不到")
+PY
 echo "=== 最近 30 分钟错误 ==="
 out=$(journalctl -u astrbot --since "-30min" --no-pager 2>/dev/null | grep -icE "error|critical|traceback")
 if [ "$out" = "0" ]; then echo "  无"; else journalctl -u astrbot --since "-30min" --no-pager | grep -iE "error|critical|traceback" | tail -5; fi
