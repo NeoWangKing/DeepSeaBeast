@@ -1366,8 +1366,16 @@ class QqPeakGate(Star):
                 fn = getattr(t, mname)
                 kw = {k: v for k, v in (kwargs or {}).items() if v is not None}
                 out = fn(**kw)
-                self._log("agent工具 %s(%s) → %s" % (mname, str(kwargs)[:100], str(out)[:70]))
-                return str(out)
+                _o = str(out)
+                if _o.startswith(("没发：", "调用失败")) and not kw:
+                    # 参数没传全 → 这次不算数，让她重试（否则次数一用完就哑了）
+                    try:
+                        t.calls = max(0, int(getattr(t, "calls", 0) or 0) - 1)
+                    except Exception:
+                        pass
+                    _o += "（请带上参数重新调用一次：把内容放进对应参数里）"
+                self._log("agent工具 %s(%s) → %s" % (mname, str(kwargs)[:100], _o[:70]))
+                return _o
             except Exception as e:
                 self._log("agent工具 %s 出错: %r" % (mname, e))
                 return "调用失败：%r" % (e,)

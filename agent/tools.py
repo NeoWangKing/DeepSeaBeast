@@ -167,13 +167,13 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("send") and send_tools:
         specs.append(("send_message",
                       [{"type": "string", "name": "text",
-                        "description": "要说的话（**这是唯一的发言方式**，写在正文里的话不会发出去）；"
+                        "description": "【必填】要说的话（**这是唯一的发言方式**，写在正文里的话不会发出去）；"
                                        "想分成多条就用 ||| 分隔（最多 4 条、总共 400 字内）"},
                        {"type": "string", "name": "reply_to_id", "description": "可选：要引用哪条消息的 id"}],
                       "发言：你写的正文永远不会发出去，说话只能调这个工具", "send_message"))
     if on("sticker") and send_tools:
         specs.append(("send_sticker",
-                      [{"type": "string", "name": "sticker_id", "description": "表情 id（用 list_stickers 查）"}],
+                      [{"type": "string", "name": "sticker_id", "description": "【必填】表情 id（用 list_stickers 查）"}],
                       "发一张指定 id 的收藏表情（一条消息只能一张）", "send_sticker"))
     if on("recent"):
         specs.append(("get_recent_messages",
@@ -193,7 +193,7 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                       "搜你的收藏表情（返回 id、备注、标签）", "list_stickers"))
     if on("collect") and send_tools:
         specs.append(("collect_sticker",
-                      [{"type": "string", "name": "message_id", "description": "那条消息的 id"},
+                      [{"type": "string", "name": "message_id", "description": "【必填】那条消息的 id"},
                        {"type": "string", "name": "note", "description": "一句简短备注（以后靠它认图）"}],
                       "把群友刚发的有意思的图收藏进你的表情库（要写备注，别频繁收）", "collect_sticker"))
     if on("finish"):

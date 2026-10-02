@@ -226,7 +226,7 @@
   },
   "agent": {
     "enabled": true,
-    "send_tools": true,
+    "send_tools": false,
     "session_ttl": 300,
     "tools": {
       "recent": true,
