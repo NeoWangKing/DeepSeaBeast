@@ -545,11 +545,28 @@ class QqPeakGate(Star):
             self._log("补发任务创建失败: %r" % (e,))
 
     def _save_cfg(self) -> None:
-        """把当前 cfg 原子写回 config.json（自动建档时用）。"""
+        """写回 config.json：**先读盘再合并**，只覆盖内存里已知的键。
+
+        历史教训：整份 self.cfg 直接写盘会把外部新增的配置块（kb/poke_reply/表情库参数）
+        全部抹掉 —— 这里改成读-改-写，磁盘上多出来的键一律保留。
+        """
         try:
+            disk = {}
+            try:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    disk = json.load(f) or {}
+            except Exception:
+                disk = {}
+            for k, v in (self.cfg or {}).items():
+                if isinstance(v, dict) and isinstance(disk.get(k), dict):
+                    merged = dict(disk[k])
+                    merged.update(v)
+                    disk[k] = merged
+                else:
+                    disk[k] = v
             tmp = CONFIG_PATH + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.cfg, f, ensure_ascii=False, indent=1)
+                json.dump(disk, f, ensure_ascii=False, indent=1)
             os.replace(tmp, CONFIG_PATH)
         except Exception as e:
             self._log("写配置失败: %r" % (e,))
@@ -1867,6 +1884,20 @@ class QqPeakGate(Star):
         finally:
             lk.release()
 
+    def _agent_specs_for(self, key: str) -> list:
+        """按会话过滤工具清单：不发表情图的群（send/collect_exclude_groups）滤掉表情图工具。"""
+        specs = self._agent_tool_specs()
+        try:
+            _scfg = self.cfg.get("stickers") or {}
+            _no_stk = (key in [str(x) for x in (_scfg.get("send_exclude_groups") or [])]
+                       or key in [str(x) for x in (_scfg.get("collect_exclude_groups") or [])])
+            if _no_stk:
+                specs = [x for x in specs if x[0] not in ("send_sticker", "collect_sticker")]
+                self._log_debug("agent loop：%s 不发表情图 → 滤掉 send_sticker/collect_sticker" % key)
+        except Exception:
+            pass
+        return specs
+
     async def _agent_loop_body(self, event) -> bool:
         """自己驱动这一轮：tool_choice=required 强制她调工具说话。
 
@@ -1895,17 +1926,7 @@ class QqPeakGate(Star):
             self._agent_sessions[_akey] = t
         except Exception:
             pass
-        _specs = self._agent_tool_specs()
-        try:
-            _scfg = self.cfg.get("stickers") or {}
-            _no_stk = key in [str(x) for x in (_scfg.get("send_exclude_groups") or [])] \
-                or key in [str(x) for x in (_scfg.get("collect_exclude_groups") or [])]
-            if _no_stk:
-                _specs = [x for x in _specs if x[0] not in ("send_sticker", "collect_sticker")]
-                self._log("agent loop：%s 不发表情图 → 工具清单滤掉 send_sticker/collect_sticker" % key)
-        except Exception:
-            pass
-        schema = agent.loop.spec_to_openai(_specs)
+        schema = agent.loop.spec_to_openai(self._agent_specs_for(key))
         if not schema:
             self._log("agent loop：没有可用工具，交回原流程")
             return False
