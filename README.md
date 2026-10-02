@@ -22,8 +22,8 @@ DeepSeaBeast/
 ├── scoring.py  kb.py  stickers.py 回复打分器 / 本地资料库 / 表情包收藏
 ├── config.json  requirements.txt  metadata.yaml
 │
-├── prompts/                       人格提示词
-│   └── personas/                  群人格卡（内容不入库）
+├── prompts/                       人格提示词（system_prompt*.txt：默认 / 朋友版 / 克制版 / 私聊 / 毒舌备用）
+│   └── personas/                  群人格卡（<群号>.txt，本群专属人格，内容不入库）
 ├── games/                         玩法插件目录（一个玩法一个包）
 │   └── turtle_soup/               海龟汤
 ├── memory/                        长期记忆（群印象 / 人物档案）
