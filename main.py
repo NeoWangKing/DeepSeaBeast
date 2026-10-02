@@ -1704,6 +1704,14 @@ class QqPeakGate(Star):
                 comps.append(Reply(id=str(reply_to_id)))
             if at_user_id:
                 comps.append(At(qq=str(at_user_id)))
+            # ① 统一兜底：清掉内部标记（**保留 [QQ表情:…]**，那是要变成真表情的）
+            try:
+                _clean = replyproto.sanitize(text, strip_bar=True)
+                if _clean != str(text or ""):
+                    self._log_debug("发送口兜底：清洗 %r → %r" % (str(text or "")[:40], _clean[:40]))
+                text = _clean
+            except Exception:
+                pass
             # 文字里如果夹着 [表情:id]（图片表情），抽出来单独发一条，别当文字发出去
             _imgs = []
             try:
@@ -1728,8 +1736,6 @@ class QqPeakGate(Star):
                             _faces.append("?" + _val)
             except Exception:
                 comps.append(Plain(str(text)))
-            if not comps:
-                comps.append(Plain(str(text)))
             for _sid in _imgs[:2]:
                 try:
                     _it = None
@@ -1751,6 +1757,9 @@ class QqPeakGate(Star):
                     _faces.append(face)
                 except Exception:
                     pass
+            if not comps:
+                self._log("发送口兜底：内容全是内部标记，这条不发")
+                return
             await event.send(MessageChain(comps))
             self._log("agent：发出「%s」%s" % (str(text)[:40],
                                               ("＋表情%s" % "、".join(_faces)) if _faces else ""))
@@ -2436,6 +2445,13 @@ class QqPeakGate(Star):
                     pass
                 self._log("协议：[不说话] → 这条不发（%s）" % self._chat_key(event))
                 return
+            # 兜底路径同样过滤内部协议行（||| 保留给分条用）
+            try:
+                for _c in (getattr(event.get_result(), "chain", None) or []):
+                    if isinstance(_c, Plain) and str(_c.text or "").strip():
+                        _c.text = replyproto.sanitize(_c.text, strip_bar=False)
+            except Exception:
+                pass
             self._remember_reply(event)
             await self._maybe_sticker(event)
             self._maybe_followup(event, multi=pr.multi)   # 已经自己分了多条就不再补话
