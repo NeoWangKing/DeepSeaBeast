@@ -22,6 +22,7 @@ class Tools:
         self.finished = False
         self.finish_reason = ""
         self.started = time.time()
+        self.calls = 0             # 本轮工具调用次数（main.py 用来限流）
         self.errors = []
 
     # ---------- 发送类 ----------
@@ -135,6 +136,7 @@ class Tools:
 
     # ---------- 收尾类 ----------
     def finish(self, reason="") -> str:
+        """标记"这轮不发言"。注意：它**不会**抑制正文——只有真的调了 send_* 才抑制。"""
         self.finished = True
         self.finish_reason = str(reason or "")[:80]
         return "本轮结束（没有要发出的内容）"
@@ -145,7 +147,8 @@ class Tools:
         return bool(self.sent)
 
     def state(self) -> dict:
-        return {"chat_key": self.chat_key, "sent": list(self.sent), "finished": self.finished,
+        return {"chat_key": self.chat_key, "sent": list(self.sent), "calls": self.calls,
+                "finished": self.finished,
                 "reason": self.finish_reason, "errors": list(self.errors),
                 "elapsed": round(time.time() - self.started, 2)}
 
@@ -196,5 +199,5 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
         specs.append(("finish",
                       [{"type": "string", "name": "reason",
                         "description": "可选：为什么这轮不发言（只写给自己看）"}],
-                      "结束本轮：想潜水、或者没什么要说的，就调用它", "finish"))
+                      "结束本轮：只在你决定这条不发言时才调；正常聊天不要调它", "finish"))
     return specs

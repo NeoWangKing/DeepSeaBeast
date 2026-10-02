@@ -213,6 +213,7 @@
       "send": true,
       "sticker": true,
       "collect": true
-    }
+    },
+    "max_calls": 2
   }
 }

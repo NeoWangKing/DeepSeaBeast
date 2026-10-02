@@ -192,14 +192,16 @@ def _agent_tools(ctx):
     txt = caps.get("tools_text")
     if not txt:
         return ""
-    lines = ["【工具：你可以动手，不只是说话】",
-             "你的正文只是思考，不一定会被发出去；下面这些动作靠调用工具完成：", txt]
+    lines = ["【工具：按需用，不是每轮都查】",
+             "下面这些动作可以调用工具完成，**只在真的需要时调**：", txt,
+             "- 不需要就一条都别调：能接着聊就直接聊，别把工具当成每轮必走的流程。",
+             "- 一轮最多调 1~2 个；想不起大家在聊什么、或要先确认一下，才用 get_recent_messages / lookup_memory。",
+             "- finish 只在你决定这轮**不发言**时才用；正常要说话时不要调它。"]
     if caps.get("tools_send"):
-        lines.append("- 【最重要】想说话必须调 send_message（多条用 ||| 分隔）；不想说话就调 finish，或者干脆什么都不做。")
-        lines.append("- 调用工具后不要再在正文里复述“我发了什么”，群里只看到工具发出去的内容。")
+        lines.append("- 【最重要】想说话必须调 send_message（多条用 ||| 分隔）；不发言就什么都不调或者调 finish。")
+        lines.append("- 调用工具后不要再在正文里复述“我发了什么”，群里只会看到工具发出去的内容。")
     else:
-        lines.append("- 发言仍然照常写在正文里（用 ||| 分条）；这些工具用来“看”和“结束”，不用来“说”。")
-        lines.append("- 不确定大家在聊什么、或想确认某人的情况时，可以先用 get_recent_messages / lookup_memory 看一眼再决定说什么。")
+        lines.append("- 发言仍然照常写在正文里（用 ||| 分条）；这些工具只用来“看”，不用来“说”。")
     return "\n".join(lines)
 
 

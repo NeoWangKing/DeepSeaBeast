@@ -1344,6 +1344,15 @@ class QqPeakGate(Star):
         async def _handler(event=None, context=None, **kwargs):
             try:
                 t = self._agent_tools(event)
+                _cap = int(self._agent_cfg().get("max_calls", 2) or 0)
+                if _cap and int(getattr(t, "calls", 0) or 0) >= _cap:
+                    self._log("agent工具 %s：本轮次数已用完（上限 %d）" % (mname, _cap))
+                    return ("本轮工具次数用完了（最多 %d 次）：别再调工具了，"
+                            "直接照你自己的想法说话（发言用正文 / send_message）或者安静结束。" % _cap)
+                try:
+                    t.calls = int(getattr(t, "calls", 0) or 0) + 1
+                except Exception:
+                    pass
                 fn = getattr(t, mname)
                 kw = {k: v for k, v in (kwargs or {}).items() if v is not None}
                 out = fn(**kw)
@@ -1654,13 +1663,12 @@ class QqPeakGate(Star):
             if self._agent_cfg().get("send_tools"):
                 _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
                 _at = self._agent_sessions.pop(_akey, None)
-                if _at is not None and (_at.spoke or _at.finished):
+                if _at is not None and _at.spoke:
                     try:
                         event.get_result().chain = []
                     except Exception:
                         pass
-                    self._log("agent：本轮%s，正文不发（%s）"
-                              % ("已用工具发言" if _at.spoke else "已结束", _at.state()))
+                    self._log("agent：本轮已用工具发言，正文不发（%s）" % (_at.state(),))
                     return
             # 输出协议：整条只输出 [不说话] → 这条不发（也不记入"我说过的话"）
             pr = self._protocol_parse(event)
