@@ -112,3 +112,19 @@ def chat_tools(messages, tools, tool_choice="required", cfg=None, max_tokens=Non
                       "raw": tc})
     return {"content": msg.get("content") or "", "tool_calls": calls,
             "usage": d.get("usage") or {}, "finish_reason": ch.get("finish_reason")}
+
+
+def chat_text(messages, cfg=None, max_tokens=200, model=None) -> str:
+    """普通文本一问一答（不带工具/图片）。"""
+    p = provider_cfg(cfg)
+    if not p.get("api_key"):
+        raise RuntimeError("拿不到模型 key")
+    body = {"model": model or p["model"], "messages": messages,
+            "temperature": 0.9, "max_tokens": int(max_tokens or 200)}
+    req = urllib.request.Request(
+        str(p["base_url"]).rstrip("/") + "/chat/completions",
+        data=json.dumps(body, ensure_ascii=False).encode(), method="POST",
+        headers={"Authorization": "Bearer " + str(p["api_key"]),
+                 "Content-Type": "application/json"})
+    d = json.load(urllib.request.urlopen(req, timeout=float(p.get("timeout") or 60)))
+    return str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()

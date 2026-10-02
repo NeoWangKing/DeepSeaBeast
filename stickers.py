@@ -429,6 +429,23 @@ def find(sid: str):
     return None
 
 
+def set_note(sid: str, note: str, tags=None) -> bool:
+    """改一张表情的备注/标签（她自己给表情写备注用）。"""
+    items = load()
+    hit = False
+    for it in items:
+        if str(it.get("id")) == str(sid):
+            if str(note or "").strip():
+                it["desc"] = str(note).strip()[:40]
+            if tags:
+                it["tags"] = [str(t)[:8] for t in list(tags)[:6]]
+            hit = True
+            break
+    if hit:
+        save(items)
+    return hit
+
+
 def mark_used(sid: str) -> None:
     items = load()
     for it in items:

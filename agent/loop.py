@@ -12,7 +12,8 @@ MAX_ROUNDS = 2
 
 REQUIRED = {"send_message": ["text"], "send_sticker": ["sticker_id"],
             "collect_sticker": ["message_id"], "memory_append": ["text"],
-            "send_face": ["name"]}
+            "send_face": ["name"], "view_sticker": ["sticker_id"],
+            "sticker_note": ["sticker_id", "note"], "schedule_wake": ["after_sec", "say"]}
 
 
 def spec_to_openai(specs: list) -> list:

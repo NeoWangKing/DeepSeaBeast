@@ -172,6 +172,55 @@ class Tools:
             return "发不了：%r" % (e,)
         return ("发了个 %s" % nm) if ok else ("没找到这个表情：%s（用清单里的名字）" % nm)
 
+    def view_sticker(self, sticker_id="") -> str:
+        """看一张收藏表情的图（交给 DeepSeek 多模态描述）。"""
+        fn = self.cb.get("view_sticker")
+        if not fn:
+            return "看不了：这个会话没开看图"
+        sid = str(sticker_id or "").strip()
+        if not sid:
+            return "看不了：要先给 sticker_id（用 list_stickers 查）"
+        try:
+            txt = fn(sid)
+        except Exception as e:
+            return "看不了：%r" % (e,)
+        return str(txt) if txt else "这张图我没看出是什么"
+
+    def sticker_note(self, sticker_id="", note="") -> str:
+        """给收藏表情写备注（以后你自己/她挑图时靠它认）。"""
+        fn = self.cb.get("sticker_note")
+        if not fn:
+            return "写不了：这个会话没开表情备注"
+        sid, nt = str(sticker_id or "").strip(), str(note or "").strip()
+        if not sid or not nt:
+            return "没写：sticker_id 和 note 都要给"
+        try:
+            ok = fn(sid, nt)
+        except Exception as e:
+            return "写不了：%r" % (e,)
+        return "备注写好了：%s → %s" % (sid, nt) if ok else "没找到这张表情：%s" % sid
+
+    def schedule_wake(self, after_sec="", say="", reason="") -> str:
+        """定时叫醒自己：过一会儿把 say 这句话发出来。"""
+        fn = self.cb.get("schedule_wake")
+        if not fn:
+            return "定不了：这个会话没开定时唤醒"
+        try:
+            sec = int(float(str(after_sec or "0")))
+        except Exception:
+            sec = 0
+        if sec < 20:
+            return "定不了：after_sec 至少要 20 秒（写秒数，比如 300 = 5 分钟后）"
+        if sec > 7200:
+            sec = 7200
+        txt = str(say or "").strip()
+        if not txt:
+            return "定不了：say 要写清到时想说的话"
+        try:
+            return str(fn(sec, txt[:200], str(reason or "")[:60]) or "定好了")
+        except Exception as e:
+            return "定不了：%r" % (e,)
+
     def memory_append(self, text="", kind="impression") -> str:
         """自己往记忆里写一条：印象 / 没聊完的话题 / 想说没说的话。"""
         t = str(text or "").strip()
@@ -253,6 +302,23 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("vision") and send_tools:
         specs.append(("view_image", [],
                       "看当前消息里的图片（她真的能看到图再说话）；消息里带 [图片] 时优先用它", "view_image"))
+    if on("sticker_view") and send_tools:
+        specs.append(("view_sticker",
+                      [{"type": "string", "name": "sticker_id", "description": "【必填】表情 id（list_stickers 查）"}],
+                      "看一张收藏表情的图（不确定某张是什么内容时用，别瞎发）", "view_sticker"))
+    if on("sticker_note") and send_tools:
+        specs.append(("sticker_note",
+                      [{"type": "string", "name": "sticker_id", "description": "【必填】表情 id"},
+                       {"type": "string", "name": "note", "description": "【必填】一句备注（≤40字，帮以后认图）"}],
+                      "给收藏表情写/改备注（看过图之后写，或群友告诉你这张是什么）", "sticker_note"))
+    if on("wake") and send_tools:
+        specs.append(("schedule_wake",
+                      [{"type": "string", "name": "after_sec",
+                        "description": "【必填】多少秒后（20~7200，300=5分钟）"},
+                       {"type": "string", "name": "say", "description": "【必填】到时想说的那句话"},
+                       {"type": "string", "name": "reason", "description": "可选：为什么定这个（只给自己看）"}],
+                      "定时叫醒自己：过一会儿把 say 发出来（比如“等他说完我再接一句”“过会儿再冒泡”）",
+                      "schedule_wake"))
     if on("face") and send_tools:
         specs.append(("send_face",
                       [{"type": "string", "name": "name",

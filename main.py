@@ -1651,6 +1651,34 @@ class QqPeakGate(Star):
                 self._log("agent：发 QQ 表情异常 %r" % (e,))
                 return False
 
+        def _view_sticker(sid):
+            it = stickers.find(str(sid))
+            if not it:
+                return ""
+            pth = stickers.ensure_local(it)
+            if not pth or not os.path.isfile(pth):
+                return ""
+            return agent.vision.describe([pth], self.cfg, "这张表情图画的是什么？一句话说清（≤30字）。", 160)
+
+        def _sticker_note(sid, note):
+            return stickers.set_note(str(sid), str(note))
+
+        def _schedule_wake(sec, say, reason):
+            try:
+                item = {"umo": str(getattr(event, "unified_msg_origin", "") or ""),
+                        "due": time.time() + int(sec), "say": str(say)[:200],
+                        "reason": str(reason or "")[:60], "gid": self._chat_key(event)}
+                items = self._wake_load()
+                if len(items) >= 50:
+                    items = items[-40:]
+                items.append(item)
+                self._wake_save(items)
+                self._ensure_wake_timer()
+                self._log("定时唤醒：%d 秒后发「%s」（%s）" % (int(sec), str(say)[:30], reason))
+                return "定好了：%d 秒后我会发「%s」" % (int(sec), str(say)[:30])
+            except Exception as e:
+                return "定不了：%r" % (e,)
+
         def _memory_append(kind, text):
             try:
                 d = os.path.join(PLUGIN_DIR, "data", "agent_memory")
@@ -1667,6 +1695,8 @@ class QqPeakGate(Star):
                "memory_lookup": _memory, "list_stickers": _list_stickers,
                "view_image": _view_image, "send_poke": _send_poke,
                "send_face": _send_face,
+               "view_sticker": _view_sticker, "sticker_note": _sticker_note,
+               "schedule_wake": _schedule_wake,
                "memory_append": _memory_append}
         if self._agent_send_allowed(event):
             # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
@@ -1862,6 +1892,82 @@ class QqPeakGate(Star):
         except Exception:
             return ""
 
+    def _wake_path(self) -> str:
+        return os.path.join(PLUGIN_DIR, "data", "agent_wake.json")
+
+    def _wake_load(self) -> list:
+        try:
+            with open(self._wake_path(), encoding="utf-8") as f:
+                return list(json.load(f) or [])
+        except Exception:
+            return []
+
+    def _wake_save(self, items: list) -> None:
+        try:
+            os.makedirs(os.path.dirname(self._wake_path()), exist_ok=True)
+            tmp = self._wake_path() + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(items[-100:], f, ensure_ascii=False, indent=1)
+            os.replace(tmp, self._wake_path())
+        except Exception as e:
+            self._log("定时唤醒：写盘失败 %r" % (e,))
+
+    def _ensure_wake_timer(self) -> None:
+        """起一个后台任务，到点把话说出来（用 context.send_message 主动发）。"""
+        try:
+            if getattr(self, "_wake_task", None) is not None and not self._wake_task.done():
+                return
+            self._wake_task = asyncio.get_event_loop().create_task(self._wake_loop())
+            self._log("定时唤醒：后台计时任务已启动")
+        except Exception as e:
+            self._log_debug("定时唤醒：计时任务启动失败 %r" % (e,))
+
+    async def _wake_loop(self) -> None:
+        while True:
+            try:
+                await asyncio.sleep(20)
+                now = time.time()
+                items = self._wake_load()
+                due = [x for x in items if float(x.get("due") or 0) <= now]
+                keep = [x for x in items if float(x.get("due") or 0) > now
+                        and now - float(x.get("due") or 0) < 86400]
+                if due:
+                    self._wake_save(keep)
+                for it in due[:5]:
+                    await self._wake_fire(it)
+                if keep:
+                    self._ensure_wake_timer()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self._log("定时唤醒循环出错(忽略): %r" % (e,))
+
+    async def _wake_fire(self, it: dict) -> None:
+        try:
+            umo = str(it.get("umo") or "")
+            txt = replyproto.sanitize(str(it.get("say") or ""), strip_bar=True)
+            if not umo or not txt:
+                self._log("定时唤醒：没有内容或会话，跳过")
+                return
+            comps = []
+            for _kind, _val in replyproto.split_faces(txt):
+                if _kind == "text":
+                    if _val.strip():
+                        comps.append(Plain(_val))
+                else:
+                    _fid = self._face_id_by_name(_val)
+                    if _fid and Face is not None:
+                        comps.append(Face(id=_fid))
+            if not comps:
+                return
+            ctx = getattr(self, "context", None)
+            ok = False
+            if ctx is not None and hasattr(ctx, "send_message"):
+                ok = bool(await ctx.send_message(umo, MessageChain(comps)))
+            self._log("定时唤醒：发出「%s」→ %s" % (txt[:30], ok))
+        except Exception as e:
+            self._log("定时唤醒：发送失败 %r" % (e,))
+
     def _agent_lock(self, key: str):
         if not hasattr(self, "_agent_locks"):
             self._agent_locks = {}
@@ -1935,6 +2041,7 @@ class QqPeakGate(Star):
             self._agent_sessions[_akey] = t
         except Exception:
             pass
+        self._ensure_wake_timer()          # 定时唤醒的计时任务（懒启动）
         schema = agent.loop.spec_to_openai(self._agent_specs_for(key))
         if not schema:
             self._log("agent loop：没有可用工具，交回原流程")
