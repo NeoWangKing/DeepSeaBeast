@@ -44,6 +44,24 @@ def _resolve_key(src: str) -> str:
     return ""
 
 
+
+def chat_vision(messages, model=None, cfg=None, max_tokens=260, timeout=None) -> str:
+    """把带图片的消息交给多模态模型，返回文字（默认 deepseek-flash，不用 GLM）。"""
+    p = provider_cfg(cfg)
+    if not p.get("api_key"):
+        raise RuntimeError("拿不到模型 key")
+    body = {"model": model or "deepseek-flash", "messages": messages,
+            "max_tokens": int(max_tokens or 260)}
+    req = urllib.request.Request(
+        str(p["base_url"]).rstrip("/") + "/chat/completions",
+        data=json.dumps(body, ensure_ascii=False).encode(), method="POST",
+        headers={"Authorization": "Bearer " + str(p["api_key"]),
+                 "Content-Type": "application/json"})
+    d = json.load(urllib.request.urlopen(req, timeout=float(timeout or p.get("timeout") or 60)))
+    msg = ((d.get("choices") or [{}])[0].get("message") or {})
+    return str(msg.get("content") or "").strip()
+
+
 def provider_cfg(cfg: dict = None) -> dict:
     """从插件 config.json 的 agent.llm 取配置，缺的用默认值补。"""
     c = dict((cfg or {}).get("agent", {}).get("llm") or {})
@@ -58,13 +76,13 @@ def provider_cfg(cfg: dict = None) -> dict:
 
 
 def chat_tools(messages, tools, tool_choice="required", cfg=None, max_tokens=None,
-               timeout=None) -> dict:
+               timeout=None, model=None) -> dict:
     """发一次带工具的请求。返回 {content, tool_calls:[{id,name,arguments(dict)}], usage, raw}。"""
     p = provider_cfg(cfg)
     if not p.get("api_key"):
         raise RuntimeError("拿不到模型 key（agent.llm.api_key_source 没配好）")
     body = {
-        "model": p["model"],
+        "model": model or p["model"],
         "messages": messages,
         "temperature": p.get("temperature", 0.9),
         "max_tokens": int(max_tokens or p.get("max_tokens") or 900),

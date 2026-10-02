@@ -11,7 +11,7 @@ from . import llm as llm_mod
 MAX_ROUNDS = 2
 
 REQUIRED = {"send_message": ["text"], "send_sticker": ["sticker_id"],
-            "collect_sticker": ["message_id"]}
+            "collect_sticker": ["message_id"], "memory_append": ["text"]}
 
 
 def spec_to_openai(specs: list) -> list:
@@ -45,10 +45,11 @@ def dispatch(tools, name: str, args: dict, allowed: set) -> str:
 
 
 def run(tools, messages: list, tools_schema: list, chat_fn=None, max_rounds: int = MAX_ROUNDS,
-        log=None) -> dict:
+        log=None, model=None) -> dict:
     """跑一轮"必须用工具"的对话。返回 {rounds, calls, spoke, finished, usage}。"""
     log = log or (lambda *a, **k: None)
-    chat_fn = chat_fn or (lambda msgs, schema: llm_mod.chat_tools(msgs, schema, "required"))
+    if chat_fn is None:
+        chat_fn = (lambda msgs, schema: llm_mod.chat_tools(msgs, schema, "required", model=model))
     allowed = {s["function"]["name"] for s in tools_schema}
     calls, usage, rounds = [], {}, 0
     for r in range(1, max(1, int(max_rounds)) + 1):

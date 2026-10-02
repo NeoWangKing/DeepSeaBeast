@@ -134,6 +134,41 @@ class Tools:
             return "表情库里没有匹配的"
         return "匹配到 %d 张：\n%s" % (len(rows), "\n".join(str(x) for x in rows))
 
+    # ---------- 看图 / 拍一拍 / 写记忆 ----------
+    def view_image(self) -> str:
+        """看当前这批消息里的图（她真的"看"：交给 DeepSeek 多模态）。"""
+        fn = self.cb.get("view_image")
+        if not fn:
+            return "看不了：这个会话没开看图"
+        try:
+            txt = fn()
+        except Exception as e:
+            return "看不了：%r" % (e,)
+        return str(txt) if txt else "这张图我看不出来是什么"
+
+    def send_poke(self, target_id="") -> str:
+        fn = self.cb.get("send_poke")
+        if not fn:
+            return "拍不了：这个会话没开拍一拍"
+        try:
+            ok = fn(str(target_id or ""))
+        except Exception as e:
+            return "拍不了：%r" % (e,)
+        return "拍了一下" if ok else "拍不了（对方不在这个群？）"
+
+    def memory_append(self, text="", kind="impression") -> str:
+        """自己往记忆里写一条：印象 / 没聊完的话题 / 想说没说的话。"""
+        t = str(text or "").strip()
+        if not t:
+            return "没记：text 是空的（把要记的一句话放进 text）"
+        fn = self.cb.get("memory_append")
+        if not fn:
+            return "记不了：这个会话没开记忆写入"
+        try:
+            return str(fn(str(kind or "impression"), t[:120]) or "记下了")
+        except Exception as e:
+            return "记不了：%r" % (e,)
+
     # ---------- 收尾类 ----------
     def finish(self, reason="") -> str:
         """标记"这轮不发言"。注意：它**不会**抑制正文——只有真的调了 send_* 才抑制。"""
@@ -196,6 +231,20 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                       [{"type": "string", "name": "message_id", "description": "【必填】那条消息的 id"},
                        {"type": "string", "name": "note", "description": "一句简短备注（以后靠它认图）"}],
                       "把群友刚发的有意思的图收藏进你的表情库（要写备注，别频繁收）", "collect_sticker"))
+    if on("vision") and send_tools:
+        specs.append(("view_image", [],
+                      "看当前消息里的图片（她真的能看到图再说话）；消息里带 [图片] 时优先用它", "view_image"))
+    if on("poke") and send_tools:
+        specs.append(("send_poke",
+                      [{"type": "string", "name": "target_id",
+                        "description": "可选：戳谁的 QQ 号，留空戳当前说话的人"}],
+                      "拍一拍对方（偶尔逗熟人用，别频繁）", "send_poke"))
+    if on("memory_write"):
+        specs.append(("memory_append",
+                      [{"type": "string", "name": "text", "description": "【必填】要记的一句话（≤120字）"},
+                       {"type": "string", "name": "kind",
+                        "description": "impression=对某人的印象 / topic=没聊完的话题 / thought=想说的话"}],
+                      "把值得记住的东西写进自己的记忆（偶尔用，别当流水账）", "memory_append"))
     if on("finish"):
         specs.append(("finish",
                       [{"type": "string", "name": "reason",

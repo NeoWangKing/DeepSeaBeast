@@ -236,7 +236,10 @@
       "finish": true,
       "send": true,
       "sticker": true,
-      "collect": true
+      "collect": true,
+      "vision": false,
+      "poke": false,
+      "memory_write": false
     },
     "max_calls": 2,
     "send_tools_groups": [
