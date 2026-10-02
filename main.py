@@ -46,7 +46,7 @@ _TURTLE_REACT = __import__("re").compile(
 
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
-PROMPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_prompt.txt")
+PROMPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts", "system_prompt.txt")
 
 DEFAULTS = {
     "offpeak": "00:30-08:30",
@@ -497,7 +497,7 @@ class QqPeakGate(Star):
             # 只对真实 QQ 号生效（测试连接不建卡）
             if str(self.cfg.get("allowed_self_id") or "") != str(event.get_self_id() or ""):
                 return
-            pdir = os.path.join(PLUGIN_DIR, "personas")
+            pdir = os.path.join(PLUGIN_DIR, "prompts", "personas")
             os.makedirs(pdir, exist_ok=True)
             card_path = os.path.join(pdir, "%s.txt" % gid)
             # 群名
@@ -509,8 +509,8 @@ class QqPeakGate(Star):
             except Exception:
                 pass
             # 卡片内容：模板（没有就用默认温和版）
-            tpl = os.path.join(PLUGIN_DIR, str(ap.get("template", "personas/_template.txt")))
-            src = tpl if os.path.exists(tpl) else os.path.join(PLUGIN_DIR, "system_prompt.txt")
+            tpl = os.path.join(PLUGIN_DIR, str(ap.get("template", "prompts/personas/_template.txt")))
+            src = tpl if os.path.exists(tpl) else os.path.join(PLUGIN_DIR, "prompts", "system_prompt.txt")
             try:
                 body = open(src, encoding="utf-8").read().strip()
             except Exception:
@@ -1172,7 +1172,10 @@ class QqPeakGate(Star):
                 or self.cfg.get("system_prompt_file") or "system_prompt.txt"
         except Exception:
             name = "system_prompt.txt"
-        return os.path.join(PLUGIN_DIR, str(name))
+        name = str(name)
+        if "/" not in name:
+            name = "prompts/" + name
+        return os.path.join(PLUGIN_DIR, name)
 
     def _touch(self, gid: str, mid=None) -> None:
         """记录该群最新一条消息（id + 时间），用来判断"我要回的那条是不是已经沉上去了"。"""

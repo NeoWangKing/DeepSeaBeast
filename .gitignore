@@ -35,3 +35,14 @@ personas/*.txt
 data/cmd_config.json
 data/t2i_templates/
 data/temp/
+
+# 结构整理后的兼容软链（运行期生成，不入库）
+/personas
+/system_prompt*.txt
+/gate_sim.py
+/group_admin.py
+/extract_memes.py
+/refresh_holidays.py
+/score_probe.py
+prompts/personas/*.txt
+!prompts/personas/_template.txt
