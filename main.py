@@ -2361,6 +2361,30 @@ class QqPeakGate(Star):
                                     self._log_debug, _vmodel)
         self._log("agent loop：结束（%s，用了 %s，说了 %d 条，finish=%s）"
                   % (key, str(r.get("usage") or {}), len(t.sent), t.finished))
+        # 硬提醒：对方明确要求"X 秒后/过一会儿再说/再做"，但她没调 schedule_wake
+        try:
+            _cur = str(getattr(event, "message_str", "") or "")
+            _called = {str(c.get("name") or "") for c in (r.get("calls") or [])}
+            if replyproto.wants_schedule(_cur) and "schedule_wake" not in _called:
+                if not getattr(self, "_wake_nagged", None):
+                    self._wake_nagged = set()
+                _nk = (key, int(time.time() // 30))
+                if _nk not in self._wake_nagged:
+                    self._wake_nagged.add(_nk)
+                    if len(self._wake_nagged) > 200:
+                        self._wake_nagged.clear()
+                    self._log("agent loop：对方要求定时但没调 schedule_wake → 提醒重试一轮")
+                    messages.append({"role": "user", "content": (
+                        "【系统提醒】对方要求你「过一会儿 / X 秒后再做或再说」，"
+                        "你必须调用 schedule_wake(after_sec=秒数, say=到时要说的话) 把它定上；"
+                        "不要现在就把话说出来，也不要只用嘴答应。刚才若已经回过话，这轮只调 schedule_wake。")})
+                    r2 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 1,
+                                                 self._log_debug, _vmodel)
+                    self._log("agent loop：定时提醒后 %s" % (
+                        "成功" if t.sent or t.finished else "仍没成功"))
+                    r = r2 if r2 else r
+        except Exception as _e:
+            self._log_debug("定时提醒重试失败 %r" % (_e,))
         if not t.spoke and not t.finished:
             self._log("agent loop：这轮没发言也没 finish → 视为沉默")
         try:

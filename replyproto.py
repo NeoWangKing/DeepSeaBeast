@@ -156,3 +156,11 @@ def sanitize(text, strip_bar: bool = True, strip_faces: bool = False,
     t = "\n".join(keep)
     t = re.sub(r"[ \t]{2,}", " ", t).strip()
     return t
+
+SCHEDULE_RE = re.compile(
+    r"(\d+\s*(秒|秒钟|分钟|分|min|s)\s*(之?后|以后)|过一?会儿|等一?会儿|等我回来|等下|待会|一会儿再|later)")
+
+
+def wants_schedule(text) -> bool:
+    """这条消息是不是在要求"过一会儿/几秒后再做某事"。"""
+    return bool(SCHEDULE_RE.search(str(text or "")))
