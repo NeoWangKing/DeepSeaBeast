@@ -48,6 +48,25 @@ check("尾部标点清理", p.parts == ["喂，你在吗"], p.parts)
 p = replyproto.parse("DeepSeek V3 真的行")
 check("英文词内部空格保留", p.parts == ["DeepSeek V3 真的行"], p.parts)
 
+print("== 发送口兜底 sanitize ==")
+check("保留 [QQ表情:…]（必须能变真表情）",
+      replyproto.sanitize("好[QQ表情:汪汪]的") == "好[QQ表情:汪汪]的")
+check("协议行（图/回/收）清掉", replyproto.sanitize("图：星星\n回：好嘞\n收：是") == "")
+check("沉默标记清掉", replyproto.sanitize("[不说话]") == "")
+check("图片表情标记默认清掉", replyproto.sanitize("笑死[表情:s1]真的") == "笑死真的")
+check("保留图片表情标记（兜底路径用）",
+      replyproto.sanitize("笑死[表情:s1]真的", strip_stickers=False) == "笑死[表情:s1]真的")
+check("||| 默认清掉", replyproto.sanitize("a ||| b") == "a b")
+check("||| 保留（分条路径用）", replyproto.sanitize("a ||| b", strip_bar=False) == "a ||| b")
+check("正常话原样", replyproto.sanitize("普通一句话") == "普通一句话")
+check("全是标记 → 空（就不发）", replyproto.sanitize("图：x\n回：y\n收：否") == "")
+
+print("== 定时意图识别 wants_schedule ==")
+for _t, _exp in [("10秒钟之后发一张搞怪的表情", True), ("过一会儿再说", True),
+                 ("等我回来再聊", True), ("5分钟后提醒我", True),
+                 ("今天天气不错", False), ("你是谁", False)]:
+    check("wants_schedule(%r)" % _t[:12], replyproto.wants_schedule(_t) is _exp)
+
 print("== 提示词分层 ==")
 cfg_path = os.path.join(ROOT, "config.json")
 if os.path.isfile(cfg_path):
