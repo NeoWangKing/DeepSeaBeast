@@ -187,6 +187,22 @@ def _scene(ctx):
     return "\n".join(lines)
 
 
+def _agent_tools(ctx):
+    caps = ctx.get("caps") or {}
+    txt = caps.get("tools_text")
+    if not txt:
+        return ""
+    lines = ["【工具：你可以动手，不只是说话】",
+             "你的正文只是思考，不一定会被发出去；下面这些动作靠调用工具完成：", txt]
+    if caps.get("tools_send"):
+        lines.append("- 【最重要】想说话必须调 send_message（多条用 ||| 分隔）；不想说话就调 finish，或者干脆什么都不做。")
+        lines.append("- 调用工具后不要再在正文里复述“我发了什么”，群里只看到工具发出去的内容。")
+    else:
+        lines.append("- 发言仍然照常写在正文里（用 ||| 分条）；这些工具用来“看”和“结束”，不用来“说”。")
+        lines.append("- 不确定大家在聊什么、或想确认某人的情况时，可以先用 get_recent_messages / lookup_memory 看一眼再决定说什么。")
+    return "\n".join(lines)
+
+
 def _report_ban(ctx):
     return "\n".join([
         "【发送与汇报禁令】",
@@ -210,6 +226,7 @@ SECTIONS = [
     ("quote_and_at", _quote_and_at),
     ("memory_notes", _memory_notes),
     ("sticker_rules", _sticker_rules),
+    ("agent_tools", _agent_tools),
     ("scene", _scene),
     ("report_ban", _report_ban),
 ]

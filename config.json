@@ -223,5 +223,20 @@
     "persona_patch_by_group": {},
     "disable_sections": [],
     "extra": ""
+  },
+  "agent": {
+    "enabled": true,
+    "send_tools": false,
+    "session_ttl": 300,
+    "tools": {
+      "recent": true,
+      "members": true,
+      "memory": true,
+      "stickers_list": true,
+      "finish": true,
+      "send": true,
+      "sticker": true,
+      "collect": true
+    }
   }
 }

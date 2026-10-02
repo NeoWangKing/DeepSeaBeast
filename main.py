@@ -27,7 +27,8 @@ except Exception:
 from astrbot.api.star import Context, Star, register
 
 try:
-    from . import scoring, stickers, kb as local_kb, followup, replyproto, promptlib   # AstrBot 以包形式加载插件
+    from . import scoring, stickers, kb as local_kb, followup, replyproto, promptlib
+    from . import agent   # AstrBot 以包形式加载插件
     from .memory import store as mem_store     # 记忆产物只读访问
     from .games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
 except Exception:                              # 兜底：直接当脚本/被 py_compile 时
@@ -39,6 +40,7 @@ except Exception:                              # 兜底：直接当脚本/被 py
     import followup
     import replyproto
     import promptlib
+    import agent
     from memory import store as mem_store
     from games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
     from games.turtle_soup import gen as turtle_gen
@@ -1296,6 +1298,209 @@ class QqPeakGate(Star):
         except Exception as e:
             self._log("remember_reply ERROR: %r" % (e,))
 
+    # ---------------- agent 工具层（模型输出=思考，动作靠调用工具） ----------------
+    def _agent_cfg(self) -> dict:
+        c = dict(self.cfg.get("agent") or {})
+        c.setdefault("enabled", False)
+        c.setdefault("send_tools", False)
+        c.setdefault("session_ttl", 300)
+        return c
+
+    def _agent_tool_specs(self) -> list:
+        c = self._agent_cfg()
+        if not c.get("enabled"):
+            return []
+        try:
+            return agent.tools.spec_list(c.get("tools") or {}, send_tools=bool(c.get("send_tools")))
+        except Exception as e:
+            self._log("agent：工具清单生成失败 %r" % (e,))
+            return []
+
+    def _ensure_agent_tools(self) -> None:
+        """确保工具已注册（幂等：工具数没变就不重复注册）。"""
+        if not self._agent_cfg().get("enabled"):
+            return
+        n = len(self._agent_tool_specs())
+        if not n or getattr(self, "_agent_reg", None) == n:
+            return
+        if not hasattr(self, "_agent_sessions"):
+            self._agent_sessions = {}
+        self._register_agent_tools()
+        self._agent_reg = n
+
+    def _register_agent_tools(self) -> None:
+        specs = self._agent_tool_specs()
+        ctx = getattr(self, "context", None)
+        if not specs or ctx is None or not hasattr(ctx, "register_llm_tool"):
+            return
+        for name, args, desc, mname in specs:
+            try:
+                ctx.register_llm_tool(name, args, desc, self._make_tool_handler(mname))
+            except Exception as e:
+                self._log("agent：注册工具 %s 失败 %r" % (name, e))
+        self._log("agent：注册 %d 个工具（send_tools=%s）" % (len(specs), self._agent_cfg().get("send_tools")))
+
+    def _make_tool_handler(self, mname: str):
+        async def _handler(event=None, context=None, **kwargs):
+            try:
+                t = self._agent_tools(event)
+                fn = getattr(t, mname)
+                kw = {k: v for k, v in (kwargs or {}).items() if v is not None}
+                out = fn(**kw)
+                self._log("agent工具 %s(%s) → %s" % (mname, str(kwargs)[:100], str(out)[:70]))
+                return str(out)
+            except Exception as e:
+                self._log("agent工具 %s 出错: %r" % (mname, e))
+                return "调用失败：%r" % (e,)
+        return _handler
+
+    def _agent_callbacks(self, event) -> dict:
+        def _send_text(text, reply_to_id="", at_user_id=""):
+            asyncio.create_task(self._agent_send(event, text, reply_to_id, at_user_id))
+
+        def _send_sticker(sid, reply_to_id=""):
+            it = None
+            try:
+                it = stickers.find(sid)
+            except Exception:
+                it = None
+            if not it:
+                return False
+            asyncio.create_task(self._agent_send_sticker(event, it, reply_to_id))
+            return True
+
+        def _collect(message_id, note):
+            try:
+                comps = [m for m in event.get_messages() if isinstance(m, Image)]
+            except Exception:
+                comps = []
+            if not comps:
+                return "这条里没有图片可收藏（收藏只能收本批消息里的图）"
+            try:
+                path = self._save_tmp_image(comps[0])
+                if not path:
+                    return "没收藏：图取不下来"
+                g = stickers.tag_image(path, str((self.cfg.get("stickers") or {}).get(
+                    "vision_model") or "glm-4v-flash"))
+                it = stickers.add_file(path, self._chat_key(event), str(note or g.get("desc") or ""),
+                                       g.get("tags") or [], "", int((self.cfg.get("stickers") or {}).get(
+                                           "max_store", 300) or 300), g)
+                if not it:
+                    return "这张要么重复、要么没存进去"
+                return "收藏好了：%s（%s）" % (it.get("id"), it.get("desc") or note or "")
+            except Exception as e:
+                return "没收藏：%r" % (e,)
+
+        def _recent(limit):
+            out = []
+            try:
+                for item in list(self.recent.get(str(event.get_group_id() or "")) or [])[-limit:]:
+                    who = item[0] or "?"
+                    out.append("%s：%s" % ("我" if who == "我" else who, (item[1] or "")[:60]))
+            except Exception:
+                pass
+            return out
+
+        def _members():
+            try:
+                seen, rows = [], []
+                for item in reversed(list(self.recent.get(str(event.get_group_id() or "")) or [])):
+                    who = item[0] or ""
+                    if who and who != "我" and who not in seen:
+                        seen.append(who)
+                    if len(seen) >= 20:
+                        break
+                for w in seen:
+                    rows.append(w)
+                return rows
+            except Exception:
+                return []
+
+        def _memory(query):
+            try:
+                return self._memory_block(str(event.get_group_id() or ""), str(event.get_sender_id() or ""),
+                                          self.last_reply_to.get(str(event.get_group_id() or ""), ""),
+                                          str(query or event.message_str or ""))
+            except Exception:
+                return ""
+
+        def _list_stickers(query):
+            q = str(query or "").strip().lower()
+            rows = []
+            try:
+                for it in (stickers.load() or []):
+                    blob = ("%s %s %s" % (it.get("desc") or "", " ".join(it.get("tags") or []),
+                                          it.get("id") or "")).lower()
+                    if q and q not in blob:
+                        continue
+                    rows.append("- %s ｜ %s ｜ %s" % (it.get("id"), it.get("desc") or "（无备注）",
+                                                     "/".join(it.get("tags") or []) or "-"))
+                    if len(rows) >= 12:
+                        break
+            except Exception:
+                pass
+            return rows
+
+        return {"send_text": _send_text, "send_sticker": _send_sticker,
+                "collect_sticker": _collect, "recent_lines": _recent,
+                "active_members": _members, "memory_lookup": _memory, "list_stickers": _list_stickers}
+
+    def _agent_tools(self, event):
+        """取/建"这次唤醒"的工具会话（工具绑定当前会话，模型无法指定发到别处）。"""
+        key = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
+        t = self._agent_sessions.get(key)
+        ttl = float(self._agent_cfg().get("session_ttl", 300) or 300)
+        if t is None or (time.time() - getattr(t, "started", 0) > ttl):
+            if len(self._agent_sessions) > 200:
+                self._agent_sessions.clear()
+            t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(event), self._agent_cfg())
+            self._agent_sessions[key] = t
+        return t
+
+    async def _agent_send(self, event, text: str, reply_to_id: str = "", at_user_id: str = "") -> None:
+        try:
+            comps = []
+            if reply_to_id:
+                comps.append(Reply(id=str(reply_to_id)))
+            if at_user_id:
+                comps.append(At(qq=str(at_user_id)))
+            comps.append(Plain(str(text)))
+            await event.send(MessageChain(comps))
+            self._log("agent：发出「%s」" % str(text)[:40])
+        except Exception as e:
+            self._log("agent：发送失败 %r" % (e,))
+
+    async def _agent_send_sticker(self, event, it: dict, reply_to_id: str = "") -> None:
+        try:
+            path = await asyncio.to_thread(stickers.ensure_local, it)
+            if not path or not os.path.exists(path):
+                self._log("agent：表情没落盘，不发 %s" % it.get("id"))
+                return
+            try:
+                if hasattr(Image, "fromFileSystem"):
+                    img = Image.fromFileSystem(path)
+                else:
+                    img = Image(file=path)
+            except Exception:
+                img = Image(file=path)
+            comps = [Reply(id=str(reply_to_id))] if reply_to_id else []
+            comps.append(img)
+            await event.send(MessageChain(comps))
+            stickers.mark_used(it.get("id"))
+            self._log("agent：发出表情 %s《%s》" % (it.get("id"), it.get("desc")))
+        except Exception as e:
+            self._log("agent：发表情失败 %r" % (e,))
+
+    def _agent_tools_text(self) -> str:
+        """给提示词用的工具清单（只在 agent 打开时给）。"""
+        try:
+            specs = self._agent_tool_specs()
+            if not specs:
+                return ""
+            return "\n".join("- %s：%s" % (n, d) for n, _a, d, _m in specs)
+        except Exception:
+            return ""
+
     def _sticker_menu_text(self, gid: str = "") -> str:
         """【可用表情包】清单：让模型用 [表情:id] 指名发图。
 
@@ -1445,6 +1650,18 @@ class QqPeakGate(Star):
     async def smart_quote(self, event: AstrMessageEvent) -> None:
         """发送前最后一步：只在需要指明"回哪条"时才加引用（全局 reply_with_quote 已关）。"""
         try:
+            # agent 工具：她已经用工具说过话（或明确结束本轮）→ 正文只是思考，不发出去
+            if self._agent_cfg().get("send_tools"):
+                _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
+                _at = self._agent_sessions.pop(_akey, None)
+                if _at is not None and (_at.spoke or _at.finished):
+                    try:
+                        event.get_result().chain = []
+                    except Exception:
+                        pass
+                    self._log("agent：本轮%s，正文不发（%s）"
+                              % ("已用工具发言" if _at.spoke else "已结束", _at.state()))
+                    return
             # 输出协议：整条只输出 [不说话] → 这条不发（也不记入"我说过的话"）
             pr = self._protocol_parse(event)
             if pr.silent and (self.cfg.get("split_reply") or {}).get("silence", True):
@@ -1602,12 +1819,15 @@ class QqPeakGate(Star):
                             chat_key=gid, private=private,
                             caps={"vision": bool(self.cfg.get("vision", False)),
                                   "search": bool((self.cfg.get("search") or {}).get("enabled")),
-                                  "kb": bool(_kcfg.get("enabled", True) and not private)})
+                                  "kb": bool(_kcfg.get("enabled", True) and not private),
+                                  "tools_text": self._agent_tools_text(),
+                                  "tools_send": bool(self._agent_cfg().get("send_tools"))})
                         req.system_prompt = _txt
                         self._log("提示词: 人格=%s 补丁=%s 行为%d段；人格%d字/行为%d字/共%d字；参与=%s 表情档=%s"
                                   % (_meta["persona"], _meta["patch"], _meta["sections"],
                                      _meta["persona_chars"], _meta["behavior_chars"], _meta["chars"],
                                      _meta["participation"], _meta["sticker_level"]))
+                    self._ensure_agent_tools()          # 幂等：确保 agent 工具已注册
                     _menu = self._sticker_menu_text("private" if private else gid)
                     if _menu:
                         req.system_prompt = (req.system_prompt or "") + "\n\n" + _menu
@@ -1661,7 +1881,13 @@ class QqPeakGate(Star):
             if self.cfg.get("drop_tools", True):
                 ft = getattr(req, "func_tool", None)
                 if ft is not None and getattr(ft, "tools", None):
-                    ft.tools = []                     # 群聊不需要工具，省掉工具 schema 的 token
+                    if self._agent_cfg().get("enabled"):
+                        # agent 打开时：只保留我们自己的工具，别的一律摘掉
+                        self._ensure_agent_tools()
+                        _names = {n for n, _a, _d, _m in self._agent_tool_specs()}
+                        ft.tools = [t for t in ft.tools if getattr(t, "name", "") in _names]
+                    else:
+                        ft.tools = []                 # 群聊不需要工具，省掉工具 schema 的 token
             try:
                 parts = getattr(req, "extra_user_content_parts", None) or []
                 if parts:
