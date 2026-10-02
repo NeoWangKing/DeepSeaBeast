@@ -244,13 +244,15 @@
     "max_calls": 2,
     "send_tools_groups": [
       "869622030",
-      "p:3245938285"
+      "p:3245938285",
+      "966812151"
     ],
     "rescue_text": false,
     "loop_mode": true,
     "loop_groups": [
       "869622030",
-      "p:3245938285"
+      "p:3245938285",
+      "966812151"
     ],
     "max_rounds": 2,
     "llm": {

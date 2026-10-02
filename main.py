@@ -1687,6 +1687,15 @@ class QqPeakGate(Star):
                 comps.append(Reply(id=str(reply_to_id)))
             if at_user_id:
                 comps.append(At(qq=str(at_user_id)))
+            # 文字里如果夹着 [表情:id]（图片表情），抽出来单独发一条，别当文字发出去
+            _imgs = []
+            try:
+                import re as _re2
+                for _m2 in _re2.finditer(r"\[表情(?::([^\]\n]{1,24}))?\]", str(text or "")):
+                    _imgs.append((_m2.group(1) or "").strip())
+                text = _re2.sub(r"\[表情(?::[^\]\n]{1,24})?\]", "", str(text or "")).strip()
+            except Exception:
+                _imgs = []
             _faces = []
             try:
                 for _kind, _val in replyproto.split_faces(text):
@@ -1704,6 +1713,20 @@ class QqPeakGate(Star):
                 comps.append(Plain(str(text)))
             if not comps:
                 comps.append(Plain(str(text)))
+            for _sid in _imgs[:2]:
+                try:
+                    _it = None
+                    for _cand in (stickers.load() or []):
+                        if _sid and str(_cand.get("id") or "") == _sid:
+                            _it = _cand
+                            break
+                    if _it is None and _sid:
+                        _it = stickers.find(_sid)
+                    if _it:
+                        asyncio.create_task(self._agent_send_sticker(event, _it))
+                        self._log("agent：图片表情 %s 单独发一条" % _it.get("id"))
+                except Exception as _e3:
+                    self._log_debug("抽图片表情失败 %r" % (_e3,))
             _tail = self._face_id_by_name(face) if face else 0
             if _tail and Face is not None:
                 try:
@@ -1872,7 +1895,17 @@ class QqPeakGate(Star):
             self._agent_sessions[_akey] = t
         except Exception:
             pass
-        schema = agent.loop.spec_to_openai(self._agent_tool_specs())
+        _specs = self._agent_tool_specs()
+        try:
+            _scfg = self.cfg.get("stickers") or {}
+            _no_stk = key in [str(x) for x in (_scfg.get("send_exclude_groups") or [])] \
+                or key in [str(x) for x in (_scfg.get("collect_exclude_groups") or [])]
+            if _no_stk:
+                _specs = [x for x in _specs if x[0] not in ("send_sticker", "collect_sticker")]
+                self._log("agent loop：%s 不发表情图 → 工具清单滤掉 send_sticker/collect_sticker" % key)
+        except Exception:
+            pass
+        schema = agent.loop.spec_to_openai(_specs)
         if not schema:
             self._log("agent loop：没有可用工具，交回原流程")
             return False
@@ -1917,6 +1950,15 @@ class QqPeakGate(Star):
                             pass
                 if _notes:
                     system_prompt += "\n\n【你自己之前记下的（仅供参考，别硬提）】\n" + "\n".join(_notes)
+        except Exception:
+            pass
+        # 记忆块（群印象/人物档案）也带进 loop 的提示词
+        try:
+            _mb = self._memory_block(key.split(":")[-1] if key.startswith("p:") else key,
+                                     str(event.get_sender_id() or ""),
+                                     self.last_reply_to.get(key, ""), user)
+            if _mb and _mb not in system_prompt:
+                system_prompt += "\n\n" + _mb
         except Exception:
             pass
         # 消息里有图 → 走"看图轮"：多模态直接回答（deepseek-flash 带 tools 会 400）
