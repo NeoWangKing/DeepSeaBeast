@@ -1566,15 +1566,19 @@ class QqPeakGate(Star):
                     ca = getattr(holder, "call_action", None)
                     if ca is None:
                         continue
-                    for prm in shapes:
-                        try:
-                            _r = ca("send_poke", **prm)
-                            if hasattr(_r, "__await__"):
-                                await _r
-                            self._log("agent：拍了一下（call_action %s）" % (prm,))
-                            return True
-                        except Exception as e:
-                            last = e
+                    for act in ("send_poke", "friend_poke", "group_poke", "send_friend_poke"):
+                        for prm in shapes:
+                            try:
+                                _r = ca(act, **prm)
+                                if hasattr(_r, "__await__"):
+                                    _r = await _r
+                                if isinstance(_r, dict) and _r.get("status") not in (None, "ok", "async"):
+                                    last = RuntimeError("%s -> %s" % (act, str(_r)[:80]))
+                                    continue
+                                self._log("agent：拍了一下（%s %s）" % (act, prm))
+                                return True
+                            except Exception as e:
+                                last = e
                 self._log("agent：拍失败 %r" % (last,))
                 return False
             try:
