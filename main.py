@@ -1699,6 +1699,32 @@ class QqPeakGate(Star):
         groups = [str(x) for x in (c.get("loop_groups") or [])]
         return (not groups) or (self._chat_key(event) in groups)
 
+    def _qq_face_name(self, fid: int) -> str:
+        """QQ 自带表情的官方名字（SnowLuma 的 sys-face-catalog.json，qSid → qDes）。"""
+        try:
+            m = getattr(self, "_face_map", None)
+            if m is None:
+                m = {}
+                for _p in ("/opt/snowluma/data/sys-face-catalog.json",
+                           os.path.join(PLUGIN_DIR, "data", "sys-face-catalog.json")):
+                    try:
+                        _d = json.load(open(_p, encoding="utf-8"))
+                    except Exception:
+                        continue
+                    for _pk in (_d.get("packs") or []):
+                        for _e in (_pk.get("emojis") or []):
+                            _sid = str(_e.get("qSid") or "").strip()
+                            _des = str(_e.get("qDes") or "").strip().lstrip("/")
+                            if _sid.isdigit() and _des and _sid not in m:
+                                m[_sid] = _des
+                    if m:
+                        break
+                self._face_map = m
+                self._log("agent：载入 QQ 自带表情名 %d 条" % len(m))
+            return m.get(str(fid), "")
+        except Exception:
+            return ""
+
     def _agent_lock(self, key: str):
         if not hasattr(self, "_agent_locks"):
             self._agent_locks = {}
@@ -1812,20 +1838,9 @@ class QqPeakGate(Star):
                     except Exception:
                         _fid = 0
                     if _fid:
-                        _face_hint = (_face_hint + ("、" if _face_hint else "") + "#%d" % _fid)
-                        try:
-                            import tempfile
-                            _url = "https://qzonestyle.gtimg.cn/qzone/em/e%d.gif" % _fid
-                            _rq = urllib.request.Request(_url, headers={"User-Agent": "Mozilla/5.0"})
-                            _data = urllib.request.urlopen(_rq, timeout=8).read()
-                            if _data:
-                                _fd, _tmp = tempfile.mkstemp(suffix=".gif", prefix="face_")
-                                with os.fdopen(_fd, "wb") as _fh:
-                                    _fh.write(_data)
-                                _img_paths.append(_tmp)
-                                self._log("agent loop：QQ表情 #%d 已取图" % _fid)
-                        except Exception as _e:
-                            self._log_debug("QQ表情取图失败 #%s %r" % (_fid, _e))
+                        _nm = self._qq_face_name(_fid)
+                        _face_hint = (_face_hint + ("、" if _face_hint else "")
+                                      + ("「%s」#%d" % (_nm, _fid) if _nm else "#%d" % _fid))
                     continue
                 _is_img = (isinstance(_m, Image)
                            or type(_m).__name__ in ("Image", "Picture")
@@ -1838,7 +1853,8 @@ class QqPeakGate(Star):
                 else:
                     self._log("agent loop：有图但取不下来（组件=%s）" % _names)
             if _face_hint:
-                _face_note = "[对方发来 QQ 自带表情 %s；下面是它的图，能看清就照常接话]" % _face_hint
+                _face_note = ("[对方发来的是 QQ 自带表情 %s（这是官方表情名，按这个名字的含义自然接话；"
+                              "你看不到它的图案，不要猜图案、不要编画面）]" % _face_hint)
             else:
                 _face_note = ""
         except Exception as _e:
