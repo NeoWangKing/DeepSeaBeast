@@ -219,8 +219,8 @@
   "vision_model": "glm-4v-flash",
   "collect_say_prob": 0.18,
   "collect_say_max_per_hour": 2,
-  "prompt_max": 8,
-  "encourage": 1
+  "prompt_max": 12,
+  "encourage": 2
  },
  "followup": {
   "enabled": true,

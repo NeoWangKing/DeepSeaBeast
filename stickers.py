@@ -406,10 +406,13 @@ def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6) -> l
             if w and (w in (it.get("tags") or []) or w in (it.get("desc") or "")):
                 score += 1
         if it.get("last_used") and now - int(it["last_used"]) < 86400:
-            score -= 3                     # 24 小时内用过的先靠后
+            score -= 6                     # 24 小时内用过的明显靠后（真人换着发）
+        if it.get("last_used") and now - int(it["last_used"]) < 3600:
+            score -= 6                     # 1 小时内用过的更靠后
         if score > 0:
             scored.append((score, it))
-    scored.sort(key=lambda x: (-x[0], -(x[1].get("used") or 0)))
+    # 第二排序键：优先「最久没用过的」（而不是用得多的一直被挑中）
+    scored.sort(key=lambda x: (-x[0], int(x[1].get("last_used") or 0)))
     return [x[1] for x in scored[:limit]]
 
 
