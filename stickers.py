@@ -23,7 +23,15 @@ VISION_RULES = """这张图是不是"适合在 QQ 群里当表情包/梗图转�
 不算（is_meme=false）：真人自拍、私人照片、聊天记录截图、证件/工牌、二维码、名片、
                         涉黄涉暴、血腥、广告海报、纯文字长图。
 
-只输出 JSON：{"is_meme": true/false, "kind": "meme|selfie|screenshot|qr|ad|animal|other",
+最后再判一次 「worth」：这张图**发出来好不好笑、有没有梗、值不值得收进常用表情包库**？
+- worth=true：看见就想笑/有梗/可爱/能拿来接话，包括可爱动物、沙雕图、搞笑截图（关键信息涂掉的）。
+- worth=false：普通自拍或私人照片、聊天/网页截图、二维码名片、广告、纯文字长图、风景美食等普通照片、
+  画质太糊看不出是什么、没什么梗的随手拍。
+（is_meme 和 worth 的区别：is_meme 是"这算不算表情包"，worth 是"她该不该把它收进自己收藏夹"。
+两个判断要一致：kind 是 meme/animal、is_meme=true 的，只要不糊、不是纯风景/美食/随手拍，worth 一般就是 true；
+只有真的没梗、看不出是什么、或只是普通照片才判 false。宁可收下也别把好玩的图漏掉。）
+
+只输出 JSON：{"is_meme": true/false, "worth": true/false, "kind": "meme|selfie|screenshot|qr|ad|animal|other",
 "desc": "≤14字描述", "tags": ["3~5个中文标签"]}
 （kind 用来说清这是什么：meme=表情包/梗图、selfie=真人自拍或私人照片、screenshot=聊天/网页截图、
 qr=二维码名片、ad=广告海报、animal=普通动物照、other=其它）
@@ -49,6 +57,21 @@ def tag_image(path: str, model: str = "glm-4v-flash", key: str = "") -> dict:
     try:
         b64 = base64.b64encode(open(path, "rb").read()).decode()
         ext = os.path.splitext(path)[1].lstrip(".").lower() or "png"
+        if ext in ("gif", "webp", "bmp"):      # 识图接口不收动图：取第一帧转 jpg 再送
+            try:
+                import io
+                from PIL import Image as _PIL
+                _im = _PIL.open(path)
+                try:
+                    _im.seek(0)
+                except Exception:
+                    pass
+                _buf = io.BytesIO()
+                _im.convert("RGB").save(_buf, format="JPEG", quality=85)
+                b64 = base64.b64encode(_buf.getvalue()).decode()
+                ext = "jpeg"
+            except Exception:
+                pass
         body = {"model": model, "messages": [{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": "data:image/%s;base64,%s" % (ext, b64)}},
             {"type": "text", "text": VISION_RULES}]}], "temperature": 0.1}
@@ -61,7 +84,15 @@ def tag_image(path: str, model: str = "glm-4v-flash", key: str = "") -> dict:
         import re
         m = re.search(r"\{.*\}", str(txt), re.S)
         out = json.loads(m.group(0)) if m else {}
-        return {"is_meme": bool(out.get("is_meme")), "kind": str(out.get("kind") or "")[:16],
+        _w = out.get("worth")
+        if _w is None:
+            for _k in ("collect", "fun", "interesting"):
+                if out.get(_k) is not None:
+                    _w = out.get(_k)
+                    break
+        return {"is_meme": bool(out.get("is_meme")),
+                "worth": (None if _w is None else bool(_w)),
+                "kind": str(out.get("kind") or "")[:16],
                 "desc": str(out.get("desc") or "")[:30],
                 "tags": [str(x)[:8] for x in (out.get("tags") or []) if str(x).strip()][:6],
                 "token": int((d.get("usage") or {}).get("total_tokens") or 0)}

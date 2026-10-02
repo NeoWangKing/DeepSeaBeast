@@ -1,10 +1,14 @@
 #!/bin/bash
-# 只重载 qq_peak_gate 插件，不重启 astrbot —— 不会断开 OneBot 连接，群里消息不会丢
-# 用法: qqbot-reload [插件名]
-set -e
+# 只重载指定插件，不重启 astrbot —— 不会断开 OneBot 连接，群里消息不会丢
+# 用法: qqbot-reload [插件名]     急着重载: qqbot-reload --force [插件名]
+#
+# 注意：AstrBot 连续热重载时偶发「未通过 Star 注册」——插件其实是**没加载**的，
+# 门控会失效（等于裸奔）。所以这里重载后会去日志里确认加载成功，失败自动重试。
+set -u
 FORCE=0
-if [ "$1" = "--force" ]; then FORCE=1; shift; fi
+if [ "${1:-}" = "--force" ]; then FORCE=1; shift; fi
 PLUGIN="${1:-qq_peak_gate}"
+
 # 有对局进行中就别重载，免得打断群里玩
 if [ "$FORCE" != "1" ]; then
   if ! python3 /usr/local/lib/qqbot_reload_guard.py; then
@@ -12,9 +16,9 @@ if [ "$FORCE" != "1" ]; then
     exit 3
   fi
 fi
-PY=${QQBOT_PY:-/opt/astrbot/.local/share/uv/tools/astrbot/bin/python}
-"$PY" - "$PLUGIN" <<PYEOF
-import datetime, json, sys, urllib.request
+
+PY=/opt/astrbot/.local/share/uv/tools/astrbot/bin/python
+DO_RELOAD='import datetime, json, sys, urllib.request
 name = sys.argv[1]
 cfg = json.load(open("/opt/astrbot/data/cmd_config.json", encoding="utf-8-sig"))
 d = cfg.get("dashboard") or {}
@@ -31,17 +35,33 @@ req = urllib.request.Request(
 )
 try:
     r = urllib.request.urlopen(req, timeout=60)
-    print("HTTP", r.status, r.read().decode()[:200])
+    print("HTTP", r.status, r.read().decode()[:160])
 except Exception as e:
     body = getattr(e, "read", lambda: b"")()
-    print("重载失败:", e, body[:300])
-    sys.exit(1)
-t0 = datetime.datetime.now()
-try:
-    body = json.loads(body) if False else None
-except Exception:
-    pass
-PYEOF
-sleep 2
-journalctl -u astrbot --since "30 sec ago" --no-pager | grep -E "qq_peak_gate|Loading plugin" | tail -4
-echo "（以上应该是插件重载日志；若看到 aiocqhttp 适配器已连接 = 变成了真重启）"
+    print("重载请求失败:", e, body[:300])
+    sys.exit(1)'
+
+for i in 1 2 3; do
+  TS="$(date '+%Y-%m-%d %H:%M:%S')"
+  echo "── 第 $i 次重载 $PLUGIN ($TS)"
+  if ! "$PY" - "$PLUGIN" <<< "$DO_RELOAD"; then
+    echo "重载请求本身失败，退出"; exit 1
+  fi
+  sleep 7
+  LOG="$(journalctl -u astrbot --since "$TS" --no-pager 2>/dev/null || true)"
+  if printf '%s' "$LOG" | grep -q "Failed to load plugin $PLUGIN"; then
+    echo "⚠️  这次没加载成功（热重载模块缓存竞态），自动再试一次…"
+    sleep 3
+    continue
+  fi
+  if printf '%s' "$LOG" | grep -qE "Plugin $PLUGIN \(.*\) by"; then
+    printf '%s' "$LOG" | grep -E "Plugin $PLUGIN \(" | tail -1
+    echo "✅ $PLUGIN 已加载"
+    exit 0
+  fi
+  echo "ℹ️  日志里没看到结果，再等一下重试…"
+  sleep 4
+done
+
+echo "❌ 连续重载都没确认成功：建议 qqbot-restart（并检查插件日志）" >&2
+exit 4

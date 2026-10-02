@@ -200,10 +200,7 @@
       "reasoning_effort": null
     }
   },
-  "stickers": {
-    "collect_prob": 0.7,
-    "private_collect_prob": 0.95
-  },
+  "stickers": {},
   "followup": {
     "enabled": true,
     "chance": 0.12,

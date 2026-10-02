@@ -1815,19 +1815,20 @@ class QqPeakGate(Star):
                         g = await asyncio.to_thread(stickers.tag_image, path,
                                                     str(cfg.get("vision_model") or "glm-4v-flash"))
                         _kind = str(g.get("kind") or "").lower()
-                        # 只挡明显不该收的（自拍/截图/二维码/广告）；其它一律先收下，
-                        # 免得群友觉得好玩、模型却判"不是表情包"给漏了
-                        if (not private) and (_kind in ("selfie", "screenshot", "qr", "ad") or (
-                                not g.get("is_meme") and _kind in ("", "other") and False)):
-                            self._log("表情包：不适合作表情，没收藏（kind=%s desc=%s）"
-                                      % (_kind or "?", g.get("desc") or "?"))
-                            continue
-                        # 不是每张都收：按概率抽签（私聊概率更高，自己发的多半是精选）
-                        _p = float((cfg.get("private_collect_prob", 0.95) if private
-                                    else cfg.get("collect_prob", 0.7)) or 0)
-                        if _p <= 0 or random.random() > _p:
-                            self._log("表情包：抽签没中，这次不收（p=%.2f%s）"
-                                      % (_p, "，私聊" if private else ""))
+                        _worth = g.get("worth")      # 识图自己判的"这图有没有趣、值不值得收"
+                        _hard_bad = _kind in ("selfie", "screenshot", "qr", "ad")
+                        if _worth is not None:
+                            keep = bool(_worth)      # 她看过之后觉得有趣才收
+                            if not private and _hard_bad:
+                                keep = False         # 群里：私照/截图/二维码不收，再有趣也不收
+                        elif g:
+                            # 识图没给这个字段（解析失败/旧缓存）→ 退回"明显不该收的挡掉，其余收"
+                            keep = (_kind not in ("qr", "ad")) if private else (not _hard_bad)
+                        else:
+                            keep = True              # 识图整个失败：宁可先收下，别漏掉好图
+                        if not keep:
+                            self._log("表情包：识图觉得没梗/不适合，没收（kind=%s worth=%s desc=%s）"
+                                      % (_kind or "?", _worth, g.get("desc") or "?"))
                             continue
                         it = await asyncio.to_thread(
                             stickers.add_file, path, gid, g.get("desc", ""), g.get("tags") or [],

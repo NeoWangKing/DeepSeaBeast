@@ -7,10 +7,13 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-try:
-    from memory import llm
-except Exception:
-    llm = None
+def _llm():
+    """延迟导入：插件热重载时少一层导入链，避免和主模块抢同一个包。"""
+    try:
+        from memory import llm as _l
+        return _l
+    except Exception:
+        return None
 
 PROMPT = """你是 QQ 里的一个真人网友。你刚刚发了这么一句：
 
@@ -29,6 +32,7 @@ BAD = {"不用", "无", "没有", "算了", "略", "同上"}
 
 def make_note(prev: str, cfg: dict | None = None, max_chars: int = 40) -> str:
     """返回一句补充，或空串（表示这次不补）。失败一律静默返回空串。"""
+    llm = _llm()
     if llm is None:
         return ""
     p = " ".join(str(prev or "").split())
