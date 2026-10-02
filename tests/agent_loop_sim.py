@@ -23,7 +23,7 @@ def check(name, cond, extra=""):
 
 def mk_tools():
     sent = []
-    cb = {"send_text": lambda t, reply_to_id="", at_user_id="": sent.append(t),
+    cb = {"send_text": lambda t, reply_to_id="", at_user_id="", face="": sent.append(t),
           "send_sticker": lambda sid, reply_to_id="": (sent.append("STK:" + sid), True)[1],
           "recent_lines": lambda n: ["A：在吗"],
           "active_members": lambda: ["A"],
