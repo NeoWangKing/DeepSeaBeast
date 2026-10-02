@@ -273,6 +273,21 @@
   "max_rounds": 2,
   "llm": {
    "vision_model": "deepseek-flash"
+  },
+  "tool_profiles": {
+   "full": null,
+   "lean": [
+    "send_message",
+    "send_face",
+    "finish",
+    "get_recent_messages",
+    "lookup_memory",
+    "view_image",
+    "memory_append"
+   ]
+  },
+  "tool_profile_by_group": {
+   "966812151": "lean"
   }
  },
  "kb": {

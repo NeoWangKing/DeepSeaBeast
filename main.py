@@ -2085,7 +2085,7 @@ class QqPeakGate(Star):
                                     [{"role": "system", "content": _txt},
                                      {"role": "user", "content": user}],
                                     schema, None, int(self._agent_cfg().get("max_rounds", 2) or 2),
-                                    self._log_debug)
+                                    self._log)
         self._log("定时唤醒：主动轮结束（说了 %d 条，finish=%s，%s）"
                   % (len(t.sent), t.finished, str((r or {}).get("usage") or {})))
 
@@ -2257,7 +2257,7 @@ class QqPeakGate(Star):
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else key, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                  "tools_text": self._agent_tools_text(), "tools_send": True})
+                  "tools_text": self._agent_tools_text(key), "tools_send": True})
         _menu = self._sticker_menu_text("private" if private else key)
         system_prompt = _txt + (("\n\n" + _menu) if _menu else "")
         _fmenu = self._face_menu_text()
@@ -2967,7 +2967,7 @@ class QqPeakGate(Star):
                             caps={"vision": bool(self.cfg.get("vision", False)),
                                   "search": bool((self.cfg.get("search") or {}).get("enabled")),
                                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                                  "tools_text": self._agent_tools_text(),
+                                  "tools_text": self._agent_tools_text(key),
                                   "tools_send": bool(self._agent_cfg().get("send_tools"))})
                         req.system_prompt = _txt
                         self._log("提示词: 人格=%s 补丁=%s 行为%d段；人格%d字/行为%d字/共%d字；参与=%s 表情档=%s"
