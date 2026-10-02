@@ -2024,7 +2024,8 @@ class QqPeakGate(Star):
                 return True
         # 空消息（没文字、也没取到图）：多半是 QQ 自带表情/大表情或其他系统消息，
         # 现在读不出内容 → 静默跳过，别回"怎么了"这种莫名其妙的话。
-        if not str(getattr(event, "message_str", "") or "").strip() and not _img_paths:
+        if (not str(getattr(event, "message_str", "") or "").strip() and not _img_paths
+                and not _face_hint):
             try:
                 _raw = getattr(event, "raw_message", None)
                 if _raw is None:
@@ -2040,7 +2041,7 @@ class QqPeakGate(Star):
             return True
 
         _vmodel = None
-        _user_content = user
+        _user_content = (user + (" " + _face_note if _face_hint else ""))
         if False:
             _parts = []
             for _p in _img_paths[:2]:
