@@ -1487,6 +1487,11 @@ class QqPeakGate(Star):
                                            "max_store", 300) or 300), g)
                 if not it:
                     return "这张要么重复、要么没存进去"
+                try:
+                    if stickers.add_face(path):
+                        it["face_pushed"] = True
+                except Exception:
+                    pass
                 return "收藏好了：%s（%s）" % (it.get("id"), it.get("desc") or note or "")
             except Exception as e:
                 return "没收藏：%r" % (e,)
@@ -2102,6 +2107,12 @@ class QqPeakGate(Star):
                                 _hits.append(_now)
                                 self._log("看图轮：收下表情 %s《%s》（她觉得有意思）"
                                           % (_it.get("id"), _desc[:24]))
+                                try:
+                                    if stickers.add_face(_img_paths[0]):
+                                        _it["face_pushed"] = True
+                                        self._log("看图轮：已同步进 QQ 表情面板")
+                                except Exception as _e2:
+                                    self._log_debug("看图轮：同步面板失败 %r" % (_e2,))
                             else:
                                 self._log("看图轮：想收但没入库（可能重复）")
                     except Exception as _e:
