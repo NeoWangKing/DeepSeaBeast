@@ -1,0 +1,181 @@
+{
+ "offpeak": "00:30-08:30",
+ "auto_reply_probability": 0.2,
+ "keywords": [
+  "小鲸鱼",
+  "大肥鱼",
+  "肥鱼",
+  "鲸鱼",
+  "小鲸"
+ ],
+ "min_interval_sec": 180,
+ "max_auto_per_hour": 6,
+ "force_mode": "",
+ "inject_memes": true,
+ "memes_file": "memes.md",
+ "image_fastpath": false,
+ "smart_quote": true,
+ "engaged_interval_sec": 2,
+ "engaged_window_sec": 90,
+ "engaged_rest_sec": 60,
+ "max_engaged_streak": 6,
+ "quote_when_stale": true,
+ "quote_when_replied": false,
+ "compact_context": true,
+ "context_lines": 6,
+ "override_system_prompt": true,
+ "drop_tools": true,
+ "peak_windows": [
+  "09:00-12:00",
+  "14:00-18:00"
+ ],
+ "holidays_file": "holidays.json",
+ "log_chat": true,
+ "log_dir": "chatlog",
+ "memes_group": "869622030",
+ "scoring": {
+  "enabled": true,
+  "base": 0.08,
+  "p_max": 0.4,
+  "cont_after_bot": 0.25,
+  "log_decisions": true,
+  "p_quote_me": 0.95,
+  "p_continue": 0.9,
+  "p_window": 0.4,
+  "echo_strong": 0.34,
+  "flood_fast_count": 5,
+  "flood_slow_count": 10
+ },
+ "prompt_by_group": {},
+ "system_prompt_file": "system_prompt.txt",
+ "only_at_groups": [],
+ "no_memes_groups": [],
+ "no_context_groups": [],
+ "no_log_groups": [],
+ "cont_window_sec": 180,
+ "dump_prompt": false,
+ "memory": {
+  "enabled": true,
+  "groups": [],
+  "provider": {
+   "base_url": "https://open.bigmodel.cn/api/paas/v4",
+   "model": "glm-5.3-flashx",
+   "api_key_source": "file:/opt/astrbot/data/plugins/qq_peak_gate/.secrets/glm.key",
+   "json_mode": true,
+   "thinking": {
+    "type": "enabled"
+   },
+   "reasoning_effort": "low",
+   "temperature": 0.6,
+   "max_tokens": 1500
+  },
+  "inject": {
+   "group_profile": true,
+   "members": true,
+   "max_members": 3,
+   "full_groups": [],
+   "full_max_chars": 1200
+  },
+  "group_profile": {
+   "enabled": true,
+   "window": 200,
+   "max_chars": 500,
+   "min_new_msgs": 50,
+   "min_interval_hours": 4
+  },
+  "members": {
+   "enabled": true,
+   "window": 400,
+   "max_chars": 100,
+   "min_msgs_to_create": 5,
+   "min_new_msgs_to_update": 20,
+   "min_interval_hours": 12
+  }
+ },
+ "burst_suppress_sec": 0,
+ "split_reply": {
+  "enabled": true,
+  "min_chars": 12,
+  "max_parts": 5,
+  "delay_ms": 700,
+  "exclude_groups": [
+   "966812151"
+  ],
+  "char_mode": {
+   "enabled": true,
+   "max_parts": 24,
+   "delay_ms": 800,
+   "triggers": [
+    "一个字一个字",
+    "一个个字",
+    "逐字",
+    "一个字一发",
+    "一个字一条",
+    "拆开回",
+    "拆开发",
+    "一个字一个字发"
+   ],
+   "jitter": 0.3,
+   "max_per_hour": 60
+  },
+  "marker": "|||",
+  "hint": true
+ },
+ "human_delay": {
+  "enabled": true,
+  "base_sec": 1.2,
+  "chars_per_sec": 12,
+  "min_sec": 0.8,
+  "max_sec": 8.0,
+  "jitter": 0.2,
+  "short_chars": 3,
+  "short_wait_sec": 2.5,
+  "burst_wait_sec": 3.5
+ },
+ "allowed_groups": [],
+ "allowed_self_id": "",
+ "auto_persona": {
+  "enabled": true,
+  "template": "personas/_template.txt",
+  "add_allowed": false,
+  "add_memory": true
+ },
+ "turtle": {
+  "enabled": true,
+  "groups": [],
+  "at_only": false,
+  "start_needs_at": null,
+  "start_keywords": [
+   "海龟汤",
+   "开局"
+  ],
+  "exit_keywords": [
+   "揭晓",
+   "结束",
+   "不玩了",
+   "退出",
+   "收工"
+  ],
+  "opening": "🐢 海龟汤开局！\n\n【汤面】{surface}\n\n开始问吧——我只回「是 / 不是 / 不重要」。想结束就说「揭晓」。",
+  "reveal": "【汤底】{bottom}\n\n—— 这局到此为止，想再来一局就说「海龟汤」。",
+  "fact_every": 10,
+  "question_filter": "llm",
+  "quote": true,
+  "per_group": {
+   "966812151": {
+    "question_filter": "at",
+    "no_disk": true
+   }
+  },
+  "judge": {
+   "base_url": "https://api.deepseek.com",
+   "model": "deepseek-chat",
+   "api_key_source": "astrbot",
+   "temperature": 0.0,
+   "max_tokens": 400,
+   "timeout": 60,
+   "thinking": null,
+   "reasoning_effort": null
+  }
+ }
+}

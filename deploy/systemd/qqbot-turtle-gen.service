@@ -1,0 +1,11 @@
+[Unit]
+Description=大肥鱼 海龟汤 AI 出题（只补到目标数量，每次都很少量）
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=astrbot
+WorkingDirectory=/opt/astrbot/data/plugins/qq_peak_gate
+ExecStart=/opt/astrbot/.local/share/uv/tools/astrbot/bin/python turtle/gen.py --topup --max-new 2 --budget 30000
+Nice=15
+IOSchedulingClass=idle

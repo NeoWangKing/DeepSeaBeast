@@ -1,0 +1,6 @@
+[Unit]
+Description=大肥鱼 每日备份
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/qqbot-backup

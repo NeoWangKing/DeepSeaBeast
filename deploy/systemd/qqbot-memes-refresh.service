@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh group slang list (qq_peak_gate memes.md)
+
+[Service]
+Type=oneshot
+User=astrbot
+Environment=HOME=/opt/astrbot
+ExecStart=/opt/astrbot/.local/share/uv/tools/astrbot/bin/python /opt/astrbot/data/plugins/qq_peak_gate/tools/extract_memes.py

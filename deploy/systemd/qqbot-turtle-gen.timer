@@ -1,0 +1,10 @@
+[Unit]
+Description=每天给海龟汤题库补题（题库少于目标才动，每天最多 2 道）
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+OnBootSec=40min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

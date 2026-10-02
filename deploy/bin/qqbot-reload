@@ -1,0 +1,47 @@
+#!/bin/bash
+# 只重载 qq_peak_gate 插件，不重启 astrbot —— 不会断开 OneBot 连接，群里消息不会丢
+# 用法: qqbot-reload [插件名]
+set -e
+FORCE=0
+if [ "$1" = "--force" ]; then FORCE=1; shift; fi
+PLUGIN="${1:-qq_peak_gate}"
+# 有对局进行中就别重载，免得打断群里玩
+if [ "$FORCE" != "1" ]; then
+  if ! python3 /usr/local/lib/qqbot_reload_guard.py; then
+    echo "(急着重载: qqbot-reload --force $PLUGIN)"
+    exit 3
+  fi
+fi
+PY=${QQBOT_PY:-/opt/astrbot/.local/share/uv/tools/astrbot/bin/python}
+"$PY" - "$PLUGIN" <<PYEOF
+import datetime, json, sys, urllib.request
+name = sys.argv[1]
+cfg = json.load(open("/opt/astrbot/data/cmd_config.json", encoding="utf-8-sig"))
+d = cfg.get("dashboard") or {}
+import jwt
+payload = {"username": d.get("username") or "QQ_Bot",
+           "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5)}
+tok = jwt.encode(payload, d["jwt_secret"], algorithm="HS256")
+port = d.get("port") or 6185
+req = urllib.request.Request(
+    "http://127.0.0.1:%d/api/plugin/reload" % port,
+    data=json.dumps({"name": name}).encode(),
+    method="POST",
+    headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+)
+try:
+    r = urllib.request.urlopen(req, timeout=60)
+    print("HTTP", r.status, r.read().decode()[:200])
+except Exception as e:
+    body = getattr(e, "read", lambda: b"")()
+    print("重载失败:", e, body[:300])
+    sys.exit(1)
+t0 = datetime.datetime.now()
+try:
+    body = json.loads(body) if False else None
+except Exception:
+    pass
+PYEOF
+sleep 2
+journalctl -u astrbot --since "30 sec ago" --no-pager | grep -E "qq_peak_gate|Loading plugin" | tail -4
+echo "（以上应该是插件重载日志；若看到 aiocqhttp 适配器已连接 = 变成了真重启）"

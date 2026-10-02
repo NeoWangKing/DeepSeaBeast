@@ -1,0 +1,15 @@
+#!/bin/bash
+# 大肥鱼 每日备份：人格/配置/记忆/梗库/chatlog + 运维文档，保留 7 天
+set -e
+B=/root/qqbot-backups
+D=$B/$(date +%F)
+mkdir -p "$D"
+cd ${QQBOT_PLUGIN_DIR:-/opt/astrbot/data/plugins/qq_peak_gate}
+tar czf "$D/plugin.tar.gz" config.json system_prompt.txt system_prompt_sharp.txt \
+    system_prompt_private.txt system_prompt_tool.txt memes.md metadata.yaml \
+    extract_memes.py memory .secrets chatlog 2>/dev/null || true
+tar czf "$D/astrbot-cfg.tar.gz" -C /opt/astrbot/data cmd_config.json 2>/dev/null || true
+cp -a /opt/astrbot/OPS.md "$D/" 2>/dev/null || true
+chmod 600 "$D"/*.tar.gz
+find "$B" -maxdepth 1 -type d -name '20*' -mtime +7 -exec rm -rf {} \; 2>/dev/null || true
+echo "备份完成: $D ($(du -sh "$D" | cut -f1))"

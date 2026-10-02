@@ -1,0 +1,10 @@
+[Unit]
+Description=每小时触发一次大肥鱼记忆刷新（内部有守卫条件）
+
+[Timer]
+OnCalendar=hourly
+OnBootSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,4 @@
+#!/bin/bash
+# 表情包收藏夹管理：qqbot-sticker [stats|list|add <文件>|del <id>|tag <文件>]
+exec ${QQBOT_PY:-/opt/astrbot/.local/share/uv/tools/astrbot/bin/python} \
+  ${QQBOT_PLUGIN_DIR:-/opt/astrbot/data/plugins/qq_peak_gate}/stickers.py "$@"

@@ -1,0 +1,10 @@
+[Unit]
+Description=定时检查 QQ 桥接，断了就自动重连
+
+[Timer]
+OnBootSec=90s
+OnCalendar=*:0/3
+Persistent=true
+
+[Install]
+WantedBy=timers.target

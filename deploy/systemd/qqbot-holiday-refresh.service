@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh Chinese holiday calendar for qq_peak_gate plugin
+
+[Service]
+Type=oneshot
+User=astrbot
+Environment=HOME=/opt/astrbot
+ExecStart=/opt/astrbot/.local/share/uv/tools/astrbot/bin/python /opt/astrbot/data/plugins/qq_peak_gate/tools/refresh_holidays.py

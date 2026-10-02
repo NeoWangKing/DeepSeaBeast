@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly refresh of Chinese holiday calendar (qq_peak_gate)
+
+[Timer]
+OnCalendar=*-*-01 05:30:00
+OnBootSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

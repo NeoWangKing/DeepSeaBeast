@@ -1,0 +1,8 @@
+[Unit]
+Description=大肥鱼 QQ 桥接自愈（SnowLuma→AstrBot 断线重连）
+After=network-online.target snowluma.service astrbot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/qqbot-qq-reconnect
+Nice=10

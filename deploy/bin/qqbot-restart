@@ -1,0 +1,10 @@
+#!/bin/bash
+# 重启大肥鱼并"等到真的就绪"——不瞎 sleep，就绪就返回
+t0=$(date +%s)
+systemctl restart astrbot
+for i in $(seq 1 30); do
+  [ "$(ss -tn | grep -c ':6199')" -ge 2 ] && break
+  sleep 1
+done
+printf "astrbot=%s 连接=%s条 耗时=%ss\n" "$(systemctl is-active astrbot)" \
+  "$(ss -tn | grep -c ':6199')" "$(( $(date +%s) - t0 ))"

@@ -1,0 +1,4 @@
+#!/bin/bash
+# 本地小资料库：qqbot-kb [build|search <词>|stats|list]
+exec ${QQBOT_PY:-/opt/astrbot/.local/share/uv/tools/astrbot/bin/python} \
+  ${QQBOT_PLUGIN_DIR:-/opt/astrbot/data/plugins/qq_peak_gate}/kb.py "$@"

@@ -1,0 +1,9 @@
+[Unit]
+Description=每天 03:40 备份大肥鱼
+
+[Timer]
+OnCalendar=*-*-* 03:40:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

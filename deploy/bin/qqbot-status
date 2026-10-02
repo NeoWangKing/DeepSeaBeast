@@ -1,0 +1,32 @@
+#!/bin/bash
+# qqbot-status —— AstrBot QQ 机器人速查（只读，不碰任何服务）
+CFG=/opt/astrbot/data/cmd_config.json
+echo "=== 服务 ==="
+printf "  astrbot: %s (%s)\n" "$(systemctl is-active astrbot)" "$(systemctl is-enabled astrbot 2>/dev/null)"
+echo "=== 资源 ==="
+systemctl show astrbot -p MemoryCurrent --value | awk '{printf "  内存: %.0f MB (上限 1024 MB)\n", $1/1048576}'
+ps -o %cpu,rss,etime -C astrbot --no-headers 2>/dev/null | awk '{printf "  CPU: %s%%  RSS: %.0f MB  已运行: %s\n", $1, $2/1024, $3}'
+echo "=== 端口 ==="
+ss -lnt 2>/dev/null | grep -E "6185|6199" | awk '{print "  监听:", $4}'
+printf "  协议端(SnowLuma)已连接: %s 条\n" "$(ss -tn 2>/dev/null | grep -c ':6199')"
+echo "=== 配置摘要 ==="
+python3 - "$CFG" <<'PY'
+import json, sqlite3, sys
+d = json.load(open(sys.argv[1], encoding="utf-8-sig"))
+ar = d.get("agent_runner", {}).get("config", {})
+ps = d.get("platform_settings", {})
+print("  模型:", ar.get("model", {}).get("provider_id"))
+print("  人格:", ar.get("persona", {}).get("persona_id"), "| max_steps:", ar.get("misc", {}).get("max_steps"))
+print("  群白名单:", ps.get("id_whitelist") or "未限制", "| 管理员:", d.get("admins_id"))
+print("  @全体唤醒:", "否" if ps.get("ignore_at_all") else "是", "| 限频:", ps.get("rate_limit"))
+try:
+    c = sqlite3.connect("/opt/astrbot/data/data_v4.db")
+    print("  可用人格:", ", ".join(r[0] for r in c.execute("select persona_id from personas")))
+except Exception as e:
+    print("  人格读取失败:", e)
+PY
+echo "=== 最近 30 分钟错误 ==="
+out=$(journalctl -u astrbot --since "-30min" --no-pager 2>/dev/null | grep -icE "error|critical|traceback")
+if [ "$out" = "0" ]; then echo "  无"; else journalctl -u astrbot --since "-30min" --no-pager | grep -iE "error|critical|traceback" | tail -5; fi
+echo "=== 常用命令 ==="
+echo "  systemctl restart astrbot | journalctl -u astrbot -f | tail -f /root/lag-monitor.log"

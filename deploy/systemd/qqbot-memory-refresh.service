@@ -1,0 +1,11 @@
+[Unit]
+Description=大肥鱼 长期记忆刷新（群印象/人物档案）
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=astrbot
+WorkingDirectory=/opt/astrbot/data/plugins/qq_peak_gate
+ExecStart=/opt/astrbot/.local/share/uv/tools/astrbot/bin/python -m memory.refresh
+Nice=15
+IOSchedulingClass=idle
