@@ -110,7 +110,10 @@ async def main_():
         st._ts_probe = True
         await p.smart_quote(ev4)
         kinds = [type(x).__name__ for x in res3.chain]
-        check("[表情:id] 换成图片组件", "Image" in kinds, kinds)
+        await asyncio.sleep(0.4)          # 图片表情现在是后台单独发一条
+        sent_kinds = [k for k in getattr(ev4, "sent_kinds", [])]
+        check("[表情:id] 单独一条发出图片", any("Image" in k for k in sent_kinds),
+              (kinds, sent_kinds))
         check("文字里的标记被清掉", all("[表情" not in getattr(x, "text", "") for x in res3.chain))
     else:
         check("库里有本地表情可测", False, "跳过")
