@@ -242,6 +242,11 @@
     "send_tools_groups": [
       "869622030"
     ],
-    "rescue_text": false
+    "rescue_text": false,
+    "loop_mode": false,
+    "loop_groups": [
+      "869622030"
+    ],
+    "max_rounds": 2
   }
 }
