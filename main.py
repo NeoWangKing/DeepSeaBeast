@@ -104,7 +104,10 @@ DEFAULTS = {
             "send_exclude_groups": ["966812151"],      # 这些群不发图
             "max_store": 300,        # 收藏上限（按"最少用+最久没用"淘汰）
             "max_per_hour": 3,       # 每小时最多发几张
-            "collect_max_per_hour": 10,
+            "collect_max_per_hour": 10,       # 群聊里每小时最多收几张
+            "collect_private": True,          # 私聊发图也收（自己人发的多半是精选）
+            "private_max_per_hour": 50,       # 私聊每小时上限放宽
+            "send_private": True,             # 私聊也能发表情包
             "vision_model": "glm-4v-flash",
             "collect_say_prob": 0.18,            # 收图后偶尔开口夸一句的概率（大部分时候什么都不说）
             "collect_say_max_per_hour": 2,       # 这种"顺手夸一句"每小时最多几次
@@ -1346,6 +1349,8 @@ class QqPeakGate(Star):
             msgs = list(event.get_messages() or [])
             if not msgs or not any(isinstance(x, Image) for x in msgs):
                 return
+            if not str(event.get_group_id() or ""):
+                self._spawn_sticker_collect(event)     # 私聊发图也收
             if not self.cfg.get("image_fastpath", True):
                 return
             kept = []
@@ -1663,8 +1668,12 @@ class QqPeakGate(Star):
             cfg = self.cfg.get("stickers") or {}
             if not cfg.get("enabled", True):
                 return
-            gid = str(event.get_group_id() or "")
-            if not gid or gid in [str(x) for x in (cfg.get("collect_exclude_groups") or [])]:
+            gid = self._chat_key(event)
+            private = gid.startswith("p:")
+            if private:
+                if not cfg.get("collect_private", True):
+                    return
+            elif gid in [str(x) for x in (cfg.get("collect_exclude_groups") or [])]:
                 return
             comps = [m for m in event.get_messages() if isinstance(m, Image)]
             if not comps:
@@ -1675,7 +1684,9 @@ class QqPeakGate(Star):
                 lst = self.sticker_collect_ts = {}
             hits = lst.setdefault(gid, [])
             hits[:] = [x for x in hits if now - x <= 3600]
-            if len(hits) >= int(cfg.get("collect_max_per_hour", 10) or 10):
+            _limit = int((cfg.get("private_max_per_hour", 50) if private
+                          else cfg.get("collect_max_per_hour", 10)) or 10)
+            if len(hits) >= _limit:
                 return
             hits.append(now)
 
@@ -1690,8 +1701,8 @@ class QqPeakGate(Star):
                         _kind = str(g.get("kind") or "").lower()
                         # 只挡明显不该收的（自拍/截图/二维码/广告）；其它一律先收下，
                         # 免得群友觉得好玩、模型却判"不是表情包"给漏了
-                        if _kind in ("selfie", "screenshot", "qr", "ad") or (
-                                not g.get("is_meme") and _kind in ("", "other") and False):
+                        if (not private) and (_kind in ("selfie", "screenshot", "qr", "ad") or (
+                                not g.get("is_meme") and _kind in ("", "other") and False)):
                             self._log("表情包：不适合作表情，没收藏（kind=%s desc=%s）"
                                       % (_kind or "?", g.get("desc") or "?"))
                             continue
@@ -1762,8 +1773,11 @@ class QqPeakGate(Star):
             cfg = self.cfg.get("stickers") or {}
             if not cfg.get("enabled", True):
                 return
-            gid = str(event.get_group_id() or "")
-            if not gid or gid == "0" or gid in [str(x) for x in (cfg.get("send_exclude_groups") or [])]:
+            gid = self._chat_key(event)
+            if gid.startswith("p:"):
+                if not cfg.get("send_private", True):
+                    return
+            elif gid in [str(x) for x in (cfg.get("send_exclude_groups") or [])]:
                 return
             result = event.get_result()
             chain = list(getattr(result, "chain", None) or [])
@@ -1820,6 +1834,18 @@ class QqPeakGate(Star):
                       % (it.get("id"), it.get("desc"), ",".join(it.get("tags") or []), len(hits)))
         except Exception as e:
             self._log("表情包发送失败（忽略）: %r" % (e,))
+
+    @staticmethod
+    def _chat_key(event) -> str:
+        """群聊用群号；私聊用 p:<对方QQ>。"""
+        gid = str(event.get_group_id() or "").strip()
+        if gid and gid != "0":
+            return gid
+        try:
+            uid = str(event.get_sender_id() or "").strip()
+        except Exception:
+            uid = ""
+        return ("p:" + uid) if uid else "p:unknown"
 
     @staticmethod
     def _poked_me(event) -> bool:
