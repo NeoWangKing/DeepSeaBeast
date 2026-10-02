@@ -2976,8 +2976,13 @@ class QqPeakGate(Star):
                     img = Image(file=path)
             except Exception:
                 img = Image(file=path)
-            nonempty.append(img)
-            result.chain = nonempty
+            # 图片表情单独拆一条消息发（真人不会把图塞进文字气泡里）
+            try:
+                asyncio.create_task(event.send(MessageChain([img])))
+                result.chain = nonempty if nonempty else []
+            except Exception:
+                nonempty.append(img)
+                result.chain = nonempty
             hits.append(now)
             stickers.mark_used(it.get("id"))
             self._log("表情包：发了 %s《%s》标签=%s（本小时第 %d 张）"
