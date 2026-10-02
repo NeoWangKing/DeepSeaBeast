@@ -110,3 +110,24 @@ python3 tests/gate_sim.py   # 离线测试台（60+ 场景，不联网、不碰 
 - 输出协议（模型侧约定）：`|||` 分条、整条 `[不说话]` 表示这条不发、`[表情:id]` 指名发某张收藏表情；
   解析在 `replyproto.py`，发送侧只做校验不再按长度硬切（兜底切分由 `split_reply.heuristic_fallback` 控制）。
 - 自测：`python3 tests/proto_sim.py`（协议）、`python3 tests/flow_sim.py`（提示词+协议链路）。
+
+
+## agent 层速查（2026-10-02 新增，做「真人感」那一层）
+
+```
+agent/tools.py    工具实现（会话绑定，纯逻辑可离线测）
+agent/loop.py     强制工具轮：tool_choice=required + 结果回传（说了话就收工）
+agent/llm.py      OpenAI 兼容客户端（chat_tools / chat_text / chat_vision）
+agent/vision.py   看图：DeepSeek 多模态（不用 GLM）
+```
+- 发送通道：`_transport_send` —— 有 event 走 `event.send`，定时（无 event）走 `context.send_message`
+- 开关：`config.json` 的 `agent` 块
+  - `enabled` 总开关；`loop_mode` + `loop_groups` 决定哪些会话走工具发言
+  - `send_tools_groups` 决定哪些会话允许"用工具说话"
+  - `tool_profiles` / `tool_profile_by_group` 按会话裁剪工具（豹群=lean，7 个）
+  - `max_rounds` 每轮最多几轮工具调用；`max_calls` 单轮工具次数上限
+- 定时：`schedule_wake(after_sec, say, reason, mode=say|think, every_sec)` + `cancel_wake`
+  - say=到点直接发（0 token）；think=到点跑一次"主动轮"（可用全部工具）
+- 兜底：发送口 `replyproto.sanitize()` 清内部标记（**保留 [QQ表情:…]**）；配 `data/agent_faults.json` 计数
+- 体检：`python3 tools/agent_report.py [小时数]`
+- 排障顺序：`qqbot-status`（故障计数/定时/表情库）→ `journalctl -u astrbot | grep qq_peak_gate` → `data/agent_faults.json`

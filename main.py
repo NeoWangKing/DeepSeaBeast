@@ -1893,6 +1893,18 @@ class QqPeakGate(Star):
             await self._transport_send(target, MessageChain(comps))
             self._log("agent：发出「%s」%s" % (str(text)[:40],
                                               ("＋表情%s" % "、".join(_faces)) if _faces else ""))
+            try:                                   # 自己说过的也记进"最近群聊"（供上下文 + 防重复）
+                _rk = str((target or {}).get("gid") or "")
+                if _rk.startswith("p:"):
+                    _rk = ""
+                if _rk not in [str(x) for x in (self.cfg.get("no_context_groups") or [])]:
+                    _buf = self.recent.get(_rk)
+                    if _buf is None:
+                        _buf = deque(maxlen=max(2, int(self.cfg.get("context_lines", 6))))
+                        self.recent[_rk] = _buf
+                    _buf.append(("我", str(text)[:60], ""))
+            except Exception:
+                pass
         except Exception as e:
             self._log("agent：发送失败 %r" % (e,))
 
@@ -2279,15 +2291,23 @@ class QqPeakGate(Star):
         if not schema:
             self._log("agent loop：没有可用工具，交回原流程")
             return False
-        lines = []
+        lines, _mine = [], []
         try:
-            for item in list(self.recent.get(str(event.get_group_id() or "")) or [])[-10:]:
+            _rk = "" if key.startswith("p:") else str(event.get_group_id() or "")
+            _recent = list(self.recent.get(_rk) or [])
+            for item in _recent[-10:]:
                 lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:60]))
+            for item in _recent[-8:]:
+                if str(item[0] or "") == "我" and str(item[1] or "").strip():
+                    _mine.append(str(item[1])[:30])
         except Exception:
             pass
         user = ""
         if lines:
             user += "[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines) + "\n"
+        if _mine:
+            user += ("[你最近说过的几句（尽量换个说法、别老用同一句；语境确实需要重复时可以重复，"
+                     "但别连着重复同一句）]\n" + "\n".join("- " + m for m in _mine[-5:]) + "\n")
         user += "[当前消息] " + str(getattr(event, "message_str", "") or "")
         try:
             if _face_note:
