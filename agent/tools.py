@@ -237,7 +237,7 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("poke") and send_tools:
         specs.append(("send_poke",
                       [{"type": "string", "name": "target_id",
-                        "description": "可选：戳谁的 QQ 号，留空戳当前说话的人"}],
+                        "description": "戳谁的 QQ 号；留空=戳当前跟你说话的人（私聊里通常留空就行）"}],
                       "拍一拍对方（偶尔逗熟人用，别频繁）", "send_poke"))
     if on("memory_write"):
         specs.append(("memory_append",

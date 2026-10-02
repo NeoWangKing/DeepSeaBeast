@@ -1542,16 +1542,30 @@ class QqPeakGate(Star):
         def _send_poke(target=""):
             uid = str(target or event.get_sender_id() or "")
             gid = str(event.get_group_id() or "")
+            if not uid or not uid.isdigit():
+                return False
 
             async def _do():
-                params = {"user_id": int(uid)}
+                shapes = []
                 if gid and gid != "0":
-                    params["group_id"] = int(gid)
-                await event.call_action("send_poke", **params)
+                    shapes.append({"user_id": int(uid), "group_id": int(gid)})
+                shapes.append({"user_id": int(uid)})
+                last = None
+                for prm in shapes:
+                    try:
+                        await event.call_action("send_poke", **prm)
+                        self._log("agent：拍了一下 %s" % (prm,))
+                        return True
+                    except Exception as e:
+                        last = e
+                self._log("agent：拍失败 %r" % (last,))
+                return False
             try:
-                _spawn(_do())
-                return True
-            except Exception:
+                if _loop is not None and _loop.is_running():
+                    return bool(asyncio.run_coroutine_threadsafe(_do(), _loop).result(timeout=8))
+                return bool(asyncio.get_event_loop().run_until_complete(_do()))
+            except Exception as e:
+                self._log("agent：拍异常 %r" % (e,))
                 return False
 
         def _memory_append(kind, text):
@@ -1699,13 +1713,28 @@ class QqPeakGate(Star):
         # 消息里有图 → 直接把图给多模态模型看（她真的能看到），这一轮临时切模型
         _img_paths = []
         try:
-            for _m in event.get_messages():
-                if isinstance(_m, Image):
-                    _p = self._save_tmp_image(_m)
-                    if _p:
-                        _img_paths.append(_p)
-        except Exception:
-            pass
+            _comps = list(event.get_messages() or [])
+            try:
+                _comps += list(getattr(getattr(event, "message_obj", None), "message", None) or [])
+            except Exception:
+                pass
+            _names = [type(x).__name__ for x in _comps]
+            _txt_now = str(getattr(event, "message_str", "") or "").strip()
+            if _names and not _txt_now:
+                self._log("agent loop：消息组件=%s" % _names)
+            for _m in _comps:
+                _is_img = (isinstance(_m, Image)
+                           or type(_m).__name__ in ("Image", "Picture", "Face")
+                           or str(getattr(_m, "type", "") or "").lower() == "image")
+                if not _is_img:
+                    continue
+                _p = self._save_tmp_image(_m)
+                if _p:
+                    _img_paths.append(_p)
+                else:
+                    self._log("agent loop：有图但取不下来（组件=%s）" % _names)
+        except Exception as _e:
+            self._log("agent loop：取图异常 %r" % (_e,))
         _vmodel = None
         _user_content = user
         if _img_paths:
