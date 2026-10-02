@@ -119,7 +119,9 @@
       "max_per_hour": 60
     },
     "marker": "|||",
-    "hint": true
+    "hint": true,
+    "silence": true,
+    "heuristic_fallback": true
   },
   "human_delay": {
     "enabled": true,
@@ -178,12 +180,24 @@
       "reasoning_effort": null
     }
   },
-  "stickers": {},
+  "stickers": {
+    "prompt_max": 8,
+    "encourage": 1
+  },
   "followup": {
     "enabled": true,
     "chance": 0.12,
     "max_per_hour": 2,
     "delay_ms": 2600,
     "exclude_groups": []
+  },
+  "prompt": {
+    "layered": true,
+    "bot_name": "小鲸鱼",
+    "participation": "normal",
+    "persona_patch": "personas/_common_patch.txt",
+    "persona_patch_by_group": {},
+    "disable_sections": [],
+    "extra": ""
   }
 }

@@ -27,7 +27,7 @@ except Exception:
 from astrbot.api.star import Context, Star, register
 
 try:
-    from . import scoring, stickers, kb as local_kb, followup   # AstrBot 以包形式加载插件
+    from . import scoring, stickers, kb as local_kb, followup, replyproto, promptlib   # AstrBot 以包形式加载插件
     from .memory import store as mem_store     # 记忆产物只读访问
     from .games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
 except Exception:                              # 兜底：直接当脚本/被 py_compile 时
@@ -37,6 +37,8 @@ except Exception:                              # 兜底：直接当脚本/被 py
     import stickers
     import kb as local_kb
     import followup
+    import replyproto
+    import promptlib
     from memory import store as mem_store
     from games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
     from games.turtle_soup import gen as turtle_gen
@@ -1219,9 +1221,18 @@ class QqPeakGate(Star):
             return ""
 
     def _prompt_path(self, gid: str) -> str:
-        """按群/场景选人格文件：prompt_by_group 里点名的（群号或 "private"）优先，否则用默认温和版。"""
+        """人格卡路径（群/私聊）—— 统一由 promptlib 解析，旧写法继续兼容。"""
+        key = str(gid or "")
+        private = (not key or key in ("0", "private"))
         try:
-            name = (self.cfg.get("prompt_by_group") or {}).get(str(gid or "")) \
+            path, _src = promptlib.pick_file(PLUGIN_DIR, self.cfg,
+                                             "" if private else key, private)
+            if path:
+                return path
+        except Exception:
+            pass
+        try:
+            name = (self.cfg.get("prompt_by_group") or {}).get(key) \
                 or self.cfg.get("system_prompt_file") or "system_prompt.txt"
         except Exception:
             name = "system_prompt.txt"
@@ -1285,6 +1296,64 @@ class QqPeakGate(Star):
         except Exception as e:
             self._log("remember_reply ERROR: %r" % (e,))
 
+    def _sticker_menu_text(self, gid: str = "") -> str:
+        """【可用表情包】清单：让模型用 [表情:id] 指名发图。
+
+        稳定性：按用过次数排序取一半固定，另一半按小时轮换（同一小时内内容不变 →
+        前缀缓存友好，且不会总发同几张）。
+        """
+        try:
+            cfg = self.cfg.get("stickers") or {}
+            if not cfg.get("enabled", True):
+                return ""
+            if gid == "private":
+                if not cfg.get("send_private", True):
+                    return ""
+            elif gid and gid in [str(x) for x in (cfg.get("send_exclude_groups") or [])]:
+                return ""
+            n = int(cfg.get("prompt_max", 8) or 0)
+            if n <= 0:
+                return ""
+            items = [x for x in (stickers.load() or []) if str(x.get("id") or "")]
+            if not items:
+                return ""
+            items.sort(key=lambda x: (-int(x.get("used") or 0), str(x.get("id"))))
+            n = max(1, min(int(n), len(items)))
+            stable_n = max(1, n // 2)
+            stable = items[:stable_n]
+            pool = list(items[stable_n:])
+            if len(pool) > 1:
+                random.Random(int(time.time() // 3600)).shuffle(pool)
+            picked = stable + pool[:n - stable_n]
+            lines = []
+            for it in picked:
+                desc = str(it.get("desc") or "").strip() or "（还没备注这图什么意思）"
+                tags = "/".join([str(t) for t in (it.get("tags") or [])][:4])
+                lines.append("- %s ｜ %s%s" % (it.get("id"), desc,
+                                               ("［%s］" % tags) if tags else ""))
+            return ("【可用表情包】她的收藏里共 %d 张，下面是常用的和她这小时轮到的 %d 张；"
+                    "想发其中某张就写 [表情:那张的 id]；拿不准就用 [表情:情绪]，让她自己挑。\n%s"
+                    % (len(items), len(picked), "\n".join(lines)))
+        except Exception as e:
+            self._log_debug("表情清单拼装失败: %r" % (e,))
+            return ""
+
+    def _protocol_parse(self, event):
+        """按输出协议解析她这条回复：分条 / 沉默 / 表情标记。"""
+        try:
+            sc = self.cfg.get("split_reply") or {}
+            result = event.get_result()
+            txt = ""
+            for c in (getattr(result, "chain", None) or []):
+                if isinstance(c, Plain):
+                    txt += c.text or ""
+            cap = int((sc.get("char_mode") or {}).get("max_parts", 24))
+            return replyproto.parse(txt, str(sc.get("marker", "|||")), cap,
+                                    allow_lines=True, silence=bool(sc.get("silence", True)))
+        except Exception as e:
+            self._log_debug("协议解析失败: %r" % (e,))
+            return replyproto.Parsed(parts=[])
+
     def _followup_cfg(self) -> dict:
         c = dict(self.cfg.get("followup") or {})
         c.setdefault("enabled", True)
@@ -1294,9 +1363,14 @@ class QqPeakGate(Star):
         c.setdefault("exclude_groups", ["966812151"])
         return c
 
-    def _maybe_followup(self, event: AstrMessageEvent) -> None:
-        """偶尔像真人一样，接着自己刚发的那条再补一句。只做概率判断，不花 token。"""
+    def _maybe_followup(self, event: AstrMessageEvent, multi: bool = False) -> None:
+        """偶尔像真人一样，接着自己刚发的那条再补一句。只做概率判断，不花 token。
+
+        multi=True：她这条已经按输出协议自己分了多条，就不再额外补话（免得话密）。
+        """
         try:
+            if multi:
+                return
             c = self._followup_cfg()
             if not c.get("enabled"):
                 return
@@ -1371,9 +1445,18 @@ class QqPeakGate(Star):
     async def smart_quote(self, event: AstrMessageEvent) -> None:
         """发送前最后一步：只在需要指明"回哪条"时才加引用（全局 reply_with_quote 已关）。"""
         try:
+            # 输出协议：整条只输出 [不说话] → 这条不发（也不记入"我说过的话"）
+            pr = self._protocol_parse(event)
+            if pr.silent and (self.cfg.get("split_reply") or {}).get("silence", True):
+                try:
+                    event.get_result().chain = []
+                except Exception:
+                    pass
+                self._log("协议：[不说话] → 这条不发（%s）" % self._chat_key(event))
+                return
             self._remember_reply(event)
             await self._maybe_sticker(event)
-            self._maybe_followup(event)          # 偶尔接着自己刚发的再补一句
+            self._maybe_followup(event, multi=pr.multi)   # 已经自己分了多条就不再补话
             if not self.cfg.get("smart_quote", True):
                 return
             gid = str(event.get_group_id() or "")
@@ -1396,16 +1479,13 @@ class QqPeakGate(Star):
                             and not any(isinstance(c, (Image,)) for c in chain_now)
                             and not any(isinstance(c, Reply) for c in chain_now[1:])):   # 引用只挂第一条
                         full = plains[0].text or ""
-                        # 分段优先级：模型标记 > 换行 > 逐字关键词 > 默认按长度（每一档都真发多条）
+                        # 分段优先级（新）：模型输出协议 > 逐字关键词 > 兜底按长度
                         cap_parts = int((sc.get("char_mode") or {}).get("max_parts", 24))
                         char_mode = bool((getattr(self, "_char_mode", {}) or {}).pop(
                             getattr(event, "unified_msg_origin", ""), False))
                         cm = sc.get("char_mode") or {}
-                        ps = self._split_by_marker(full, str(sc.get("marker", "|||")), cap_parts)
-                        src = "模型标记" if len(ps) > 1 else ""
-                        if len(ps) <= 1:
-                            ps = self._split_by_lines(full, cap_parts)
-                            src = "模型换行" if len(ps) > 1 else ""
+                        ps = list(pr.parts) if pr.parts else []
+                        src = {"marker": "模型标记", "lines": "模型换行"}.get(pr.source, "")
                         extra_delay, extra_jitter = None, 0.3
                         if len(ps) <= 1 and char_mode and cm.get("enabled", True):
                             # 关键词触发"逐字"（模型没自己分段时）＋ 每小时上限保护
@@ -1427,10 +1507,11 @@ class QqPeakGate(Star):
                                     self._char_hour.clear()
                                 self._char_hour[hour_key] = used_h + len(ps)
                                 src = "逐字"
-                        if len(ps) <= 1:
+                        if len(ps) <= 1 and sc.get("heuristic_fallback", True):
+                            # 模型没自己分条时的兜底：按标点/长度切，且绝不切在英文单词中间
                             ps = self._split_text(full, int(sc.get("max_parts", 5)),
                                                   int(sc.get("min_chars", 12)))
-                            src = "默认"
+                            src = "兜底切分" if len(ps) > 1 else "单条"
                         if len(ps) > 1:
                             plains[0].text = ps[0]
                             result.chain = chain_now
@@ -1508,13 +1589,30 @@ class QqPeakGate(Star):
             # 人格覆盖：私聊和群聊都做（私聊走 "private" 档）
             if self.cfg.get("override_system_prompt", True):
                 try:
-                    pf = self._prompt_path("private" if private else gid)
-                    with open(pf, encoding="utf-8") as f:
-                        req.system_prompt = f.read().strip()
-                    if private:
-                        self._log("私聊人格: %s" % os.path.basename(pf))
+                    pcfg = self.cfg.get("prompt") or {}
+                    if pcfg.get("layered", True) is False:
+                        pf = self._prompt_path(gid if not private else "private")
+                        with open(pf, encoding="utf-8") as f:
+                            req.system_prompt = f.read().strip()
+                        self._log("提示词(旧单层): %s" % os.path.basename(pf))
+                    else:
+                        _kcfg = self.cfg.get("kb") or {}
+                        _txt, _meta = promptlib.build_system_prompt(
+                            plugin_dir=PLUGIN_DIR, cfg=self.cfg,
+                            chat_key=gid, private=private,
+                            caps={"vision": bool(self.cfg.get("vision", False)),
+                                  "search": bool((self.cfg.get("search") or {}).get("enabled")),
+                                  "kb": bool(_kcfg.get("enabled", True) and not private)})
+                        req.system_prompt = _txt
+                        self._log("提示词: 人格=%s 补丁=%s 行为%d段；人格%d字/行为%d字/共%d字；参与=%s 表情档=%s"
+                                  % (_meta["persona"], _meta["patch"], _meta["sections"],
+                                     _meta["persona_chars"], _meta["behavior_chars"], _meta["chars"],
+                                     _meta["participation"], _meta["sticker_level"]))
+                    _menu = self._sticker_menu_text("private" if private else gid)
+                    if _menu:
+                        req.system_prompt = (req.system_prompt or "") + "\n\n" + _menu
                 except Exception as e:
-                    self._log("读人格文件失败: %r" % (e,))
+                    self._log("拼装提示词失败: %r" % (e,))
             # ---- 本地资料库：把跟当前话题相关的资料块注入提示词 ----
             try:
                 _kcfg = self.cfg.get("kb") or {}
@@ -1898,24 +1996,28 @@ class QqPeakGate(Star):
             if not cfg.get("enabled", True):
                 return
             gid = self._chat_key(event)
-            if gid.startswith("p:"):
-                if not cfg.get("send_private", True):
-                    return
-            elif gid in [str(x) for x in (cfg.get("send_exclude_groups") or [])]:
-                return
             result = event.get_result()
             chain = list(getattr(result, "chain", None) or [])
             plains = [c for c in chain if isinstance(c, Plain)]
             if not plains:
                 return
             alltext = "".join(str(c.text or "") for c in plains)
-            m = _re.search(r"\[表情(?::([^\]]{1,8}))?\]", alltext)
+            m = _re.search(r"\[表情(?::([^\]\n]{1,24}))?\]", alltext)
             if not m:
                 return
 
             def _strip():
                 for c in plains:
-                    c.text = _re.sub(r"\[表情(?::[^\]]{1,8})?\]", "", str(c.text or "")).strip()
+                    c.text = _re.sub(r"\[表情(?::[^\]\n]{1,24})?\]", "",
+                                     str(c.text or "")).strip()
+
+            # 这个群/私聊不允许发表情 → 把标记清掉，别把 [表情:x] 当文字发出去
+            _bad = (gid.startswith("p:") and not cfg.get("send_private", True)) or (
+                (not gid.startswith("p:"))
+                and gid in [str(x) for x in (cfg.get("send_exclude_groups") or [])])
+            if _bad:
+                _strip()
+                return
             now = time.time()
             lst = getattr(self, "sticker_ts", None)
             if lst is None:
@@ -1927,7 +2029,14 @@ class QqPeakGate(Star):
                 return
             hint = (m.group(1) or "").strip()
             recent = " ".join([x[1] for x in list(self.recent.get(gid) or [])[-4:]])
-            cands = stickers.pick((alltext + " " + hint + " " + recent), [hint] if hint else [])
+            cands = []
+            if hint:                                  # [表情:id] → 指名要这一张
+                _by_id = stickers.find(hint)
+                if _by_id:
+                    cands = [_by_id]
+                    self._log_debug("表情包：指名 %s" % hint)
+            if not cands:
+                cands = stickers.pick((alltext + " " + hint + " " + recent), [hint] if hint else [])
             if not cands:
                 self._log_debug("表情包：没有合适的（hint=%r）" % hint)
                 _strip()

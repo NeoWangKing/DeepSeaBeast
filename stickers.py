@@ -413,6 +413,22 @@ def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6) -> l
     return [x[1] for x in scored[:limit]]
 
 
+def find(sid: str):
+    """按 id 精确找一张表情（支持大小写不一致、带不带引号都行）。"""
+    key = str(sid or "").strip().strip("\"'")
+    if not key:
+        return None
+    items = load()
+    for it in items:
+        if str(it.get("id", "")) == key:
+            return it
+    low = key.lower()
+    for it in items:
+        if str(it.get("id", "")).lower() == low:
+            return it
+    return None
+
+
 def mark_used(sid: str) -> None:
     items = load()
     for it in items:
