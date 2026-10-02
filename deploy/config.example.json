@@ -216,6 +216,9 @@
     },
     "max_calls": 2,
     "send_tools_groups": [],
-    "rescue_text": false
+    "rescue_text": false,
+    "loop_mode": false,
+    "loop_groups": [],
+    "max_rounds": 2
   }
 }

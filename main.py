@@ -237,6 +237,7 @@ class QqPeakGate(Star):
     def __init__(self, context: Context, config: dict | None = None):
         super().__init__(context)
         self.cfg = load_config()
+        self._agent_sessions: dict = {}      # agent loop / 工具会话（每次唤醒一个）
         self.last_auto: dict[str, float] = {}
         self.hour_count: dict[tuple[str, int], int] = {}
         self._nick: str = ""
@@ -1418,8 +1419,20 @@ class QqPeakGate(Star):
         return _handler
 
     def _agent_callbacks(self, event) -> dict:
+        try:
+            _loop = asyncio.get_running_loop()
+        except Exception:
+            _loop = None
+
+        def _spawn(coro):
+            """agent loop 的工具体是在子线程里跑的，投递协程要用线程安全的方式。"""
+            if _loop is not None and _loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, _loop)
+            else:
+                asyncio.create_task(coro)
+
         def _send_text(text, reply_to_id="", at_user_id=""):
-            asyncio.create_task(self._agent_send(event, text, reply_to_id, at_user_id))
+            _spawn(self._agent_send(event, text, reply_to_id, at_user_id))
 
         def _send_sticker(sid, reply_to_id=""):
             it = None
@@ -1429,7 +1442,7 @@ class QqPeakGate(Star):
                 it = None
             if not it:
                 return False
-            asyncio.create_task(self._agent_send_sticker(event, it, reply_to_id))
+            _spawn(self._agent_send_sticker(event, it, reply_to_id))
             return True
 
         def _collect(message_id, note):
@@ -1512,9 +1525,19 @@ class QqPeakGate(Star):
                         "collect_sticker": _collect, "send_ok": True})
         return cbs
 
+    @staticmethod
+    def _extra(event, key, default=None):
+        """读 event 上的附加标记（测试桩里没有 get_extra 也能用）。"""
+        try:
+            return event.get_extra(key, default)
+        except Exception:
+            return default
+
     def _agent_tools(self, event):
         """取/建"这次唤醒"的工具会话（工具绑定当前会话，模型无法指定发到别处）。"""
         key = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
+        if not hasattr(self, "_agent_sessions"):
+            self._agent_sessions = {}
         t = self._agent_sessions.get(key)
         ttl = float(self._agent_cfg().get("session_ttl", 300) or 300)
         if t is None or (time.time() - getattr(t, "started", 0) > ttl):
@@ -1567,6 +1590,62 @@ class QqPeakGate(Star):
             return "\n".join("- %s：%s" % (n, d) for n, _a, d, _m in specs)
         except Exception:
             return ""
+
+    def _agent_loop_on(self, event) -> bool:
+        c = self._agent_cfg()
+        if not c.get("loop_mode"):
+            return False
+        groups = [str(x) for x in (c.get("loop_groups") or [])]
+        return (not groups) or (self._chat_key(event) in groups)
+
+    async def _agent_loop_run(self, event) -> bool:
+        """自己驱动这一轮：tool_choice=required 强制她调工具说话。
+
+        返回 True 表示"这轮我们处理了"（调用方负责 stop_event）；False 表示交回原流程。
+        """
+        key = self._chat_key(event)
+        private = key.startswith("p:")
+        _kcfg = self.cfg.get("kb") or {}
+        _txt, _meta = promptlib.build_system_prompt(
+            plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else key, private=private,
+            caps={"vision": False, "search": False,
+                  "kb": bool(_kcfg.get("enabled", True) and not private),
+                  "tools_text": self._agent_tools_text(), "tools_send": True})
+        _menu = self._sticker_menu_text("private" if private else key)
+        system_prompt = _txt + (("\n\n" + _menu) if _menu else "")
+        t = self._agent_tools(event)
+        schema = agent.loop.spec_to_openai(self._agent_tool_specs())
+        if not schema:
+            self._log("agent loop：没有可用工具，交回原流程")
+            return False
+        lines = []
+        try:
+            for item in list(self.recent.get(str(event.get_group_id() or "")) or [])[-10:]:
+                lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:60]))
+        except Exception:
+            pass
+        user = ""
+        if lines:
+            user += "[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines) + "\n"
+        user += "[当前消息] " + str(getattr(event, "message_str", "") or "")
+        messages = [{"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user}]
+        try:
+            _rounds = int(self._agent_cfg().get("max_rounds", 2) or 2)
+        except Exception:
+            _rounds = 2
+        self._log("agent loop：开始（%s，%d 个工具，system %d 字，最多 %d 轮）"
+                  % (key, len(schema), len(system_prompt), _rounds))
+        r = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, _rounds, self._log_debug)
+        self._log("agent loop：结束（%s，用了 %s，说了 %d 条，finish=%s）"
+                  % (key, str(r.get("usage") or {}), len(t.sent), t.finished))
+        if not t.spoke and not t.finished:
+            self._log("agent loop：这轮没发言也没 finish → 视为沉默")
+        try:
+            event.set_extra("_agent_loop_done", True)
+        except Exception:
+            pass
+        return True
 
     def _sticker_menu_text(self, gid: str = "") -> str:
         """【可用表情包】清单：让模型用 [表情:id] 指名发图。
@@ -1718,7 +1797,7 @@ class QqPeakGate(Star):
         """发送前最后一步：只在需要指明"回哪条"时才加引用（全局 reply_with_quote 已关）。"""
         try:
             # agent 工具：她已经用工具说过话（或明确结束本轮）→ 正文只是思考，不发出去
-            if self._agent_send_allowed(event):
+            if self._extra(event, "_agent_loop_done", False):
                 _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
                 _at = self._agent_sessions.pop(_akey, None)
                 _wrote = ""
@@ -2436,11 +2515,17 @@ class QqPeakGate(Star):
         except Exception:
             return False
 
-    @staticmethod
-    def _allow(event: AstrMessageEvent) -> None:
+    async def _allow(self, event: AstrMessageEvent) -> None:
         # 关键：让后面的 LLM 流程认为"这条消息该回"
         event.is_wake = True
         event.is_at_or_wake_command = True
+        # agent loop 模式：这一轮由我们自己驱动（失败就照旧交给 AstrBot，不会沉默）
+        if self._agent_loop_on(event):
+            try:
+                if await self._agent_loop_run(event):
+                    event.stop_event()
+            except Exception as e:
+                self._log("agent loop 出错，回退原流程: %r" % (e,))
 
     def _at_me(self, event: AstrMessageEvent) -> bool:
         me = str(event.get_self_id())
@@ -2457,6 +2542,14 @@ class QqPeakGate(Star):
         try:
             self._reload_cfg()
             cfg = self.cfg
+            try:
+                _a = self.cfg.get("agent") or {}
+                if _a.get("loop_mode") or _a.get("send_tools"):
+                    self._log("agent配置: loop_mode=%s loop_groups=%s send_tools=%s send_groups=%s"
+                              % (_a.get("loop_mode"), _a.get("loop_groups"),
+                                 _a.get("send_tools"), _a.get("send_tools_groups")))
+            except Exception:
+                pass
             try:
                 self._t_in[event.unified_msg_origin] = time.time()
                 if len(self._t_in) > 200:
@@ -2624,7 +2717,7 @@ class QqPeakGate(Star):
             if gid and gid in [str(x) for x in (cfg.get("only_at_groups") or [])]:
                 if self._at_me(event):
                     self._log("工具模式：被 @ → 回复")
-                    self._allow(event)
+                    await self._allow(event)
                 else:
                     self._log_debug("工具模式：非 @ → 不回")
                     event.stop_event()
@@ -2640,15 +2733,15 @@ class QqPeakGate(Star):
                         kws.append(part.strip())
             called = any(k and k in burst_text for k in kws)
             if self._at_me(event) or called:
-                self._allow(event)           # 被 @ 或 被叫到名字 → 回复（高峰也放行）
+                await self._allow(event)           # 被 @ 或 被叫到名字 → 回复（高峰也放行）
                 return
             offpeak = in_offpeak(cfg)
             if offpeak and event.is_at_or_wake_command:
-                self._allow(event)           # 低峰：被引用/唤醒词也放行
+                await self._allow(event)           # 低峰：被引用/唤醒词也放行
                 return
             if not offpeak:
                 if text.lstrip().startswith("/"):
-                    self._allow(event)       # 斜杠指令放行
+                    await self._allow(event)       # 斜杠指令放行
                     return
                 # 高峰豁免：她刚刚说过话，且这条是在回应她
                 # （同一个人接着说 / 引用她的消息 / 内容在接她的话）→ 放行，交给打分流程
@@ -2760,7 +2853,7 @@ class QqPeakGate(Star):
             self.hour_count[(gid, hour)] = used + 1
             self.last_auto[gid] = now
             self.engaged_streak[gid] = (streak + 1 if engaged_ok else 0, now)
-            self._allow(event)               # 放行 → 走正常 LLM 回复
+            await self._allow(event)               # 放行 → 走正常 LLM 回复
             return
         except Exception:
             import traceback

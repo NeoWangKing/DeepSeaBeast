@@ -226,7 +226,7 @@
   },
   "agent": {
     "enabled": true,
-    "send_tools": false,
+    "send_tools": true,
     "session_ttl": 300,
     "tools": {
       "recent": true,
@@ -243,7 +243,7 @@
       "869622030"
     ],
     "rescue_text": false,
-    "loop_mode": false,
+    "loop_mode": true,
     "loop_groups": [
       "869622030"
     ],
