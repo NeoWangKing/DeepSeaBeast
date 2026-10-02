@@ -243,6 +243,7 @@ class QqPeakGate(Star):
         super().__init__(context)
         self.cfg = load_config()
         self._agent_sessions: dict = {}      # agent loop / 工具会话（每次唤醒一个）
+        self._agent_locks: dict = {}         # 每个会话一把锁：loop 串行化（连发时排队）
         self.last_auto: dict[str, float] = {}
         self.hour_count: dict[tuple[str, int], int] = {}
         self._nick: str = ""
@@ -1684,7 +1685,38 @@ class QqPeakGate(Star):
         groups = [str(x) for x in (c.get("loop_groups") or [])]
         return (not groups) or (self._chat_key(event) in groups)
 
+    def _agent_lock(self, key: str):
+        if not hasattr(self, "_agent_locks"):
+            self._agent_locks = {}
+        lk = self._agent_locks.get(key)
+        if lk is None:
+            if len(self._agent_locks) > 200:
+                self._agent_locks.clear()
+            lk = asyncio.Lock()
+            self._agent_locks[key] = lk
+        return lk
+
     async def _agent_loop_run(self, event) -> bool:
+        """同一个会话串行跑 loop：连发时排队，等上一轮说完再开下一轮。"""
+        key = self._chat_key(event)
+        lk = self._agent_lock(key)
+        if lk.locked():
+            self._log("agent loop：%s 上一轮还没说完，这条排队等" % key)
+        try:
+            _to = float(self._agent_cfg().get("queue_timeout", 45) or 45)
+        except Exception:
+            _to = 45.0
+        try:
+            await asyncio.wait_for(lk.acquire(), timeout=_to)
+        except asyncio.TimeoutError:
+            self._log("agent loop：%s 排队超时（%.0fs），交回原流程" % (key, _to))
+            return False
+        try:
+            return await self._agent_loop_body(event)
+        finally:
+            lk.release()
+
+    async def _agent_loop_body(self, event) -> bool:
         """自己驱动这一轮：tool_choice=required 强制她调工具说话。
 
         返回 True 表示"这轮我们处理了"（调用方负责 stop_event）；False 表示交回原流程。
