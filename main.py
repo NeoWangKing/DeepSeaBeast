@@ -1931,12 +1931,23 @@ class QqPeakGate(Star):
                         continue
                     if _l.startswith("图") and not _desc:
                         _desc = _after(_l)
-                    elif _l.startswith("回") and not _say:
+                    elif _l.startswith(("回", "回复", "答", "说")) and not _say:
                         _say = _after(_l)
                     elif _l.startswith("收"):
                         _keep = _after(_l).strip().lower().startswith(("是", "y", "收", "1", "true", "要"))
                 if not _say:
-                    _say = _vtxt                      # 没按格式 → 整段当回复
+                    # 没给【回】行：剥掉协议行（图/收/回），剩下的正文才当回复；只剩协议行就干脆不回
+                    _rest = []
+                    for _line in _vtxt.splitlines():
+                        _l2 = _line.strip()
+                        if not _l2 or _l2.startswith(("图", "收", "回", "回复")):
+                            continue
+                        _rest.append(_l2)
+                    _say = " ".join(_rest).strip()
+                    if _say:
+                        self._log("agent loop：看图轮没给【回】行，用剩余正文兜底 %d 字" % len(_say))
+                    else:
+                        self._log("agent loop：看图轮只给了协议行 → 不回（不把思考发出去）")
                 if _desc:
                     # ① 写进"最近群聊"：后面几轮她都看得见
                     try:
