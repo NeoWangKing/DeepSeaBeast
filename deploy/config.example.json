@@ -214,6 +214,8 @@
       "sticker": true,
       "collect": true
     },
-    "max_calls": 2
+    "max_calls": 2,
+    "send_tools_groups": [],
+    "rescue_text": false
   }
 }

@@ -167,9 +167,10 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("send") and send_tools:
         specs.append(("send_message",
                       [{"type": "string", "name": "text",
-                        "description": "要说的话；想分成多条就用 ||| 分隔（最多 4 条、总共 400 字内）"},
+                        "description": "要说的话（**这是唯一的发言方式**，写在正文里的话不会发出去）；"
+                                       "想分成多条就用 ||| 分隔（最多 4 条、总共 400 字内）"},
                        {"type": "string", "name": "reply_to_id", "description": "可选：要引用哪条消息的 id"}],
-                      "在群里发言（你写的正文不会被发出去，发言必须用这个工具）", "send_message"))
+                      "发言：你写的正文永远不会发出去，说话只能调这个工具", "send_message"))
     if on("sticker") and send_tools:
         specs.append(("send_sticker",
                       [{"type": "string", "name": "sticker_id", "description": "表情 id（用 list_stickers 查）"}],

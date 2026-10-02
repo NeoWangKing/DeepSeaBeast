@@ -1303,8 +1303,18 @@ class QqPeakGate(Star):
         c = dict(self.cfg.get("agent") or {})
         c.setdefault("enabled", False)
         c.setdefault("send_tools", False)
+        c.setdefault("send_tools_groups", [])
+        c.setdefault("rescue_text", False)
         c.setdefault("session_ttl", 300)
         return c
+
+    def _agent_send_allowed(self, event) -> bool:
+        """这个会话允不允许"用工具说话"（名单外照旧用正文说话）。"""
+        c = self._agent_cfg()
+        if not c.get("send_tools"):
+            return False
+        groups = [str(x) for x in (c.get("send_tools_groups") or [])]
+        return (not groups) or (self._chat_key(event) in groups)
 
     def _agent_tool_specs(self) -> list:
         c = self._agent_cfg()
@@ -1450,9 +1460,13 @@ class QqPeakGate(Star):
                 pass
             return rows
 
-        return {"send_text": _send_text, "send_sticker": _send_sticker,
-                "collect_sticker": _collect, "recent_lines": _recent,
-                "active_members": _members, "memory_lookup": _memory, "list_stickers": _list_stickers}
+        cbs = {"recent_lines": _recent, "active_members": _members,
+               "memory_lookup": _memory, "list_stickers": _list_stickers}
+        if self._agent_send_allowed(event):
+            # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
+            cbs.update({"send_text": _send_text, "send_sticker": _send_sticker,
+                        "collect_sticker": _collect, "send_ok": True})
+        return cbs
 
     def _agent_tools(self, event):
         """取/建"这次唤醒"的工具会话（工具绑定当前会话，模型无法指定发到别处）。"""
@@ -1660,15 +1674,34 @@ class QqPeakGate(Star):
         """发送前最后一步：只在需要指明"回哪条"时才加引用（全局 reply_with_quote 已关）。"""
         try:
             # agent 工具：她已经用工具说过话（或明确结束本轮）→ 正文只是思考，不发出去
-            if self._agent_cfg().get("send_tools"):
+            if self._agent_send_allowed(event):
                 _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
                 _at = self._agent_sessions.pop(_akey, None)
-                if _at is not None and _at.spoke:
+                _wrote = ""
+                try:
+                    for _c in (getattr(event.get_result(), "chain", None) or []):
+                        if isinstance(_c, Plain):
+                            _wrote += str(_c.text or "")
+                except Exception:
+                    pass
+
+                def _drop():
                     try:
                         event.get_result().chain = []
                     except Exception:
                         pass
+
+                if _at is not None and _at.spoke:
+                    _drop()
                     self._log("agent：本轮已用工具发言，正文不发（%s）" % (_at.state(),))
+                    return
+                if not self._agent_cfg().get("rescue_text", False):
+                    _drop()
+                    if _wrote.strip():
+                        self._log("agent：漏发！写了正文但没调 send_message（%d 字，正文不发）：%s"
+                                  % (len(_wrote), _wrote[:40]))
+                    else:
+                        self._log("agent：本轮没发言也没调 finish → 视为沉默")
                     return
             # 输出协议：整条只输出 [不说话] → 这条不发（也不记入"我说过的话"）
             pr = self._protocol_parse(event)

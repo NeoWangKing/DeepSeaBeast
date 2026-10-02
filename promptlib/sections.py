@@ -198,8 +198,11 @@ def _agent_tools(ctx):
              "- 一轮最多调 1~2 个；想不起大家在聊什么、或要先确认一下，才用 get_recent_messages / lookup_memory。",
              "- finish 只在你决定这轮**不发言**时才用；正常要说话时不要调它。"]
     if caps.get("tools_send"):
-        lines.append("- 【最重要】想说话必须调 send_message（多条用 ||| 分隔）；不发言就什么都不调或者调 finish。")
-        lines.append("- 调用工具后不要再在正文里复述“我发了什么”，群里只会看到工具发出去的内容。")
+        lines.extend([
+            "- 【硬规则，最容易犯】你写在正文里的话**永远不会**被发出去 —— 想说话**只能**调 send_message（多条用 ||| 分隔）。",
+            "- 说话前自检一遍：我要说的这句，调 send_message 了吗？没调就等于没说，群友什么都收不到。",
+            "- 不发言 = 调 finish，或者什么都不调。",
+            "- 调完工具不要在正文里复述“我发了什么”，群里只会看到工具发出去的内容。"])
     else:
         lines.append("- 发言仍然照常写在正文里（用 ||| 分条）；这些工具只用来“看”，不用来“说”。")
     return "\n".join(lines)
