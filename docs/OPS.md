@@ -92,3 +92,21 @@ python3 tests/gate_sim.py   # 离线测试台（60+ 场景，不联网、不碰 
 2. 聊天内容只落本机 `data/`（已 ignore）；隐私群用 `no_context_groups` + `no_log_groups`；
 3. 越权/隐私/骂人请求：人格卡要求"直接拒绝，不教不照做"；
 4. 对外分享前跑一遍 `git ls-files`，确认没带出 `data/`、`.secrets/`、群人格卡。
+
+
+## 提示词分层（做真人格优先读这一节）
+
+```
+人格层  prompts/personas/<群号>.txt 或 system_prompt*.txt   # 你是谁：性格/语气/梗/示例
+通用补丁 prompts/personas/_common_patch.txt                 # AI 味黑名单 / 回复示例 / 群文化自适应
+行为层  promptlib/sections.py（可被 prompts/behavior/<id>.txt 整段覆盖）
+        # 安全 / 输出协议 / 反 AI 味 / 主体性 / 该说不该说 / 节奏 / 边界 / 表情策略 / 场景
+```
+
+- 拼装入口：`promptlib.build_system_prompt()`，在 `main.py` 的 `compact_context` 里把结果写进 `req.system_prompt`。
+- 想改语气改人格层；想改"怎么干活"改行为层覆盖文件（下一条消息生效，不用重启）。
+- 档位：`config.json` 的 `prompt.participation`（quiet/normal/active 改写【该说/不该说】）、
+  `stickers.encourage` 0~3（改写【表情包策略】频率）、`prompt.disable_sections` 关段。
+- 输出协议（模型侧约定）：`|||` 分条、整条 `[不说话]` 表示这条不发、`[表情:id]` 指名发某张收藏表情；
+  解析在 `replyproto.py`，发送侧只做校验不再按长度硬切（兜底切分由 `split_reply.heuristic_fallback` 控制）。
+- 自测：`python3 tests/proto_sim.py`（协议）、`python3 tests/flow_sim.py`（提示词+协议链路）。
