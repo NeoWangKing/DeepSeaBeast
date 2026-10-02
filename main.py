@@ -1349,6 +1349,42 @@ class QqPeakGate(Star):
             except Exception as e:
                 self._log("agent：注册工具 %s 失败 %r" % (name, e))
         self._log("agent：注册 %d 个工具（send_tools=%s）" % (len(specs), self._agent_cfg().get("send_tools")))
+        # AstrBot 的 spec_to_func 只生成 properties、不带 required —— 模型会以为参数可省，
+        # 于是出现 send_message({}) 这种空调用。这里手动补上 required。
+        need = {"send_message": ["text"], "send_sticker": ["sticker_id"],
+                "collect_sticker": ["message_id"], "get_recent_messages": []}
+        mgr = None
+        for getter in ("get_llm_tool_manager",):
+            try:
+                mgr = getattr(ctx, getter)()
+                break
+            except Exception:
+                mgr = None
+        if mgr is None:
+            try:
+                mgr = ctx.provider_manager.llm_tools
+            except Exception:
+                mgr = None
+        if mgr is None:
+            self._log("agent：拿不到工具管理器，required 未标注（模型可能传空参数）")
+            return
+        for tname, req in need.items():
+            if not req:
+                continue
+            try:
+                ft = mgr.get_func(tname)
+                if ft is None:
+                    self._log("agent：%s 没找到（required 未标注）" % tname)
+                    continue
+                params = getattr(ft, "parameters", None)
+                if isinstance(params, dict):
+                    params.setdefault("properties", {})
+                    params["required"] = list(req)
+                    self._log("agent：%s 必填参数已标注 %s" % (tname, req))
+                else:
+                    self._log("agent：%s 的 parameters 不是 dict，无法标注" % tname)
+            except Exception as e:
+                self._log("agent：%s required 标注失败 %r" % (tname, e))
 
     def _make_tool_handler(self, mname: str):
         async def _handler(event=None, context=None, **kwargs):
