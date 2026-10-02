@@ -1815,18 +1815,47 @@ class QqPeakGate(Star):
             _parts = []
             for _p in _img_paths[:2]:
                 try:
-                    _b64 = base64.b64encode(open(_p, "rb").read()).decode()
-                    _ext = os.path.splitext(_p)[1].lstrip(".").lower() or "jpeg"
+                    _b64, _ext = "", (os.path.splitext(_p)[1].lstrip(".").lower() or "jpeg")
+                    try:
+                        import io as _io
+                        from PIL import Image as _PIL
+                        _im = _PIL.open(_p)
+                        _w, _h = _im.size
+                        if max(_w, _h) < 420:              # 小图放大再送：手势/文字才看得清
+                            _im2 = _im.convert("RGB").resize((_w * 2, _h * 2), _PIL.LANCZOS)
+                            _buf = _io.BytesIO()
+                            _im2.save(_buf, format="JPEG", quality=92)
+                            _b64 = base64.b64encode(_buf.getvalue()).decode()
+                            _ext = "jpeg"
+                            self._log("agent loop：小图放大 %dx%d → %dx%d 再识别" % (_w, _h, _w * 2, _h * 2))
+                    except Exception:
+                        pass
+                    if not _b64:
+                        _b64 = base64.b64encode(open(_p, "rb").read()).decode()
                     _parts.append({"type": "image_url",
                                    "image_url": {"url": "data:image/%s;base64,%s" % (_ext, _b64)}})
                 except Exception:
                     pass
+            # 这张图如果她自己收藏过，把备注/标签一起给她（比纯看图准得多）
+            _known = ""
+            try:
+                _h = stickers.ahash(_img_paths[0])
+                for _it in (stickers.load() or []):
+                    if str(_it.get("hash") or "") == str(_h):
+                        _known = ("%s %s" % (str(_it.get("desc") or ""),
+                                             " ".join(_it.get("tags") or []))).strip()
+                        break
+            except Exception:
+                _known = ""
             if _parts:
                 _n_img = len([x for x in _parts if x.get("type") == "image_url"])
                 _parts.append({"type": "text", "text": user})
+                _hint = ("【提示】这张图你自己的表情库里有记录：%s（可参考，但以你看到的为准）\n" % _known[:60]) if _known else ""
                 _parts.append({"type": "text", "text": (
-                    "先在心里看清这张图，然后**只输出两行**（不要别的解释）：\n"
-                    "图：<一句话说清图里是什么，≤25字；这行会被你记住，以后聊天能用上>\n"
+                    _hint +
+                    "先认真看清这张图：**有没有文字、手势/动作是什么、表情是什么**（比如「竖大拇指」和「举拳头」完全不是一回事）。看清了再说话，拿不准就直说看不清，**不要猜**。\n"
+                    "然后**只输出三行**（不要别的解释）：\n"
+                    "图：<具体描述：画面主体 + 文字 + 手势/动作 + 大致情绪，≤40字；这行会被你记住>\n"
                     "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔>\n"
                     "收：<是 或 否 —— 这张图以后想不想当表情包用？觉得有意思/用得上就写 是>")})
                 _vmodel = agent.vision.vision_model(self.cfg)
