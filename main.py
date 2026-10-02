@@ -1446,7 +1446,11 @@ class QqPeakGate(Star):
                 return "调用失败：%r" % (e,)
         return _handler
 
-    def _agent_callbacks(self, event) -> dict:
+    def _agent_callbacks(self, target) -> dict:
+        ev = (target or {}).get("event")
+        _gid = str((target or {}).get("gid") or "")
+        _uid = str((target or {}).get("uid") or "")
+        _umo = str((target or {}).get("umo") or "")
         try:
             _loop = asyncio.get_running_loop()
         except Exception:
@@ -1460,7 +1464,7 @@ class QqPeakGate(Star):
                 asyncio.create_task(coro)
 
         def _send_text(text, reply_to_id="", at_user_id="", face=""):
-            _spawn(self._agent_send(event, text, reply_to_id, at_user_id, face))
+            _spawn(self._agent_send(target, text, reply_to_id, at_user_id, face))
 
         def _send_sticker(sid, reply_to_id=""):
             it = None
@@ -1470,13 +1474,13 @@ class QqPeakGate(Star):
                 it = None
             if not it:
                 return False
-            _spawn(self._agent_send_sticker(event, it, reply_to_id))
+            _spawn(self._agent_send_sticker(target, it, reply_to_id))
             return True
 
         def _collect(message_id, note):
             path = ""
             try:
-                _ck = self._chat_key(event)
+                _ck = _gid
                 for _k, _v in list(getattr(self, "_img_cache", {}).items()):
                     if _k[0] == _ck and (str(_k[1]) == str(message_id) or not str(message_id)):
                         if time.time() - _v[0] <= 900 and _v[1]:
@@ -1486,7 +1490,8 @@ class QqPeakGate(Star):
                 path = ""
             if not path:
                 try:
-                    comps = [m for m in event.get_messages() if isinstance(m, Image)]
+                    comps = ([m for m in ev.get_messages() if isinstance(m, Image)]
+                             if ev is not None else [])
                 except Exception:
                     comps = []
                 if not comps:
@@ -1516,7 +1521,7 @@ class QqPeakGate(Star):
         def _recent(limit):
             out = []
             try:
-                for item in list(self.recent.get(str(event.get_group_id() or "")) or [])[-limit:]:
+                for item in list(self.recent.get(_gid) or [])[-limit:]:
                     who = item[0] or "?"
                     out.append("%s：%s" % ("我" if who == "我" else who, (item[1] or "")[:60]))
             except Exception:
@@ -1526,7 +1531,7 @@ class QqPeakGate(Star):
         def _members():
             try:
                 seen, rows = [], []
-                for item in reversed(list(self.recent.get(str(event.get_group_id() or "")) or [])):
+                for item in reversed(list(self.recent.get(_gid) or [])):
                     who = item[0] or ""
                     if who and who != "我" and who not in seen:
                         seen.append(who)
@@ -1540,9 +1545,8 @@ class QqPeakGate(Star):
 
         def _memory(query):
             try:
-                return self._memory_block(str(event.get_group_id() or ""), str(event.get_sender_id() or ""),
-                                          self.last_reply_to.get(str(event.get_group_id() or ""), ""),
-                                          str(query or event.message_str or ""))
+                return self._memory_block(_gid, _uid, self.last_reply_to.get(_gid, ""),
+                                          str(query or (target or {}).get("text") or ""))
             except Exception:
                 return ""
 
@@ -1564,7 +1568,8 @@ class QqPeakGate(Star):
             return rows
 
         def _view_image():
-            comps = [m for m in event.get_messages() if isinstance(m, Image)]
+            comps = ([m for m in ev.get_messages() if isinstance(m, Image)]
+                     if ev is not None else [])
             if not comps:
                 return ""
             paths = []
@@ -1581,8 +1586,8 @@ class QqPeakGate(Star):
             return ("图里大概是这样：%s" % txt) if txt else ""
 
         def _send_poke(target=""):
-            uid = str(target or event.get_sender_id() or "")
-            gid = str(event.get_group_id() or "")
+            uid = str(target or _uid or "")
+            gid = "" if _gid.startswith("p:") else _gid
             if not uid or not uid.isdigit():
                 return False
 
@@ -1591,7 +1596,7 @@ class QqPeakGate(Star):
                 # ① 组件方式（最通用）：直接把 Poke 组件发出去
                 if Poke is not None:
                     try:
-                        await event.send(MessageChain([Poke(id=int(uid))]))
+                        await self._transport_send(target, MessageChain([Poke(id=int(uid))]))
                         self._log("agent：拍了一下（Poke 组件 → %s）" % uid)
                         return True
                     except Exception as e:
@@ -1637,7 +1642,7 @@ class QqPeakGate(Star):
 
             async def _do():
                 try:
-                    await event.send(MessageChain([Face(id=fid)]))
+                    await self._transport_send(target, MessageChain([Face(id=fid)]))
                     self._log("agent：发了个 QQ 表情 #%d「%s」" % (fid, self._qq_face_name(fid)))
                     return True
                 except Exception as e:
@@ -1665,7 +1670,6 @@ class QqPeakGate(Star):
 
         def _cancel_wake(scope=""):
             try:
-                _gid = self._chat_key(event)
                 items = self._wake_load()
                 keep = [x for x in items if str(x.get("gid") or "") != _gid]
                 n = len(items) - len(keep)
@@ -1676,11 +1680,11 @@ class QqPeakGate(Star):
 
         def _schedule_wake(sec, say, reason, mode="auto", every=0):
             try:
-                item = {"umo": str(getattr(event, "unified_msg_origin", "") or ""),
+                item = {"umo": _umo,
                         "due": time.time() + int(sec), "say": str(say)[:200],
                         "reason": str(reason or "")[:60], "gid": self._chat_key(event),
                         "mode": str(mode or "say"), "every": int(every or 0),
-                        "poke_uid": str(event.get_sender_id() or "")}
+                        "poke_uid": _uid}
                 items = self._wake_load()
                 if len(items) >= 50:
                     items = items[-40:]
@@ -1703,7 +1707,7 @@ class QqPeakGate(Star):
             try:
                 d = os.path.join(PLUGIN_DIR, "data", "agent_memory")
                 os.makedirs(d, exist_ok=True)
-                fn = os.path.join(d, (self._chat_key(event).replace(":", "_") or "x") + ".jsonl")
+                fn = os.path.join(d, (_gid.replace(":", "_") or "x") + ".jsonl")
                 with open(fn, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps({"ts": int(time.time()), "kind": str(kind or "impression")[:16],
                                          "text": str(text or "")[:120]}, ensure_ascii=False) + "\n")
@@ -1732,6 +1736,25 @@ class QqPeakGate(Star):
         except Exception:
             return default
 
+    def _agent_target(self, event=None, target=None, **kw) -> dict:
+        t = dict(target or {})
+        if event is not None:
+            t.setdefault("event", event)
+            t.setdefault("umo", str(getattr(event, "unified_msg_origin", "") or ""))
+            t.setdefault("gid", self._chat_key(event))
+            try:
+                t.setdefault("uid", str(event.get_sender_id() or ""))
+            except Exception:
+                pass
+            try:
+                t.setdefault("text", str(getattr(event, "message_str", "") or ""))
+            except Exception:
+                pass
+        for k, v in kw.items():
+            if v is not None:
+                t[k] = v
+        return t
+
     def _agent_tools(self, event):
         """取/建"这次唤醒"的工具会话（工具绑定当前会话，模型无法指定发到别处）。"""
         key = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
@@ -1742,11 +1765,29 @@ class QqPeakGate(Star):
         if t is None or (time.time() - getattr(t, "started", 0) > ttl):
             if len(self._agent_sessions) > 200:
                 self._agent_sessions.clear()
-            t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(event), self._agent_cfg())
+            t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(self._agent_target(event)),
+                                  self._agent_cfg())
             self._agent_sessions[key] = t
         return t
 
-    async def _agent_send(self, event, text: str, reply_to_id: str = "",
+    async def _transport_send(self, target, chain) -> bool:
+        """统一发送口：有 event 走 event.send；定时（无 event）走 context.send_message。"""
+        try:
+            _ev = (target or {}).get("event")
+            if _ev is not None:
+                await _ev.send(chain)
+                return True
+            _umo2 = str((target or {}).get("umo") or "")
+            _ctx = getattr(self, "context", None)
+            if _umo2 and _ctx is not None and hasattr(_ctx, "send_message"):
+                return bool(await _ctx.send_message(_umo2, chain))
+            self._log("agent：没有可用发送通道")
+            return False
+        except Exception as e:
+            self._log("agent：发送失败 %r" % (e,))
+            return False
+
+    async def _agent_send(self, target, text: str, reply_to_id: str = "",
                           at_user_id: str = "", face: str = "") -> None:
         try:
             comps = []
@@ -1796,7 +1837,7 @@ class QqPeakGate(Star):
                     if _it is None and _sid:
                         _it = stickers.find(_sid)
                     if _it:
-                        asyncio.create_task(self._agent_send_sticker(event, _it))
+                        asyncio.create_task(self._agent_send_sticker(self._agent_target(event), _it))
                         self._log("agent：图片表情 %s 单独发一条" % _it.get("id"))
                 except Exception as _e3:
                     self._log_debug("抽图片表情失败 %r" % (_e3,))
@@ -1810,13 +1851,13 @@ class QqPeakGate(Star):
             if not comps:
                 self._log("发送口兜底：内容全是内部标记，这条不发")
                 return
-            await event.send(MessageChain(comps))
+            await self._transport_send(target, MessageChain(comps))
             self._log("agent：发出「%s」%s" % (str(text)[:40],
                                               ("＋表情%s" % "、".join(_faces)) if _faces else ""))
         except Exception as e:
             self._log("agent：发送失败 %r" % (e,))
 
-    async def _agent_send_sticker(self, event, it: dict, reply_to_id: str = "") -> None:
+    async def _agent_send_sticker(self, target, it: dict, reply_to_id: str = "") -> None:
         try:
             path = await asyncio.to_thread(stickers.ensure_local, it)
             if not path or not os.path.exists(path):
@@ -1831,7 +1872,7 @@ class QqPeakGate(Star):
                 img = Image(file=path)
             comps = [Reply(id=str(reply_to_id))] if reply_to_id else []
             comps.append(img)
-            await event.send(MessageChain(comps))
+            await self._transport_send(target, MessageChain(comps))
             stickers.mark_used(it.get("id"))
             self._log("agent：发出表情 %s《%s》" % (it.get("id"), it.get("desc")))
         except Exception as e:
@@ -1967,6 +2008,48 @@ class QqPeakGate(Star):
                 self._log("定时唤醒循环出错(忽略): %r" % (e,))
                 await asyncio.sleep(5)
 
+    async def _agent_proactive(self, it: dict, reason: str) -> None:
+        """定时到点的"主动轮"：没有新消息进来，她自己决定说什么/做什么（可用全部工具）。"""
+        gid = str(it.get("gid") or "")
+        target = self._agent_target(target={"gid": gid, "umo": str(it.get("umo") or ""),
+                                            "uid": str(it.get("poke_uid") or ""),
+                                            "text": reason or ""})
+        private = gid.startswith("p:")
+        _kcfg = self.cfg.get("kb") or {}
+        _txt, _meta = promptlib.build_system_prompt(
+            plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else gid, private=private,
+            caps={"vision": True, "search": False,
+                  "kb": bool(_kcfg.get("enabled", True) and not private),
+                  "tools_text": self._agent_tools_text(), "tools_send": True})
+        _menu = self._sticker_menu_text("private" if private else gid)
+        if _menu:
+            _txt += "\n\n" + _menu
+        _fmenu = self._face_menu_text()
+        if _fmenu:
+            _txt += "\n\n" + _fmenu
+        t = agent.tools.Tools(gid, self._agent_callbacks(target), self._agent_cfg())
+        schema = agent.loop.spec_to_openai(self._agent_specs_for(gid))
+        lines = []
+        try:
+            for item in list(self.recent.get(gid) or [])[-8:]:
+                lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:60]))
+        except Exception:
+            pass
+        user = ""
+        if lines:
+            user += "[最近群聊]\n" + "\n".join(lines) + "\n"
+        user += ("[主动机会] 现在是你自己之前定的时间点（%s）。没有人刚叫你，是你自己想说话："
+                 "想说什么就调 send_message，想发表情/拍一拍也行；不想说就调 finish。"
+                 "别解释定时、别提系统、别汇报。") % (reason or "随便看看")
+        self._log("定时唤醒：主动轮开始（%s，reason=%s）" % (gid, (reason or "")[:20]))
+        r = await asyncio.to_thread(agent.loop.run, t,
+                                    [{"role": "system", "content": _txt},
+                                     {"role": "user", "content": user}],
+                                    schema, None, int(self._agent_cfg().get("max_rounds", 2) or 2),
+                                    self._log_debug)
+        self._log("定时唤醒：主动轮结束（说了 %d 条，finish=%s，%s）"
+                  % (len(t.sent), t.finished, str((r or {}).get("usage") or {})))
+
     async def _wake_fire(self, it: dict) -> None:
         try:
             umo = str(it.get("umo") or "")
@@ -1991,17 +2074,12 @@ class QqPeakGate(Star):
 
             # think 模式：先让她自己组织一句（调用一次模型，不带工具）
             if str(it.get("mode") or "say") == "think":
+                # 主动轮：她可以用全部工具（说话/表情/拍一拍/查记录/再定下一次…）
                 try:
-                    _p = ("你是%s。现在是你自己之前定的时间点，当时你惦记着：%s。"
-                          "用一句自然的口语说出来（≤20字，别解释、别提定时/系统、别用引号）。"
-                          % ((self.cfg.get("prompt") or {}).get("bot_name") or "小鲸鱼",
-                             _reason or raw or "想说点什么"))
-                    _t = await asyncio.to_thread(agent.llm.chat_text,
-                                                 [{"role": "user", "content": _p}], self.cfg, 120)
-                    raw = replyproto.sanitize(str(_t or "").strip(), strip_bar=True)
-                    self._log("定时唤醒：think 生成了「%s」" % raw[:30])
+                    await self._agent_proactive(it, _reason or raw)
                 except Exception as _e5:
-                    self._log("定时唤醒：think 生成失败 %r" % (_e5,))
+                    self._log("定时唤醒：主动轮失败 %r" % (_e5,))
+                return
             if not raw:
                 self._log("定时唤醒：没有内容，跳过")
                 return
@@ -2136,7 +2214,8 @@ class QqPeakGate(Star):
         # 每一轮都用**全新**的工具会话：否则上一轮的 sent/finished 会累积，
         # 既让日志出现"说了 5 条"，还会让陈旧 spoke 把这一轮的多轮工具调用掐掉
         _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
-        t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(event), self._agent_cfg())
+        t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(self._agent_target(event)),
+                              self._agent_cfg())
         try:
             if len(self._agent_sessions) > 200:
                 self._agent_sessions.clear()
@@ -2402,7 +2481,7 @@ class QqPeakGate(Star):
                     _mk = str((self.cfg.get("split_reply") or {}).get("marker", "|||"))
                     _segs = replyproto.parse(_say, _mk, 4).parts or [_say]
                     for _seg in _segs[:4]:
-                        await self._agent_send(event, _seg)
+                        await self._agent_send(self._agent_target(event), _seg)
                     self._log("agent loop：看图轮发出 %d 条" % len(_segs[:4]))
                 else:
                     self._log("agent loop：看图轮没拿到内容")
