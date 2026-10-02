@@ -23,13 +23,13 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PLUGIN_DIR = os.path.dirname(HERE)
-DATA_DIR = os.path.join(PLUGIN_DIR, "data", "turtle")
+PLUGIN_DIR = os.path.dirname(os.path.dirname(HERE))
+DATA_DIR = os.path.join(PLUGIN_DIR, "data", "games", "turtle_soup")
 AI_FILE = os.path.join(DATA_DIR, "ai_puzzles.json")
 
 sys.path.insert(0, PLUGIN_DIR)
 from memory import llm  # noqa: E402
-from turtle import puzzles as curated  # noqa: E402
+from games.turtle_soup import puzzles as curated  # noqa: E402
 
 # ---------- 出题规则（跟人工题库同一套标准）----------
 CATEGORY_DESC = {k: "%s：%s" % (v["label"], v.get("desc", "")) for k, v in curated.CATEGORIES.items()}

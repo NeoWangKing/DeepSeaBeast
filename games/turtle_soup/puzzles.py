@@ -118,9 +118,9 @@ PUZZLES = [
 import json as _json
 import os as _os
 
-# AI 自己编的题：data/turtle/ai_puzzles.json（由 turtle/gen.py 生成并自评合格）
-_AI_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                         "data", "turtle", "ai_puzzles.json")
+# AI 自己编的题：data/games/turtle_soup/ai_puzzles.json（由 turtle/gen.py 生成并自评合格）
+_AI_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+                         "data", "games", "turtle_soup", "ai_puzzles.json")
 _ai_cache = {"mtime": None, "items": []}
 
 
@@ -142,13 +142,13 @@ def ai_puzzles() -> list:
     return list(_ai_cache["items"])
 
 
-_WEB_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                          "data", "turtle", "web_puzzles.json")
+_WEB_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+                          "data", "games", "turtle_soup", "web_puzzles.json")
 _web_cache = {"mtime": None, "items": []}
 
 
 def web_puzzles() -> list:
-    """网上题库导入的题（data/turtle/web_puzzles.json，由 import_web.py 生成）。"""
+    """网上题库导入的题（data/games/turtle_soup/web_puzzles.json，由 import_web.py 生成）。"""
     try:
         mt = _os.path.getmtime(_WEB_FILE)
     except Exception:

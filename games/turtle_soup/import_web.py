@@ -1,4 +1,4 @@
-"""把网络上的海龟汤题库导进来（只留下审稿合格的），生成 data/turtle/web_puzzles.json。
+"""把网络上的海龟汤题库导进来（只留下审稿合格的），生成 data/games/turtle_soup/web_puzzles.json。
 
 来源：
   - ModelScope `Narcissuses/Turtle-Bench`（train_8k.json + test_1.5k.json，Apache-2.0）
@@ -25,13 +25,13 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PLUGIN_DIR = os.path.dirname(HERE)
-DATA_DIR = os.path.join(PLUGIN_DIR, "data", "turtle")
+PLUGIN_DIR = os.path.dirname(os.path.dirname(HERE))
+DATA_DIR = os.path.join(PLUGIN_DIR, "data", "games", "turtle_soup")
 CACHE_DIR = os.path.join(DATA_DIR, "_web_cache")
 WEB_FILE = os.path.join(DATA_DIR, "web_puzzles.json")
 
 sys.path.insert(0, PLUGIN_DIR)
-from turtle import puzzles as curated        # noqa: E402
+from games.turtle_soup import puzzles as curated        # noqa: E402
 from memory import llm                       # noqa: E402
 
 SOURCES = [

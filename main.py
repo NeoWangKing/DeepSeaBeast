@@ -29,7 +29,7 @@ from astrbot.api.star import Context, Star, register
 try:
     from . import scoring, stickers, kb as local_kb   # AstrBot 以包形式加载插件
     from .memory import store as mem_store     # 记忆产物只读访问
-    from .turtle import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
+    from .games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
 except Exception:                              # 兜底：直接当脚本/被 py_compile 时
     import os as _os, sys as _sys
     _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
@@ -37,8 +37,8 @@ except Exception:                              # 兜底：直接当脚本/被 py
     import stickers
     import kb as local_kb
     from memory import store as mem_store
-    from turtle import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
-    from turtle import gen as turtle_gen
+    from games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
+    from games.turtle_soup import gen as turtle_gen
 
 _TURTLE_REACT = __import__("re").compile(
     r"^(?:[哈呵嘿嘻]{2,}|233+|草+|6+|乐+|典+|笑死|绷不住了?|难绷|啊+|哦+|嗯+|额+|好+|牛[逼批]|nice|"

@@ -9,7 +9,7 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 try:
     from memory import llm          # 复用记忆系统那套「可换模型的出口」
 except Exception:                   # 兜底

@@ -11,7 +11,7 @@ QQ 群消息 → 协议端(SnowLuma + LinuxQQ，或任意 OneBot v11) → AstrBo
 本插件内部：
   main.py      门控 / 人格注入 / 记忆注入 / 资料库检索 / 海龟汤转发 / 表情包收发
   scoring.py   零 token「这条值不值得回」打分
-  turtle/      海龟汤（判题走独立模型配置，可换便宜模型）
+  games/       玩法插件目录；games/turtle_soup/ = 海龟汤（判题走独立模型配置）
   memory/      群印象、人物档案（定时批处理）
   kb.py        本地资料库（data/kb 建索引，按相关度注入提示词）
   stickers.py  表情包收藏（识图打标、挑选发送、可同步 QQ 表情面板）
@@ -24,11 +24,11 @@ QQ 群消息 → 协议端(SnowLuma + LinuxQQ，或任意 OneBot v11) → AstrBo
 | 路径 | 内容 | 入库 |
 |---|---|---|
 | `main.py` `scoring.py` `kb.py` `stickers.py` | 核心代码 | ✅ |
-| `turtle/` `memory/` | 子系统 | ✅ |
+| `games/turtle_soup/` `memory/` | 子系统 | ✅ |
 | `prompts/` | 提示词 + `personas/` 群人格卡 | 提示词 ✅ / 群卡 ❌ |
 | `tools/` `tests/` `deploy/` `docs/` | 运维、测试、部署、文档 | ✅ |
 | `.secrets/` | 模型 key | ❌ |
-| `data/{memory,turtle,stickers,chatlog}/` `data/kb/*` | 记忆、对局、表情、日志、资料库内容 | ❌ |
+| `data/{memory,games,stickers,chatlog}/` `data/kb/*` | 记忆、对局、表情、日志、资料库内容 | ❌ |
 
 ## 3. 日常命令
 

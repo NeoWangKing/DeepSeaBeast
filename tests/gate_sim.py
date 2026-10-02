@@ -189,7 +189,7 @@ class Clock:
 def _clean_test_sessions():
     """清掉测试群可能残留的海龟汤会话，避免污染后续场景。"""
     import glob as _gl, os as _os
-    d = _os.path.join(HERE, "data", "turtle")
+    d = _os.path.join(HERE, "data", "games", "turtle_soup")
     for f in _gl.glob(_os.path.join(d, "*.json")):
         base = _os.path.basename(f)
         if base.split(".")[0] in ("777", "778", "888", "999", "AAA", "g26",
@@ -622,7 +622,7 @@ async def main_():
     ev29c = FakeEvent("揭晓", uid="u1", gid="777")
     await p29.gate(ev29c)
     revealed = bool(ev29c.stopped and any("汤底" in x for x in ev29c.sent))
-    import turtle.session as _ts
+    import games.turtle_soup.session as _ts
     cleared = not _ts.load(ev29c.unified_msg_origin)
     ok29 = started and answered and revealed and cleared
     print("%-34s 开局=%s 判题=%s 揭晓=%s 退出清理=%s -> %s"
@@ -631,7 +631,7 @@ async def main_():
 
     # 30) 海龟汤"自己判断是不是提问"：闲聊不吭声，提问照答（先清残留会话）
     try:
-        import turtle.session as _ts30
+        import games.turtle_soup.session as _ts30
         _ts30.end("778")
     except Exception:
         pass
@@ -704,7 +704,7 @@ async def main_():
     await p31.gate(ev31e)
     ask_silent = bool(ev31e.stopped and not ev31e.sent)
     # 不带 @ 的「揭晓」→ 严格模式下无效（游戏应继续）
-    import turtle.session as _ts31
+    import games.turtle_soup.session as _ts31
     ev31f = FakeEvent("揭晓", uid="u6", gid="966812151")
     await p31.gate(ev31f)
     exit_silent = bool(ev31f.stopped and not ev31f.sent and _ts31.load("966812151", True))

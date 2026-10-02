@@ -1,12 +1,12 @@
-"""海龟汤一局的状态：存在 data/turtle/<会话id>.json（跑在内存里，进程重启也可恢复）。"""
+"""海龟汤一局的状态：存在 data/games/turtle_soup/<会话id>.json（跑在内存里，进程重启也可恢复）。"""
 import json
 import os
 import re
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PLUGIN_DIR = os.path.dirname(HERE)
-DATA_DIR = os.path.join(PLUGIN_DIR, "data", "turtle")
+PLUGIN_DIR = os.path.dirname(os.path.dirname(HERE))
+DATA_DIR = os.path.join(PLUGIN_DIR, "data", "games", "turtle_soup")
 
 
 def _safe(name: str) -> str:

@@ -32,7 +32,8 @@ qq_peak_gate/
 │   ├── system_prompt_sharp.txt      毒舌版（备用）
 │   └── personas/                    群人格卡（_template.txt + <群号>.txt，内容不入库）
 │
-├── turtle/                    海龟汤
+├── games/                     玩法插件目录（一个玩法一个包）
+│   └── turtle_soup/            海龟汤（原 turtle/）
 │   ├── puzzles.py                   人工题库（含类别）
 │   ├── judge.py                     判题 / 复核 / 提示 / 余温解释
 │   ├── session.py                   对局状态
@@ -52,7 +53,7 @@ qq_peak_gate/
 ├── docs/OPS.md                通用运维手册（数据流 / 命令 / 排障 / 成本 / 隐私）
 └── data/                      运行数据（内容全部不入库）
     ├── memory/  群印象与人物档案
-    ├── turtle/  对局状态 + 题库（人工/AI/网导入）
+    └── games/turtle_soup/  海龟汤对局状态 + 题库（人工/AI/网导入）
     ├── stickers/ 表情图 + 标签索引
     ├── kb/      资料库源文件 + 索引
     └── chatlog/ 群聊日志
