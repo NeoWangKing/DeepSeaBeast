@@ -1808,21 +1808,64 @@ class QqPeakGate(Star):
                 except Exception:
                     pass
             if _parts:
+                _n_img = len([x for x in _parts if x.get("type") == "image_url"])
                 _parts.append({"type": "text", "text": user})
+                _parts.append({"type": "text", "text": (
+                    "先在心里看清这张图，然后**只输出两行**（不要别的解释）：\n"
+                    "图：<一句话说清图里是什么，≤25字；这行会被你记住，以后聊天能用上>\n"
+                    "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔>")})
                 _vmodel = agent.vision.vision_model(self.cfg)
-                self._log("agent loop：看图轮（%d 张图 → %s，不用工具）" % (len(_parts) - 1, _vmodel))
+                self._log("agent loop：看图轮（%d 张图 → %s，不用工具）" % (_n_img, _vmodel))
                 _vtxt = ""
                 try:
                     _vtxt = await asyncio.to_thread(
                         agent.llm.chat_vision,
                         [{"role": "system", "content": system_prompt},
-                         {"role": "user", "content": _parts}], _vmodel, self.cfg, 400)
+                         {"role": "user", "content": _parts}], _vmodel, self.cfg, 500)
                 except Exception as _e:
                     self._log("agent loop：看图轮失败 %r" % (_e,))
                 _vtxt = str(_vtxt or "").strip()
-                if _vtxt:
+
+                def _after(_line):
+                    for _sep in ("：", ":"):
+                        if _sep in _line:
+                            return _line.split(_sep, 1)[1].strip()
+                    return _line
+
+                _desc, _say = "", ""
+                for _line in _vtxt.splitlines():
+                    _l = _line.strip()
+                    if not _l:
+                        continue
+                    if _l.startswith("图") and not _desc:
+                        _desc = _after(_l)
+                    elif _l.startswith("回") and not _say:
+                        _say = _after(_l)
+                if not _say:
+                    _say = _vtxt                      # 没按格式 → 整段当回复
+                if _desc:
+                    # ① 写进"最近群聊"：后面几轮她都看得见
+                    try:
+                        _buf = self.recent.get(str(event.get_group_id() or ""))
+                        if _buf is not None:
+                            _buf.append(("<图片>", _desc, ""))
+                    except Exception:
+                        pass
+                    # ② 写进长期记忆：跨轮、跨天都在（每轮注入）
+                    try:
+                        _d = os.path.join(PLUGIN_DIR, "data", "agent_memory")
+                        os.makedirs(_d, exist_ok=True)
+                        _mf = os.path.join(_d, (self._chat_key(event).replace(":", "_") or "x") + ".jsonl")
+                        with open(_mf, "a", encoding="utf-8") as _fh:
+                            _fh.write(json.dumps({"ts": int(time.time()), "kind": "image",
+                                                  "text": "他发过一张图：%s" % _desc},
+                                                 ensure_ascii=False) + "\n")
+                        self._log("agent loop：图片已记住 —— %s" % _desc[:40])
+                    except Exception as _e:
+                        self._log("agent loop：图片记忆写入失败 %r" % (_e,))
+                if _say:
                     _mk = str((self.cfg.get("split_reply") or {}).get("marker", "|||"))
-                    _segs = replyproto.parse(_vtxt, _mk, 4).parts or [_vtxt]
+                    _segs = replyproto.parse(_say, _mk, 4).parts or [_say]
                     for _seg in _segs[:4]:
                         await self._agent_send(event, _seg)
                     self._log("agent loop：看图轮发出 %d 条" % len(_segs[:4]))
