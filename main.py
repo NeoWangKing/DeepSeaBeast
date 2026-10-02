@@ -1305,6 +1305,11 @@ class QqPeakGate(Star):
                 return
             if gid in [str(x) for x in (c.get("exclude_groups") or [])]:
                 return
+            try:                                  # 玩海龟汤的时候别插嘴补话
+                if (turtle_session.load(gid) or {}).get("active"):
+                    return
+            except Exception:
+                pass
             result = event.get_result()
             txt = ""
             for x in (getattr(result, "chain", None) or []):
