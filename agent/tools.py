@@ -315,7 +315,9 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
         specs.append(("schedule_wake",
                       [{"type": "string", "name": "after_sec",
                         "description": "【必填】多少秒后（5~7200，300=5分钟）"},
-                       {"type": "string", "name": "say", "description": "【必填】到时想说的那句话"},
+                       {"type": "string", "name": "say",
+                        "description": "【必填】到时要做的事：普通话说一句；或写 [拍一拍] 到点拍对方一下；"
+                                       "或写 [表情:id] 到点发那张收藏表情（可带文字）"},
                        {"type": "string", "name": "reason", "description": "可选：为什么定这个（只给自己看）"}],
                       "定时叫醒自己：对方说“X 秒后/过一会儿/等我回来再说/叫我一下”时，用它把话定到那个时间点"
                       "（到点自动发出，别现在就说）；也可以自己想“过会儿再冒泡”时用",

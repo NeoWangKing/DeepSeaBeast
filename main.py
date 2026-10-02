@@ -1667,7 +1667,8 @@ class QqPeakGate(Star):
             try:
                 item = {"umo": str(getattr(event, "unified_msg_origin", "") or ""),
                         "due": time.time() + int(sec), "say": str(say)[:200],
-                        "reason": str(reason or "")[:60], "gid": self._chat_key(event)}
+                        "reason": str(reason or "")[:60], "gid": self._chat_key(event),
+                        "poke_uid": str(event.get_sender_id() or "")}
                 items = self._wake_load()
                 if len(items) >= 50:
                     items = items[-40:]
@@ -1950,9 +1951,62 @@ class QqPeakGate(Star):
     async def _wake_fire(self, it: dict) -> None:
         try:
             umo = str(it.get("umo") or "")
-            txt = replyproto.sanitize(str(it.get("say") or ""), strip_bar=True)
-            if not umo or not txt:
-                self._log("定时唤醒：没有内容或会话，跳过")
+            ctx = getattr(self, "context", None)
+            if not umo or ctx is None or not hasattr(ctx, "send_message"):
+                self._log("定时唤醒：没有会话或发送通道，跳过")
+                return
+            raw = str(it.get("say") or "").strip()
+            if not raw:
+                self._log("定时唤醒：没有内容，跳过")
+                return
+
+            # ① 拍一拍：[拍一拍] / [poke]
+            if "[拍一拍]" in raw or "[poke]" in raw.lower():
+                uid = str(it.get("poke_uid") or "")
+                if uid and Poke is not None:
+                    ok = bool(await ctx.send_message(umo, MessageChain([Poke(id=int(uid))])))
+                    self._log("定时唤醒：拍了 %s → %s" % (uid, ok))
+                else:
+                    self._log("定时唤醒：拍不出去（缺 uid 或 Poke 组件不可用）")
+                return
+
+            # ② 图片表情：[表情:id]
+            import re as _re3
+            _m = _re3.search(r"\[表情(?::([^\]\n]{1,24}))?\]", raw)
+            if _m:
+                _sid = (_m.group(1) or "").strip()
+                _it2 = stickers.find(_sid) if _sid else None
+                if _it2 is None:
+                    try:
+                        _cands = stickers.load() or []
+                        _it2 = random.choice(_cands) if _cands else None
+                    except Exception:
+                        _it2 = None
+                if _it2:
+                    try:
+                        _p = stickers.ensure_local(_it2)
+                        if _p and os.path.isfile(_p):
+                            try:
+                                _img = (Image.fromFileSystem(_p) if hasattr(Image, "fromFileSystem")
+                                        else Image(file=_p))
+                            except Exception:
+                                _img = Image(file=_p)
+                            ok = bool(await ctx.send_message(umo, MessageChain([_img])))
+                            stickers.mark_used(_it2.get("id"))
+                            self._log("定时唤醒：发出图片表情 %s → %s" % (_it2.get("id"), ok))
+                        else:
+                            self._log("定时唤醒：表情图没落盘，发不出")
+                    except Exception as _e2:
+                        self._log("定时唤醒：发图片表情失败 %r" % (_e2,))
+                else:
+                    self._log("定时唤醒：找不到表情（id=%s）" % _sid)
+                raw = _re3.sub(r"\[表情(?::[^\]\n]{1,24})?\]", "", raw).strip()
+                if not raw:
+                    return
+
+            # ③ 文字（支持内联 [QQ表情:…]）
+            txt = replyproto.sanitize(raw, strip_bar=True)
+            if not txt:
                 return
             comps = []
             for _kind, _val in replyproto.split_faces(txt):
@@ -1965,10 +2019,7 @@ class QqPeakGate(Star):
                         comps.append(Face(id=_fid))
             if not comps:
                 return
-            ctx = getattr(self, "context", None)
-            ok = False
-            if ctx is not None and hasattr(ctx, "send_message"):
-                ok = bool(await ctx.send_message(umo, MessageChain(comps)))
+            ok = bool(await ctx.send_message(umo, MessageChain(comps)))
             self._log("定时唤醒：发出「%s」→ %s" % (txt[:30], ok))
         except Exception as e:
             self._log("定时唤醒：发送失败 %r" % (e,))
