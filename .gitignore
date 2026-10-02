@@ -1,0 +1,37 @@
+# ── 密钥 / 凭证：绝对不进仓库 ─────────────────────────────
+.secrets/
+*.key
+*.pem
+# ── 运行产物 / 隐私数据：目录保留，内容忽略 ─────────────────
+__pycache__/
+*.pyc
+*.pyo
+.chatlog/
+chatlog/
+data/chatlog/
+data/memory/
+data/message/
+data/turtle/
+data/stickers/
+data/_web_cache/
+# 资料库：内容忽略，只留说明
+data/kb/*
+!data/kb/README.md
+!data/kb/.gitkeep
+data/kb/_index.json
+data/group_registry.json
+*.log
+*.tmp
+.DS_Store
+holidays.json
+memes.md
+
+# ── 人格卡：具体内容忽略，只留模板 ───────────────────────
+# （想给群人格卡也做版本管理，就把下面两行注释掉）
+personas/*.txt
+!personas/_template.txt
+# 想把 config.json（含群号/白名单）也忽略，就取消下一行注释
+# config.json
+data/cmd_config.json
+data/t2i_templates/
+data/temp/

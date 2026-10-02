@@ -1,0 +1,4 @@
+name: qq_peak_gate
+desc: 高峰时段只允许 @ 触发；低峰时段允许按概率/关键词自动接话
+author: local
+version: 0.1.0
