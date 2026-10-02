@@ -11,7 +11,8 @@ from . import llm as llm_mod
 MAX_ROUNDS = 2
 
 REQUIRED = {"send_message": ["text"], "send_sticker": ["sticker_id"],
-            "collect_sticker": ["message_id"], "memory_append": ["text"]}
+            "collect_sticker": ["message_id"], "memory_append": ["text"],
+            "send_face": ["name"]}
 
 
 def spec_to_openai(specs: list) -> list:

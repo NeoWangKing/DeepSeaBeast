@@ -156,6 +156,20 @@ class Tools:
             return "拍不了：%r" % (e,)
         return "拍了一下" if ok else "拍不了（对方不在这个群？）"
 
+    def send_face(self, name="") -> str:
+        """发一个 QQ 自带小表情（用官方名字，比如 汪汪/吃糖/得意）。"""
+        fn = self.cb.get("send_face")
+        if not fn:
+            return "发不了：这个会话没开发表情"
+        nm = str(name or "").strip()
+        if not nm:
+            return "没发：name 是空的（写官方名字，比如 汪汪）"
+        try:
+            ok = fn(nm)
+        except Exception as e:
+            return "发不了：%r" % (e,)
+        return ("发了个 %s" % nm) if ok else ("没找到这个表情：%s（用清单里的名字）" % nm)
+
     def memory_append(self, text="", kind="impression") -> str:
         """自己往记忆里写一条：印象 / 没聊完的话题 / 想说没说的话。"""
         t = str(text or "").strip()
@@ -234,6 +248,11 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("vision") and send_tools:
         specs.append(("view_image", [],
                       "看当前消息里的图片（她真的能看到图再说话）；消息里带 [图片] 时优先用它", "view_image"))
+    if on("face") and send_tools:
+        specs.append(("send_face",
+                      [{"type": "string", "name": "name",
+                        "description": "【必填】官方表情名，比如 汪汪/吃糖/得意/微笑/尊嘟假嘟（见清单）"}],
+                      "发一个 QQ 自带小表情（像真人那样偶尔用，别每条都发）", "send_face"))
     if on("poke") and send_tools:
         specs.append(("send_poke",
                       [{"type": "string", "name": "target_id",

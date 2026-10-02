@@ -18,6 +18,10 @@ from datetime import datetime, time as dtime
 from astrbot.api.event import AstrMessageEvent, filter, MessageChain
 from astrbot.api.message_components import At, Image, Plain, Reply
 try:
+    from astrbot.api.message_components import Face          # QQ 自带表情（小黄脸）
+except Exception:
+    Face = None
+try:
     from astrbot.api.message_components import Poke          # 拍一拍/戳一戳
 except Exception:
     try:
@@ -1604,6 +1608,27 @@ class QqPeakGate(Star):
                 self._log("agent：拍异常 %r" % (e,))
                 return False
 
+        def _send_face(name=""):
+            fid = self._face_id_by_name(name)
+            if not fid or Face is None:
+                return False
+
+            async def _do():
+                try:
+                    await event.send(MessageChain([Face(id=fid)]))
+                    self._log("agent：发了个 QQ 表情 #%d「%s」" % (fid, self._qq_face_name(fid)))
+                    return True
+                except Exception as e:
+                    self._log("agent：发 QQ 表情失败 %r" % (e,))
+                    return False
+            try:
+                if _loop is not None and _loop.is_running():
+                    return bool(asyncio.run_coroutine_threadsafe(_do(), _loop).result(timeout=8))
+                return bool(asyncio.get_event_loop().run_until_complete(_do()))
+            except Exception as e:
+                self._log("agent：发 QQ 表情异常 %r" % (e,))
+                return False
+
         def _memory_append(kind, text):
             try:
                 d = os.path.join(PLUGIN_DIR, "data", "agent_memory")
@@ -1619,6 +1644,7 @@ class QqPeakGate(Star):
         cbs = {"recent_lines": _recent, "active_members": _members,
                "memory_lookup": _memory, "list_stickers": _list_stickers,
                "view_image": _view_image, "send_poke": _send_poke,
+               "send_face": _send_face,
                "memory_append": _memory_append}
         if self._agent_send_allowed(event):
             # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
@@ -1725,6 +1751,38 @@ class QqPeakGate(Star):
         except Exception:
             return ""
 
+    def _face_id_by_name(self, name: str) -> int:
+        """官方名字 / 数字 id → QQ 表情 id。"""
+        t = str(name or "").strip()
+        if not t:
+            return 0
+        if t.isdigit():
+            return int(t)
+        t = t.lstrip("/").strip()
+        try:
+            self._qq_face_name(-1)              # 确保表已载入
+            for k, v in (getattr(self, "_face_map", {}) or {}).items():
+                if v == t:
+                    return int(k)
+        except Exception:
+            pass
+        return 0
+
+    def _face_menu_text(self) -> str:
+        """给她一份"能发的 QQ 自带表情"清单（官方名字=id）。"""
+        try:
+            self._qq_face_name(-1)
+            m = getattr(self, "_face_map", {}) or {}
+            pop = [4, 14, 5, 6, 9, 13, 16, 20, 21, 25, 27, 28, 30, 32, 38, 39, 43,
+                   53, 61, 63, 66, 69, 71, 72, 74, 77, 79, 96, 97, 98, 277, 307, 319, 324, 354, 426]
+            got = [(m.get(str(i)) or "", i) for i in pop if m.get(str(i))]
+            if not got:
+                return ""
+            return ("【可以发的 QQ 自带表情（用 send_face，参数写名字）】\n"
+                    + "、".join("%s=%d" % (n, i) for n, i in got))
+        except Exception:
+            return ""
+
     def _agent_lock(self, key: str):
         if not hasattr(self, "_agent_locks"):
             self._agent_locks = {}
@@ -1771,6 +1829,9 @@ class QqPeakGate(Star):
                   "tools_text": self._agent_tools_text(), "tools_send": True})
         _menu = self._sticker_menu_text("private" if private else key)
         system_prompt = _txt + (("\n\n" + _menu) if _menu else "")
+        _fmenu = self._face_menu_text()
+        if _fmenu:
+            system_prompt += "\n\n" + _fmenu
         # 每一轮都用**全新**的工具会话：否则上一轮的 sent/finished 会累积，
         # 既让日志出现"说了 5 条"，还会让陈旧 spoke 把这一轮的多轮工具调用掐掉
         _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
