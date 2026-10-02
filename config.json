@@ -237,19 +237,24 @@
       "send": true,
       "sticker": true,
       "collect": true,
-      "vision": false,
-      "poke": false,
-      "memory_write": false
+      "vision": true,
+      "poke": true,
+      "memory_write": true
     },
     "max_calls": 2,
     "send_tools_groups": [
-      "869622030"
+      "869622030",
+      "p:3245938285"
     ],
     "rescue_text": false,
     "loop_mode": true,
     "loop_groups": [
-      "869622030"
+      "869622030",
+      "p:3245938285"
     ],
-    "max_rounds": 2
+    "max_rounds": 2,
+    "llm": {
+      "vision_model": "deepseek-flash"
+    }
   }
 }

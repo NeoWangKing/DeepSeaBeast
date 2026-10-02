@@ -39,6 +39,7 @@ class _Logger:
 class _Filter:
     class EventMessageType:
         GROUP_MESSAGE = "group"
+        FRIEND_MESSAGE = "friend"
 
     def event_message_type(self, *a, **k):
         return lambda f: f

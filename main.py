@@ -233,6 +233,11 @@ def _safe_cut(t: str, pos: int) -> int:
     return pos
 
 
+_PRIVATE_ET = (getattr(filter.EventMessageType, "FRIEND_MESSAGE", None)
+               or getattr(filter.EventMessageType, "PRIVATE_MESSAGE", None)
+               or filter.EventMessageType.GROUP_MESSAGE)
+
+
 class QqPeakGate(Star):
     def __init__(self, context: Context, config: dict | None = None):
         super().__init__(context)
@@ -1517,8 +1522,54 @@ class QqPeakGate(Star):
                 pass
             return rows
 
+        def _view_image():
+            comps = [m for m in event.get_messages() if isinstance(m, Image)]
+            if not comps:
+                return ""
+            paths = []
+            for c in comps[:2]:
+                try:
+                    pth = self._save_tmp_image(c)
+                    if pth:
+                        paths.append(pth)
+                except Exception:
+                    pass
+            if not paths:
+                return ""
+            txt = agent.vision.describe(paths, self.cfg)
+            return ("图里大概是这样：%s" % txt) if txt else ""
+
+        def _send_poke(target=""):
+            uid = str(target or event.get_sender_id() or "")
+            gid = str(event.get_group_id() or "")
+
+            async def _do():
+                params = {"user_id": int(uid)}
+                if gid and gid != "0":
+                    params["group_id"] = int(gid)
+                await event.call_action("send_poke", **params)
+            try:
+                _spawn(_do())
+                return True
+            except Exception:
+                return False
+
+        def _memory_append(kind, text):
+            try:
+                d = os.path.join(PLUGIN_DIR, "data", "agent_memory")
+                os.makedirs(d, exist_ok=True)
+                fn = os.path.join(d, (self._chat_key(event).replace(":", "_") or "x") + ".jsonl")
+                with open(fn, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"ts": int(time.time()), "kind": str(kind or "impression")[:16],
+                                         "text": str(text or "")[:120]}, ensure_ascii=False) + "\n")
+                return "记下了"
+            except Exception as e:
+                return "没记住：%r" % (e,)
+
         cbs = {"recent_lines": _recent, "active_members": _members,
-               "memory_lookup": _memory, "list_stickers": _list_stickers}
+               "memory_lookup": _memory, "list_stickers": _list_stickers,
+               "view_image": _view_image, "send_poke": _send_poke,
+               "memory_append": _memory_append}
         if self._agent_send_allowed(event):
             # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
             cbs.update({"send_text": _send_text, "send_sticker": _send_sticker,
@@ -1608,7 +1659,7 @@ class QqPeakGate(Star):
         _kcfg = self.cfg.get("kb") or {}
         _txt, _meta = promptlib.build_system_prompt(
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else key, private=private,
-            caps={"vision": False, "search": False,
+            caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
                   "tools_text": self._agent_tools_text(), "tools_send": True})
         _menu = self._sticker_menu_text("private" if private else key)
@@ -1628,15 +1679,60 @@ class QqPeakGate(Star):
         if lines:
             user += "[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines) + "\n"
         user += "[当前消息] " + str(getattr(event, "message_str", "") or "")
+        # 她自己写的记忆：最近几条注入到提示词末尾
+        try:
+            _mf = os.path.join(PLUGIN_DIR, "data", "agent_memory",
+                               (key.replace(":", "_") or "x") + ".jsonl")
+            if os.path.isfile(_mf):
+                _notes = []
+                with open(_mf, encoding="utf-8") as _fh:
+                    for _line in _fh.readlines()[-8:]:
+                        try:
+                            _o = json.loads(_line)
+                            _notes.append("- [%s] %s" % (_o.get("kind"), _o.get("text")))
+                        except Exception:
+                            pass
+                if _notes:
+                    system_prompt += "\n\n【你自己之前记下的（仅供参考，别硬提）】\n" + "\n".join(_notes)
+        except Exception:
+            pass
+        # 消息里有图 → 直接把图给多模态模型看（她真的能看到），这一轮临时切模型
+        _img_paths = []
+        try:
+            for _m in event.get_messages():
+                if isinstance(_m, Image):
+                    _p = self._save_tmp_image(_m)
+                    if _p:
+                        _img_paths.append(_p)
+        except Exception:
+            pass
+        _vmodel = None
+        _user_content = user
+        if _img_paths:
+            _parts = []
+            for _p in _img_paths[:2]:
+                try:
+                    _b64 = base64.b64encode(open(_p, "rb").read()).decode()
+                    _ext = os.path.splitext(_p)[1].lstrip(".").lower() or "jpeg"
+                    _parts.append({"type": "image_url",
+                                   "image_url": {"url": "data:image/%s;base64,%s" % (_ext, _b64)}})
+                except Exception:
+                    pass
+            if _parts:
+                _parts.append({"type": "text", "text": user})
+                _user_content = _parts
+                _vmodel = agent.vision.vision_model(self.cfg)
+                self._log("agent loop：带 %d 张图 → 用 %s 直接看图" % (len(_parts) - 1, _vmodel))
         messages = [{"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user}]
+                    {"role": "user", "content": _user_content}]
         try:
             _rounds = int(self._agent_cfg().get("max_rounds", 2) or 2)
         except Exception:
             _rounds = 2
         self._log("agent loop：开始（%s，%d 个工具，system %d 字，最多 %d 轮）"
                   % (key, len(schema), len(system_prompt), _rounds))
-        r = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, _rounds, self._log_debug)
+        r = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, _rounds,
+                                    self._log_debug, _vmodel)
         self._log("agent loop：结束（%s，用了 %s，说了 %d 条，finish=%s）"
                   % (key, str(r.get("usage") or {}), len(t.sent), t.finished))
         if not t.spoke and not t.finished:
@@ -2536,6 +2632,16 @@ class QqPeakGate(Star):
         except Exception:
             pass
         return False
+
+    @filter.event_message_type(_PRIVATE_ET)
+    async def gate_private(self, event: AstrMessageEvent) -> None:
+        """私聊：只在开了 agent loop 的会话里接管（其他私聊完全不碰）。"""
+        try:
+            self._reload_cfg()
+            if self._agent_loop_on(event):
+                await self._allow(event)
+        except Exception as e:
+            self._log("私聊闸门出错（忽略）: %r" % (e,))
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def gate(self, event: AstrMessageEvent) -> None:
