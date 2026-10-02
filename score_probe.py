@@ -1,1 +1,0 @@
-tools/score_probe.py
