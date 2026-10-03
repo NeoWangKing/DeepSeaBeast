@@ -138,6 +138,8 @@ def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
     qv = {}
     for t in toks:
         qv[t] = qv.get(t, 0) + 1
+    # 查询里的连续中文片段（≥2 字）：在块里"整段出现"说明强相关，额外加分
+    phrases = [x for x in re.findall(r"[\u4e00-\u9fff]{2,}", str(query)) if len(x) >= 2]
     norm = math.sqrt(sum(v * v for v in qv.values())) or 1.0
     scored = []
     for c in chunks:
@@ -152,10 +154,26 @@ def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
         # 单个关键词强命中也算数：把"填充词稀释"补偿回来
         # （例："donk 是谁" 里 donk 命中就够；不然会被"是谁"拉低到阈值以下）
         s = max(s, best * math.sqrt(max(1, len(qv))))
+        _text = str(c.get("text") or "")
+        _bonus = 0.0
+        for _ph in phrases:
+            if _ph in _text:
+                _bonus += 0.05 * min(3.0, len(_ph) / 2.0)
+        s += min(_bonus, 0.25)
         if s >= min_score:
-            scored.append({"source": c.get("source"), "text": c.get("text"), "score": round(s, 3)})
+            scored.append({"source": c.get("source"), "text": _text, "score": round(s, 3)})
     scored.sort(key=lambda x: -x["score"])
-    return scored[: max(1, int(top_k or 3))]
+    # 同一个文件最多占 2 块（让不同资料都有机会被注入）
+    out, per = [], {}
+    for it in scored:
+        src = it.get("source")
+        if per.get(src, 0) >= 2:
+            continue
+        out.append(it)
+        per[src] = per.get(src, 0) + 1
+        if len(out) >= max(1, int(top_k or 3)):
+            break
+    return out
 
 
 def stats() -> dict:
