@@ -2641,7 +2641,20 @@ class QqPeakGate(Star):
         except Exception as _e:
             self._log_debug("定时提醒重试失败 %r" % (_e,))
         if not t.spoke and not t.finished:
+            # 她既没说也没结束：再提醒一轮（传统渠道已退休，这里就是最后的安全网）
+            try:
+                messages.append({"role": "user", "content": (
+                    "【系统提醒】你刚才没有发言。要说话就调 send_message（多条用 ||| 分隔）；"
+                    "不想说话就调 finish。别把话写在正文里，正文不会发出去。")})
+                r2 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 1,
+                                             self._log, _vmodel)
+                self._log("agent loop：漏发提醒后 %s" % ("补上了" if t.spoke else "仍未发言"))
+                r = r2 if r2 else r
+            except Exception as _e6:
+                self._log_debug("漏发提醒失败 %r" % (_e6,))
+        if not t.spoke and not t.finished:
             self._log("agent loop：这轮没发言也没 finish → 视为沉默")
+            self._fault("no_speak")
         try:
             event.set_extra("_agent_loop_done", True)
         except Exception:

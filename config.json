@@ -259,18 +259,10 @@
    "memory_write": true
   },
   "max_calls": 2,
-  "send_tools_groups": [
-   "869622030",
-   "p:3245938285",
-   "966812151"
-  ],
+  "send_tools_groups": [],
   "rescue_text": false,
   "loop_mode": true,
-  "loop_groups": [
-   "869622030",
-   "p:3245938285",
-   "966812151"
-  ],
+  "loop_groups": [],
   "max_rounds": 2,
   "llm": {
    "vision_model": "deepseek-flash"
