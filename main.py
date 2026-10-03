@@ -3327,8 +3327,10 @@ class QqPeakGate(Star):
                         _kind = str(g.get("kind") or "").lower()
                         _worth = g.get("worth")      # 识图自己判的"这图有没有趣、值不值得收"
                         _hard_bad = _kind in ("qr", "ad")     # 二维码/广告：一律不收
-                        if _worth is not None:
-                            # 以"她看过觉得有没有梗"为准：真人照片/截图只要明显是玩笑/梗，照样收
+                        if (not private) and _kind == "screenshot":
+                            keep = False                     # 群里：屏幕截图一律不收（游戏/软件/网页/聊天记录）
+                        elif _worth is not None:
+                            # 其余以"她看过觉得有没有梗"为准（真人梗图 selfie 也照收）
                             keep = bool(_worth) and _kind not in ("qr", "ad")
                         elif g:
                             # 识图没给这个字段（解析失败/旧缓存）→ 只挡二维码/广告，其余先收
