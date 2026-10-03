@@ -23,7 +23,12 @@ def _tok(s: str) -> list:
     out = []
     for seg in zh:
         out += [seg[i:i + 2] for i in range(len(seg) - 1)] or [seg]
-    out += re.findall(r"[a-z0-9_]{2,}", s)
+    # 英文/数字词：连字符与缩写都归一（AK-47 → ak-47 / ak47 / ak / 47 都进索引）
+    for w in re.findall(r"[a-z0-9_]+(?:[-'+][a-z0-9_]+)*", s):
+        out.append(w)
+        if any(c in w for c in "-'+"):
+            out.append(re.sub(r"[-'+]", "", w))
+            out += [x for x in re.split(r"[-'+]", w) if len(x) >= 2]
     return out
 
 
