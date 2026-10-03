@@ -1,0 +1,10 @@
+[Unit]
+Description=每月 1 号刷新《明日方舟》资料
+
+[Timer]
+OnCalendar=*-*-01 05:40:00
+OnBootSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

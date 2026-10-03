@@ -1,0 +1,6 @@
+[Unit]
+Description=大肥鱼资料库：刷新《明日方舟》最新动态
+
+[Service]
+Type=oneshot
+ExecStart=/opt/astrbot/.local/share/uv/tools/astrbot/bin/python /opt/astrbot/data/plugins/qq_peak_gate/tools/arknights_refresh.py
