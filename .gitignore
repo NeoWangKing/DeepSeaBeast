@@ -47,6 +47,7 @@ data/temp/
 prompts/personas/*.txt
 !prompts/personas/_template.txt
 !prompts/personas/_common_patch.txt
+!prompts/personas/private_warm.txt
 
 # ── agent 运行数据（内容不入库） ─────────────────────────────
 data/agent_memory/

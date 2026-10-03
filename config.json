@@ -49,7 +49,8 @@
  "prompt_by_group": {
   "869622030": "system_prompt_friend.txt",
   "966812151": "system_prompt_tool.txt",
-  "private": "system_prompt_private.txt"
+  "private": "system_prompt_private.txt",
+  "p:287383512": "private_warm.txt"
  },
  "system_prompt_file": "system_prompt.txt",
  "only_at_groups": [

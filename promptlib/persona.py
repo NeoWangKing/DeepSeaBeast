@@ -39,20 +39,26 @@ def _read(path: str) -> str:
 
 def pick_file(plugin_dir: str, cfg: dict, chat_key: str = "", private: bool = False) -> tuple:
     """返回 (路径, 来源说明)。"""
-    key = "private" if private else str(chat_key or "")
+    key = str(chat_key or "")
+    keys = []
+    if private:
+        if key and key not in ("private", "default"):
+            keys.append(key)          # 优先按人（p:<uid>）
+        keys.append("private")        # 再退回"所有私聊共用"
+    else:
+        keys.append(key)
+    keys.append("default")
     pcfg = cfg.get("prompt") or {}
 
-    m = pcfg.get("persona_by_group") or {}
-    if isinstance(m, dict):
-        p = resolve(plugin_dir, m.get(key) or m.get("default") or "")
-        if p:
-            return p, "persona_by_group"
-
-    m2 = cfg.get("prompt_by_group") or {}
-    if isinstance(m2, dict) and m2.get(key):
-        p = resolve(plugin_dir, m2.get(key))
-        if p:
-            return p, "prompt_by_group"
+    for _src, _map in (("persona_by_group", pcfg.get("persona_by_group") or {}),
+                       ("prompt_by_group", cfg.get("prompt_by_group") or {})):
+        if not isinstance(_map, dict):
+            continue
+        for k in keys:
+            if k and _map.get(k):
+                p = resolve(plugin_dir, _map.get(k))
+                if p:
+                    return p, _src
 
     p = resolve(plugin_dir, cfg.get("system_prompt_file") or "system_prompt.txt")
     return (p, "default") if p else ("", "missing")

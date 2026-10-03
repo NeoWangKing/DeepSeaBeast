@@ -2272,7 +2272,7 @@ class QqPeakGate(Star):
         private = key.startswith("p:")
         _kcfg = self.cfg.get("kb") or {}
         _txt, _meta = promptlib.build_system_prompt(
-            plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else key, private=private,
+            plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key=key, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
                   "tools_text": self._agent_tools_text(key), "tools_send": True})
@@ -2989,7 +2989,7 @@ class QqPeakGate(Star):
                         _kcfg = self.cfg.get("kb") or {}
                         _txt, _meta = promptlib.build_system_prompt(
                             plugin_dir=PLUGIN_DIR, cfg=self.cfg,
-                            chat_key=gid, private=private,
+                            chat_key=(self._chat_key(event) if private else gid), private=private,
                             caps={"vision": bool(self.cfg.get("vision", False)),
                                   "search": bool((self.cfg.get("search") or {}).get("enabled")),
                                   "kb": bool(_kcfg.get("enabled", True) and not private),
