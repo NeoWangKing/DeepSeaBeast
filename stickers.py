@@ -661,7 +661,8 @@ def main() -> int:
         print("从历史消息里收了", n, "张；", stats())
         return 0
     if a.cmd == "mirror":
-        r = reconcile_deletions(dry=("dry" in (a.tags or "")), limit=int(a.arg or 120) if str(a.arg).isdigit() else 120)
+        _dry = ("dry" in (a.tags or "")) or (str(a.arg).strip().lower() == "dry")
+        r = reconcile_deletions(dry=_dry, limit=120)
         print("反向同步（以 QQ 面板为准）：", r)
         return 0
     if a.cmd == "push":
