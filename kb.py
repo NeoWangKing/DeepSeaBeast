@@ -136,10 +136,16 @@ def search(query: str, top_k: int = 3, min_score: float = 0.14) -> list:
     scored = []
     for c in chunks:
         s = 0.0
+        best = 0.0
         for t, v in qv.items():
             tv = (c.get("vec") or {}).get(t)
             if tv:
-                s += tv * (v / norm)
+                contrib = tv * (v / norm)
+                s += contrib
+                best = max(best, contrib)
+        # 单个关键词强命中也算数：把"填充词稀释"补偿回来
+        # （例："donk 是谁" 里 donk 命中就够；不然会被"是谁"拉低到阈值以下）
+        s = max(s, best * math.sqrt(max(1, len(qv))))
         if s >= min_score:
             scored.append({"source": c.get("source"), "text": c.get("text"), "score": round(s, 3)})
     scored.sort(key=lambda x: -x["score"])
