@@ -2348,6 +2348,29 @@ class QqPeakGate(Star):
                     system_prompt += "\n\n【你自己之前记下的（仅供参考，别硬提）】\n" + "\n".join(_notes)
         except Exception:
             pass
+        # 本地资料库：按当前话题检索后注入（loop 路径以前没有这一段，等于资料白建）
+        try:
+            _kcfg = self.cfg.get("kb") or {}
+            if _kcfg.get("enabled", True) and not private:
+                _q = " ".join([str(getattr(event, "message_str", "") or "")] +
+                              [x[1] for x in list(self.recent.get("" if key.startswith("p:") else key) or [])[-3:]])
+                _hits = local_kb.search(_q, int(_kcfg.get("top_k", 3) or 3),
+                                        float(_kcfg.get("min_score", 0.08) or 0.08))
+                if _hits:
+                    _buf, _cap, _used = [], int(_kcfg.get("max_chars", 900) or 900), 0
+                    for _h in _hits:
+                        _t = "【%s】%s" % (_h.get("source"), _h.get("text"))
+                        if _used + len(_t) > _cap:
+                            break
+                        _buf.append(_t)
+                        _used += len(_t)
+                    if _buf:
+                        system_prompt += ("\n\n【本地资料库（可能和当前话题有关；自然的时候用上，"
+                                          "别照抄、别提\"资料库\"三个字）】\n" + "\n\n".join(_buf))
+                        self._log("loop 资料库：注入 %d 块（%s）"
+                                  % (len(_buf), "、".join(str(_h.get("source")) for _h in _hits[:len(_buf)])))
+        except Exception as _ek:
+            self._log_debug("loop 资料库注入失败 %r" % (_ek,))
         # 记忆块（群印象/人物档案）也带进 loop 的提示词
         try:
             _mb = self._memory_block(key.split(":")[-1] if key.startswith("p:") else key,

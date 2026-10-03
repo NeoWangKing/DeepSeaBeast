@@ -116,7 +116,7 @@ def _load() -> dict:
     return _cache["data"] or {"chunks": []}
 
 
-def search(query: str, top_k: int = 3, min_score: float = 0.14) -> list:
+def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
     """按相关度取几块资料。返回 [{source, text, score}]。"""
     toks = _tok(query)
     if not toks:
