@@ -526,11 +526,105 @@ def stats() -> dict:
             "tags": sorted({t for x in items for t in (x.get("tags") or [])})[:30]}
 
 
+def _hash_close(h: str, others, tol: int = 8) -> bool:
+    """aHash 比较：相等或汉明距离 <= tol 都算同一张（QQ 那边会重编码）。"""
+    def _bits(x):
+        try:
+            return bin(int(str(x), 16))[2:].zfill(64)
+        except Exception:
+            return ""
+
+    b = _bits(h)
+    if not b:
+        return False
+    for o in others or []:
+        ob = _bits(o)
+        if not ob:
+            continue
+        if b == ob:
+            return True
+        if sum(1 for x, y in zip(b, ob) if x != y) <= tol:
+            return True
+    return False
+
+
+def reconcile_deletions(uin: str = "", limit: int = 120, dry: bool = False,
+                        grace_sec: int = 600) -> dict:
+    """以 QQ 收藏面板为准：面板里没有了的（我们推上去的）表情，本地也删掉。
+
+    - 面板列表拿不到/为空 → 直接放弃（绝不因为接口故障清库）
+    - 只处理"我们推上去过"的条目（face_pushed 或 src=account），本地原生收藏不受影响
+    - 刚加的（grace_sec 内）跳过，避免推送还没生效就被判成"被删"
+    - 删除前把图复制到 data/stickers/_rejected/（可回滚）
+    """
+    import shutil
+    urls = fetch_faces(uin, count=int(limit))
+    if not urls:
+        return {"error": "面板返回为空，放弃同步（防误删）"}
+    panel_hashes = []
+    got = 0
+    for u in urls[:limit]:
+        try:
+            p = _download_remote(u)
+            if not p:
+                continue
+            h = ahash(p)
+            if h:
+                panel_hashes.append(h)
+            got += 1
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+        except Exception:
+            continue
+    if got < max(3, len(urls) // 5):
+        return {"error": "面板图大部分下载失败（%d/%d），放弃同步" % (got, len(urls))}
+    items = load()
+    now = int(time.time())
+    removed, kept, skipped = [], [], 0
+    for it in items:
+        if not (it.get("face_pushed") or it.get("src") == "account"):
+            continue
+        if now - int(it.get("added_at") or 0) < int(grace_sec):
+            skipped += 1
+            continue
+        h = ""
+        p = abs_path(it) or ""
+        if not p or not os.path.isfile(p):
+            try:
+                p = ensure_local(it)
+            except Exception:
+                p = ""
+        if p and os.path.isfile(p):
+            h = ahash(p)                      # 一律重算：旧条目的 hash 早期可能退化成 md5
+        else:
+            h = str(it.get("hash") or "")
+        if h and _hash_close(h, panel_hashes):
+            continue
+        removed.append(it.get("id"))
+        if not dry:
+            try:
+                p = abs_path(it)
+                if p and os.path.isfile(p):
+                    os.makedirs(os.path.join(DATA, "_rejected"), exist_ok=True)
+                    shutil.copy2(p, os.path.join(DATA, "_rejected", os.path.basename(p)))
+            except Exception:
+                pass
+            try:
+                delete(it.get("id"))
+            except Exception:
+                pass
+    return {"panel": len(urls), "panel_hashed": got, "removed": len(removed),
+            "removed_ids": removed[:20], "recent_skipped": skipped,
+            "left": len(load()) if not dry else len(items)}
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="表情包收藏夹")
     ap.add_argument("cmd", choices=["list", "stats", "add", "del", "tag", "sync", "faces",
-                                    "history", "push"], nargs="?", default="stats")
+                                    "history", "push", "mirror"], nargs="?", default="stats")
     ap.add_argument("arg", nargs="?", default="")
     ap.add_argument("--tags", default="")
     ap.add_argument("--group", default="")
@@ -565,6 +659,10 @@ def main() -> int:
     if a.cmd == "history":
         n = import_history(a.arg or "869622030", limit=int(a.tags or 40))
         print("从历史消息里收了", n, "张；", stats())
+        return 0
+    if a.cmd == "mirror":
+        r = reconcile_deletions(dry=("dry" in (a.tags or "")), limit=int(a.arg or 120) if str(a.arg).isdigit() else 120)
+        print("反向同步（以 QQ 面板为准）：", r)
         return 0
     if a.cmd == "push":
         n = push_to_face(int(a.tags or 50))

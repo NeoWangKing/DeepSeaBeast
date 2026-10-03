@@ -1,0 +1,6 @@
+[Unit]
+Description=QQ bot: 反向同步表情（QQ 收藏面板里删了 → 本地也删）
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/qqbot-sticker mirror

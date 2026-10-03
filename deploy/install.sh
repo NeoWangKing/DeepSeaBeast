@@ -9,7 +9,7 @@ echo "插件目录：$REPO"
 install -m 755 "$HERE"/bin/qqbot-* /usr/local/bin/
 install -m 644 "$HERE"/systemd/*.service "$HERE"/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
-for t in qqbot-memory-refresh qqbot-memes-refresh qqbot-holiday-refresh qqbot-turtle-gen qqbot-qq-reconnect qqbot-backup; do
+for t in qqbot-sticker-mirror qqbot-memory-refresh qqbot-memes-refresh qqbot-holiday-refresh qqbot-turtle-gen qqbot-qq-reconnect qqbot-backup; do
   systemctl enable --now "$t.timer" >/dev/null 2>&1 || echo "  （跳过 $t.timer）"
 done
 mkdir -p "$REPO/.secrets" && chmod 700 "$REPO/.secrets"

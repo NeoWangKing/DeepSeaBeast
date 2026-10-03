@@ -1,0 +1,10 @@
+[Unit]
+Description=每 30 分钟反向同步一次表情收藏
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
