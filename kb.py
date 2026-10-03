@@ -119,6 +119,12 @@ def _load() -> dict:
 def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
     """按相关度取几块资料。返回 [{source, text, score}]。"""
     toks = _tok(query)
+    # 疑问/泛化词不参与打分：不然"原神圣遗物怎么刷"会被含"怎么"的其他资料挤掉
+    _FILLER = {"怎么", "什么", "为什么", "如何", "是不是", "哪里", "哪个", "多少", "多少钱",
+               "介绍", "玩法", "意思", "是什么", "有没有", "可以", "需要", "怎么刷", "么刷"}
+    _keep = [t for t in toks if t not in _FILLER]
+    if _keep:
+        toks = _keep
     if not toks:
         return []
     d = _load()
