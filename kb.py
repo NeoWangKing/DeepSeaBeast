@@ -139,7 +139,15 @@ def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
     for t in toks:
         qv[t] = qv.get(t, 0) + 1
     # 查询里的连续中文片段（≥2 字）：在块里"整段出现"说明强相关，额外加分
-    phrases = [x for x in re.findall(r"[\u4e00-\u9fff]{2,}", str(query)) if len(x) >= 2]
+    phrases = []
+    for _run in re.findall(r"[\u4e00-\u9fff]{2,}", str(query)):
+        for _L in range(min(len(_run), 8), 1, -1):        # 长短语优先
+            for _i in range(0, len(_run) - _L + 1):
+                _sub = _run[_i:_i + _L]
+                if _sub not in phrases:
+                    phrases.append(_sub)
+        if len(phrases) > 80:
+            break
     norm = math.sqrt(sum(v * v for v in qv.values())) or 1.0
     scored = []
     for c in chunks:
