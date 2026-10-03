@@ -6,11 +6,11 @@ D=$B/$(date +%F)
 mkdir -p "$D"
 cd ${QQBOT_PLUGIN_DIR:-/opt/astrbot/data/plugins/qq_peak_gate}
 tar czf "$D/plugin.tar.gz" config.json system_prompt.txt system_prompt_sharp.txt \
+    system_prompt_private.txt system_prompt_tool.txt memes.md metadata.yaml \
+    extract_memes.py memory .secrets chatlog 2>/dev/null || true
 tar czf "$D/stickers-and-agent.tar.gz" \
   data/stickers/index.json data/agent_memory data/agent_wake.json \
   data/agent_faults.json data/games/turtle_soup 2>/dev/null || true
-    system_prompt_private.txt system_prompt_tool.txt memes.md metadata.yaml \
-    extract_memes.py memory .secrets chatlog 2>/dev/null || true
 tar czf "$D/astrbot-cfg.tar.gz" -C /opt/astrbot/data cmd_config.json 2>/dev/null || true
 cp -a /opt/astrbot/OPS.md "$D/" 2>/dev/null || true
 chmod 600 "$D"/*.tar.gz
