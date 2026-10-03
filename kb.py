@@ -116,6 +116,25 @@ def _load() -> dict:
     return _cache["data"] or {"chunks": []}
 
 
+_STOP_TOPIC = {"md", "news", "cs", "the", "and", "的", "了"}
+
+
+def _file_topic(source: str, text: str) -> set:
+    """文件的"主题词"：文件名 + 第一行标题里的中文/英文实体词。"""
+    out = set()
+    base = os.path.splitext(os.path.basename(str(source)))[0]
+    for w in re.split(r"[-_/]+", base):
+        w = w.strip().lower()
+        if len(w) >= 3 and w not in _STOP_TOPIC:
+            out.add(w)
+    head = str(text or "").splitlines()[0] if str(text or "").strip() else ""
+    for w in re.findall(r"[\u4e00-\u9fff]{2,6}", head):
+        out.add(w)
+    for w in re.findall(r"[A-Za-z]{2,10}", head):
+        out.add(w.lower())
+    return out
+
+
 def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
     """按相关度取几块资料。返回 [{source, text, score}]。"""
     toks = _tok(query)
@@ -149,8 +168,28 @@ def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
         if len(phrases) > 80:
             break
     norm = math.sqrt(sum(v * v for v in qv.values())) or 1.0
+    # 主题过滤：查询里出现了某文件的"主题词"（如 明日方舟 / 原神 / cs2）→ 只保留主题相关的文件
+    _topics = {}
+    for c in chunks:
+        src = c.get("source")
+        if src not in _topics:
+            _topics[src] = _file_topic(src, c.get("text"))
+    _ql = str(query).lower()
+    _hit_topics = set()
+    for src, ts in _topics.items():
+        for t in ts:
+            if len(t) >= 2 and t in _ql:
+                _hit_topics.add(t)
+    _allowed = None
+    if _hit_topics:
+        _allowed = {src for src, ts in _topics.items() if ts & _hit_topics}
+        if not _allowed:
+            _allowed = None
+
     scored = []
     for c in chunks:
+        if _allowed is not None and c.get("source") not in _allowed:
+            continue
         s = 0.0
         best = 0.0
         for t, v in qv.items():
@@ -161,7 +200,9 @@ def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
                 best = max(best, contrib)
         # 单个关键词强命中也算数：把"填充词稀释"补偿回来
         # （例："donk 是谁" 里 donk 命中就够；不然会被"是谁"拉低到阈值以下）
-        s = max(s, best * math.sqrt(max(1, len(qv))))
+        _rare = [t for t in qv if df.get(t, 9) <= 3]
+        if _rare and any((c.get("vec") or {}).get(t) for t in _rare):
+            s = max(s, best * math.sqrt(max(1, len(qv))))
         _text = str(c.get("text") or "")
         _bonus = 0.0
         for _ph in phrases:
