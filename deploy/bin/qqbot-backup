@@ -10,7 +10,7 @@ tar czf "$D/plugin.tar.gz" config.json system_prompt.txt system_prompt_sharp.txt
     extract_memes.py memory .secrets chatlog 2>/dev/null || true
 tar czf "$D/stickers-and-agent.tar.gz" \
   data/stickers/index.json data/agent_memory data/agent_wake.json \
-  data/agent_faults.json data/games/turtle_soup 2>/dev/null || true
+  data/agent_faults.json data/games/turtle_soup data/kb 2>/dev/null || true
 tar czf "$D/astrbot-cfg.tar.gz" -C /opt/astrbot/data cmd_config.json 2>/dev/null || true
 cp -a /opt/astrbot/OPS.md "$D/" 2>/dev/null || true
 chmod 600 "$D"/*.tar.gz
