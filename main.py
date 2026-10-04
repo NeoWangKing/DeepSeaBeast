@@ -3383,7 +3383,7 @@ class QqPeakGate(Star):
                                     it["face_pushed"] = True
                                     self._log("表情包：已加进 QQ 表情收藏 %s" % it["id"])
                             except Exception as _e3:
-                                self._log_debug("表情包：加进 QQ 表情失败（忽略）%r" % (_e3,))
+                                self._log("⚠️ 表情包：加进 QQ 表情面板失败（本地已存，面板没同步）%r" % (_e3,))
                             await self._maybe_say_about_sticker(event, it)
                     finally:
                         try:
