@@ -57,22 +57,24 @@ class Tools:
                 return "发了 %d 条后出错：%r" % (ok, e)
         return "已发出 %d 条" % ok
 
-    def send_sticker(self, sticker_id="", reply_to_id="") -> str:
+    def send_sticker(self, sticker_id="", mood="", reply_to_id="") -> str:
+        """发一张表情。给 id 就发那张；只给 mood（情绪/场景）就让她自己从收藏里挑。"""
         sid = str(sticker_id or "").strip()
-        if not sid:
-            return "没发：要先给 sticker_id（可以用 list_stickers 查）"
+        mo = str(mood or "").strip()
         fn = self.cb.get("send_sticker")
         if not fn:
             return "没发：这个会话现在不能发表情"
         try:
-            r = fn(sid, reply_to_id=str(reply_to_id or ""))
+            r = fn(sid, mood=mo, reply_to_id=str(reply_to_id or ""))
         except Exception as e:
             self.errors.append("send_sticker: %r" % (e,))
             return "没发：%r" % (e,)
         if not r:
-            return "没发：没找到 id=%s 的表情（用 list_stickers 查）" % sid
-        self.sent.append(("sticker", sid))
-        return "已发出表情 %s" % sid
+            return "没发：没挑到合适的表情（可以用 list_stickers 看看库里都有啥）"
+        self.sent.append(("sticker", sid or ("mood:" + (mo or "随手一张"))))
+        if sid:
+            return "已发出表情 %s" % sid
+        return "已发出表情（按「%s」自己挑的一张）" % (mo or "随手")
 
     def collect_sticker(self, message_id="", note="") -> str:
         fn = self.cb.get("collect_sticker")
@@ -303,8 +305,13 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                       "发言：你写的正文永远不会发出去，说话只能调这个工具", "send_message"))
     if on("sticker") and send_tools:
         specs.append(("send_sticker",
-                      [{"type": "string", "name": "sticker_id", "description": "【必填】表情 id（用 list_stickers 查）"}],
-                      "发一张指定 id 的收藏表情（一条消息只能一张）", "send_sticker"))
+                      [{"type": "string", "name": "sticker_id",
+                        "description": "要发的表情 id（【可用表情包】清单里那些）"},
+                       {"type": "string", "name": "mood",
+                        "description": "不想指名、只想要个情绪/场景就填这个，如「无语」「笑死」「点赞」「晚安」；"
+                                       "和她自己从收藏里挑一张贴切的"}],
+                      "发一张收藏表情包，单独一条消息发（sticker_id 和 mood 二选一，都没有就随手挑一张）",
+                      "send_sticker"))
     if on("recent"):
         specs.append(("get_recent_messages",
                       [{"type": "string", "name": "limit", "description": "看几条，默认 20，最多 50"}],

@@ -123,6 +123,9 @@ DEFAULTS = {
             "collect_say_prob": 0.18,            # 收图后偶尔开口夸一句的概率（大部分时候什么都不说）
             "collect_say_max_per_hour": 2,       # 这种"顺手夸一句"每小时最多几次
             "collect_say_lines": ["好图", "这张有意思，偷了", "偷了", "笑死，存了", "这个我收下了"],
+            "prompt_max": 12,             # 提示词里列几张给她挑
+            "encourage": 2,               # 表情档 0~3（越大越爱发）
+            "nudge_prob": 0.35,           # 闲聊里顺手提醒她可以配表情的概率（不强制）
         },
         "poke_reply": {              # 有人拍一拍/戳一戳她
             "enabled": True,
@@ -1485,12 +1488,34 @@ class QqPeakGate(Star):
         def _send_text(text, reply_to_id="", at_user_id="", face=""):
             _spawn(self._agent_send(target, text, reply_to_id, at_user_id, face))
 
-        def _send_sticker(sid, reply_to_id=""):
+        def _send_sticker(sid, mood="", reply_to_id=""):
+            """发一张表情：给了 id 就发那张；没给或 id 不存在就按 mood 自己挑一张。"""
+            sid, mood = str(sid or "").strip(), str(mood or "").strip()
             it = None
-            try:
-                it = stickers.find(sid)
-            except Exception:
-                it = None
+            if sid:
+                try:
+                    it = stickers.find(sid)
+                except Exception:
+                    it = None
+            if not it:
+                cand = []
+                try:
+                    if mood or sid:
+                        cand = stickers.pick(mood or sid, limit=6)
+                except Exception:
+                    cand = []
+                if not cand:                     # 兜底：最久没用过的几张里挑
+                    try:
+                        cand = sorted([x for x in (stickers.load() or []) if x.get("id")],
+                                      key=lambda x: int(x.get("last_used") or 0))[:8]
+                    except Exception:
+                        cand = []
+                if cand:
+                    _w = [1.0 / (i + 1) for i in range(len(cand))]
+                    it = random.choices(cand, weights=_w, k=1)[0]
+                    self._log("agent：表情按%s挑中 %s《%s》"
+                              % ("情绪「%s」" % mood if mood else "兜底", it.get("id"),
+                                 str(it.get("desc") or "")[:20]))
             if not it:
                 return False
             _spawn(self._agent_send_sticker(target, it, reply_to_id))
@@ -2335,6 +2360,13 @@ class QqPeakGate(Star):
                 user += "（他消息里的表情：" + "、".join("%s=%s" % (e, n) for e, n in _hits) + "）"
         except Exception:
             pass
+        # 软提醒：让她想起"可以配表情"（概率性、有冷却，避免每条都念叨）
+        try:
+            _nd = self._sticker_nudge(key)
+            if _nd:
+                user += "\n" + _nd
+        except Exception:
+            pass
         # 她自己写的记忆：最近几条注入到提示词末尾
         try:
             _mf = os.path.join(PLUGIN_DIR, "data", "agent_memory",
@@ -2688,6 +2720,36 @@ class QqPeakGate(Star):
             pass
         return True
 
+    def _sticker_nudge(self, key: str = "") -> str:
+        """软提醒：闲聊里顺手配一张表情。不强制、不刷屏（同一会话 8 分钟内最多提一次）。"""
+        try:
+            cfg = self.cfg.get("stickers") or {}
+            if not cfg.get("enabled", True):
+                return ""
+            key = str(key or "")
+            if key.startswith("p:"):
+                if not cfg.get("send_private", True):
+                    return ""
+            elif key and key in [str(x) for x in (cfg.get("send_exclude_groups") or [])]:
+                return ""
+            p = float(cfg.get("nudge_prob", 0.35) or 0)
+            if p <= 0:
+                return ""
+            ts = getattr(self, "_nudge_ts", None)
+            if ts is None:
+                ts = self._nudge_ts = {}
+            now = time.time()
+            if now - float(ts.get(key) or 0) < 480:
+                return ""
+            if random.random() > p:
+                return ""
+            ts[key] = now
+            return ("【顺手】这轮要是自然（接梗/吐槽/被逗笑/附和/道晚安/别人发了表情），"
+                    "可以顺手配一张表情：send_sticker(mood=「想说的一句」) 让她自己挑，"
+                    "或者 send_sticker(sticker_id=「清单里的 id」) 指名。不合适就纯文字，别硬塞。")
+        except Exception:
+            return ""
+
     def _sticker_menu_text(self, gid: str = "") -> str:
         """【可用表情包】清单：让模型用 [表情:id] 指名发图。
 
@@ -2723,8 +2785,10 @@ class QqPeakGate(Star):
                 tags = "/".join([str(t) for t in (it.get("tags") or [])][:4])
                 lines.append("- %s ｜ %s%s" % (it.get("id"), desc,
                                                ("［%s］" % tags) if tags else ""))
-            return ("【可用表情包】她的收藏里共 %d 张，下面是常用的和她这小时轮到的 %d 张；"
-                    "想发其中某张就写 [表情:那张的 id]；拿不准就用 [表情:情绪]，让她自己挑。\n%s"
+            return ("【可用表情包】她的收藏里共 %d 张，下面是常用的和她这小时轮到的 %d 张：\n%s\n"
+                    "要发就调 send_sticker：指名哪张 → send_sticker(sticker_id=「上面的 id」)；"
+                    "只想配个情绪/场景 → send_sticker(mood=「无语」或「笑死」或「点赞」或「晚安」)，"
+                    "她自己从收藏里挑一张贴切的。表情单独一条消息发，别和文字挤一起。"
                     % (len(items), len(picked), "\n".join(lines)))
         except Exception as e:
             self._log_debug("表情清单拼装失败: %r" % (e,))

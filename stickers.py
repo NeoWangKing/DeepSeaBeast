@@ -408,6 +408,25 @@ def abs_path(item: dict) -> str:
     return os.path.join(DATA, fn) if fn else ""
 
 
+# 情绪/场景词 → 相关标签（她说"发个无语的"，库里写的是"尴尬/嫌弃/离谱"，靠这个对上）
+_MOOD_SYN = {
+    "无语": "无语 尴尬 离谱 嫌弃 服了 汗",
+    "笑死": "笑死 搞笑 梗图 滑稽 哈哈",
+    "点赞": "点赞 赞同 同意 认可 牛",
+    "晚安": "晚安 睡 困 拜拜 晚安啦",
+    "开心": "开心 高兴 卖萌 可爱 跳舞 好耶",
+    "生气": "生气 嫌弃 傲娇 不满 烦",
+    "摆烂": "摆烂 躺平 佛系 累 不想努力",
+    "问号": "疑问 问号 懵 不懂 啥",
+    "加油": "加油 鼓励 打气 冲",
+    "哭": "哭 委屈 可怜 惨 泪",
+    "猫": "猫猫 猫 喵",
+    "狗": "狗 狗头 汪汪",
+    "敷衍": "敷衍 附和 尴尬 客套",
+    "震惊": "震惊 离谱 惊了 瞪",
+}
+
+
 def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6) -> list:
     """按文本里出现的关键词/标签挑候选（返回若干条，交给模型再选）。"""
     items = load()
@@ -415,6 +434,13 @@ def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6) -> l
     now = int(time.time())
     words = [w for w in (tags_hint or []) if w]
     t = str(text or "")
+    _t0 = t.strip()
+    for _k, _v in _MOOD_SYN.items():          # 情绪词扩展（"无语"→尴尬/离谱/嫌弃…）
+        if not _k:
+            continue
+        if _k in _t0 or any((w in _t0) for w in _v.split() if len(w) >= 2):
+            t += " " + _k + " " + _v
+    words = words + [w for w in t.split() if w and w not in words]
     scored = []
     for it in items:
         if str(it.get("id")) in ex:

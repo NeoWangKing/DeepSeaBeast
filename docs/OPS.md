@@ -131,3 +131,20 @@ agent/vision.py   看图：DeepSeek 多模态（不用 GLM）
 - 兜底：发送口 `replyproto.sanitize()` 清内部标记（**保留 [QQ表情:…]**）；配 `data/agent_faults.json` 计数
 - 体检：`python3 tools/agent_report.py [小时数]`
 - 排障顺序：`qqbot-status`（故障计数/定时/表情库）→ `journalctl -u astrbot | grep qq_peak_gate` → `data/agent_faults.json`
+
+## 发表情链路（2026-10-04 修）
+
+她发图片表情只有两条路，都走 `_agent_send_sticker`（单独一条消息，不和文字同气泡）：
+
+1. `send_sticker(sticker_id="s1790…")` —— 指名要哪张；id 从系统提示词末尾的【可用表情包】清单里拿
+2. `send_sticker(mood="无语")` —— 不指名，按情绪/场景自己挑：`stickers.pick()` 用标签+备注匹配，
+   情绪词带同义扩展（`_MOOD_SYN`：无语→尴尬/离谱/嫌弃…）；匹配不到就退化成"最久没用过的里面挑一张"
+
+- 提醒：`_sticker_nudge()` 按 `stickers.nudge_prob`（默认 0.35，同一会话 8 分钟冷却）
+  在当轮提示词里塞一句「这轮自然的话可以顺手配张表情」，不强制、由她自己判断
+- 档位：`stickers.encourage` 0~3（越大越爱发），注入 `_sticker_rules` 那段行为层
+- 为什么以前几乎不发：她调过 `send_sticker` 但**没带 id**（提示词只教了 `[表情:id]` 写法，
+  和工具参数对不上），一次失败 + 另一次把 `max_calls` 用完 → 整轮一张也发不出去（见 10-04 02:22 日志）
+- 排查：`journalctl -u astrbot | grep -E "发出表情|表情按"`；
+  离线回归：`python3 tests/sticker_tool_sim.py`
+- 注意：图片表情**没有**每小时上限；`stickers.max_per_hour` 只管旧的 `[表情:id]` 标记那条老路
