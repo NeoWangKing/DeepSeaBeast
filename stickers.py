@@ -107,14 +107,27 @@ def tag_image(path: str, model: str = "glm-4v-flash", key: str = "") -> dict:
 
 # ---------------- SnowLuma 面板接口（读/写那个 QQ 号自己的表情收藏） ----------------
 PANEL = "http://127.0.0.1:5099"
-PANEL_PASS = "/root/.qqbot-panel-pass"
+PANEL_PASS_CANDIDATES = [
+    os.path.join(HERE, ".secrets", "panel.pass"),
+    "/root/.qqbot-panel-pass",
+]
+PANEL_PASS = PANEL_PASS_CANDIDATES[0]
 SELF_UIN = "3237702352"
 
 
 def _panel_token() -> str:
     """登录 SnowLuma 控制台拿 token（面板在 127.0.0.1，仅本机）。"""
     try:
-        pw = open(PANEL_PASS, encoding="utf-8").read().strip()
+        pw = ""
+        for _p in PANEL_PASS_CANDIDATES:
+            try:
+                pw = open(_p, encoding="utf-8").read().strip()
+                if pw:
+                    break
+            except Exception:
+                continue
+        if not pw:
+            raise RuntimeError("panel pass unreadable")
         body = json.dumps({"username": "admin", "password": pw}).encode()
         req = urllib.request.Request(PANEL + "/api/login", data=body, method="POST",
                                      headers={"Content-Type": "application/json"})
