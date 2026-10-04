@@ -2077,7 +2077,9 @@ class QqPeakGate(Star):
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else gid, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                  "tools_text": self._agent_tools_text(gid), "tools_send": True})
+                  "tools_text": self._agent_tools_text(gid), "tools_send": True,
+                  "self_id": str(self.cfg.get("allowed_self_id") or ""),
+                  "aliases": list(self.cfg.get("keywords") or [])})
         _menu = self._sticker_menu_text("private" if private else gid)
         if _menu:
             _txt += "\n\n" + _menu
@@ -2275,7 +2277,9 @@ class QqPeakGate(Star):
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key=key, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                  "tools_text": self._agent_tools_text(key), "tools_send": True})
+                  "tools_text": self._agent_tools_text(key), "tools_send": True,
+                  "self_id": str(event.get_self_id() or ""),
+                  "aliases": (list(self.cfg.get("keywords") or []) + ([self._nick] if self._nick else []))})
         _menu = self._sticker_menu_text("private" if private else key)
         system_prompt = _txt + (("\n\n" + _menu) if _menu else "")
         _fmenu = self._face_menu_text()
@@ -3030,7 +3034,10 @@ class QqPeakGate(Star):
                                   "search": bool((self.cfg.get("search") or {}).get("enabled")),
                                   "kb": bool(_kcfg.get("enabled", True) and not private),
                                   "tools_text": self._agent_tools_text(gid),
-                                  "tools_send": bool(self._agent_cfg().get("send_tools"))})
+                                  "tools_send": bool(self._agent_cfg().get("send_tools")),
+                                  "self_id": str(event.get_self_id() or ""),
+                                  "aliases": (list(self.cfg.get("keywords") or [])
+                                              + ([self._nick] if self._nick else []))})
                         req.system_prompt = _txt
                         self._log("提示词: 人格=%s 补丁=%s 行为%d段；人格%d字/行为%d字/共%d字；参与=%s 表情档=%s"
                                   % (_meta["persona"], _meta["patch"], _meta["sections"],

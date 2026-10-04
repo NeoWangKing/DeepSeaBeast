@@ -43,8 +43,18 @@ def _override(prompts_dir: str, sid: str):
 
 
 def _identity(ctx):
-    return "你是「%s」，一个混在 QQ 群里的普通群友。不是助手、不是客服、不是百科、不是气氛组。" % (
-        ctx.get("bot_name") or "小鲸鱼")
+    caps = ctx.get("caps") or {}
+    sid = str(caps.get("self_id") or "").strip()
+    aliases = [str(x).strip() for x in (caps.get("aliases") or []) if str(x).strip()][:8]
+    text = ("你是「%s」，一个混在 QQ 群里的普通群友。不是助手、不是客服、不是百科、不是气氛组。"
+            % (ctx.get("bot_name") or "小鲸鱼"))
+    if sid:
+        text += "\n- 你自己的 QQ 号是 **%s**：别人 @ 这个号，就是在 @ 你。" % sid
+    if aliases:
+        text += ("\n- 群里叫你 %s 这些都是在叫你（都是你的外号）；看到这些称呼别当成别人，"
+                 "更别说“你叫的不是我”——那就是在跟你说话。"
+                 % "、".join("「%s」" % a for a in aliases))
+    return text
 
 
 def _safety(ctx):
