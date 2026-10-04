@@ -13,15 +13,24 @@ printf "资源   : 可用内存 %s MB  负载 %s  磁盘 %s\n" \
   "$(free -m | awk '/Mem:/{print $7}')" "$(cut -d' ' -f1 /proc/loadavg)" "$(df -h / | awk 'NR==2{print $5}')"
 printf "协议   : 6199 连接 %s 条   QQ 客户端 %s\n" \
   "$(ss -tn | grep -c ':6199')" "$(systemctl is-active linuxqq | cut -c1-6)"
+IDX=/opt/astrbot/data/plugins/qq_peak_gate/data/stickers/index.json
+PW=/opt/astrbot/data/plugins/qq_peak_gate/.secrets/panel.pass
+ST_LOCAL=$(python3 -c "import json;d=json.load(open('$IDX')) or {};print(len(d.get('items') or []))" 2>/dev/null || echo '?')
+ST_TODO=$(python3 -c "import json;d=json.load(open('$IDX')) or {};print(sum(1 for i in d.get('items') or [] if not i.get('face_pushed')))" 2>/dev/null || echo '?')
+if runuser -u astrbot -- test -r "$PW" 2>/dev/null; then PW_S=ok; else PW_S=不可读; fi
+printf "表情   : 本地 %s 张  未推面板 %s 张  面板密码 %s\n" "$ST_LOCAL" "$ST_TODO" "$PW_S"
 D=$(journalctl -u astrbot --since "${H} hours ago" --no-pager 2>/dev/null)
 # 报错只认真实群：traceback 正文行不含群号，所以按整段日志里出现的群号判定
 ERR_ALL=$(echo "$D" | grep -cE 'Traceback|Failed to send|\[ERRO\]')
 ERR_REAL=$(echo "$D" | grep -E 'Traceback|Failed to send' | grep -c "$GID")
 printf "报错   : 近%s小时 %s 行，其中提到真实群 %s 行（模拟测试会推高总数）\n" "$H" "$ERR_ALL" "$ERR_REAL"
+PUSHF=$(echo "$D" | grep -c '面板登录失败')
+[ "${PUSHF:-0}" -gt 0 ] && echo "  ⚠️  收藏推面板失败 ${PUSHF} 次 → 表情推不进 QQ（查 .secrets/panel.pass 权限/密码）"
 echo "$D" | grep -E '决策 p=' | sed 's/.*文本=/  最近判断: /' | tail -3
 printf "决策   : 回了 %s 次 / 跳过(冷却) %s 次 / 跳过(额度) %s 次｜接话(engaged) %s 次\n" \
   "$(echo "$D" | grep -c '决策 p=')" "$(echo "$D" | grep -c '跳过(冷却')" \
   "$(echo "$D" | grep -c '跳过(本小时额度')" "$(echo "$D" | grep -c 'engaged=1')"
 echo "$D" | grep -E '耗时: 收消息→(发出请求|回复完成)' | sed 's/.*peak_gate. /  /' | tail -4
-printf "定时   : 节假日刷新 %s  黑话提炼 %s\n" \
-  "$(systemctl is-active qqbot-holiday-refresh.timer 2>/dev/null)" "$(systemctl is-active qqbot-memes-refresh.timer 2>/dev/null)"
+printf "定时   : 节假日 %s  黑话 %s  表情镜像 %s  舟游资料 %s\n" \
+  "$(systemctl is-active qqbot-holiday-refresh.timer 2>/dev/null)" "$(systemctl is-active qqbot-memes-refresh.timer 2>/dev/null)" \
+  "$(systemctl is-active qqbot-sticker-mirror.timer 2>/dev/null)" "$(systemctl is-active qqbot-arknights-refresh.timer 2>/dev/null)"
