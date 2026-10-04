@@ -155,8 +155,12 @@ def fetch_faces(uin: str = "", count: int = 100) -> list:
 
 
 def add_face(src: str, uin: str = "") -> bool:
-    """把一张图加进账号自己的表情收藏（src 可以是 URL 或本地路径）。"""
-    return bool(panel("add_custom_face", {"file": src}, uin))
+    """把图片加进那个 QQ 号的收藏面板（失败重试 2 次：面板偶发超时/限频）。"""
+    for _i in range(2):
+        if panel("add_custom_face", {"file": src}, uin):
+            return True
+        time.sleep(1.5)
+    return False
 
 
 def download_by_file_id(file_id: str) -> str:
