@@ -61,3 +61,4 @@ config.json.bak-*
 # ── 游戏/刷新运行数据 ──
 data/games/
 data/kb_refresh_status.json
+data/stickers_wx/

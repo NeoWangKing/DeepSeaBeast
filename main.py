@@ -31,7 +31,7 @@ except Exception:
 from astrbot.api.star import Context, Star, register
 
 try:
-    from . import scoring, stickers, kb as local_kb, followup, replyproto, promptlib
+    from . import scoring, stickers, stickerlibs, kb as local_kb, followup, replyproto, promptlib
     from . import agent   # AstrBot 以包形式加载插件
     from .memory import store as mem_store     # 记忆产物只读访问
     from .games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
@@ -40,6 +40,7 @@ except Exception:                              # 兜底：直接当脚本/被 py
     _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
     import scoring
     import stickers
+    import stickerlibs
     import kb as local_kb
     import followup
     import replyproto
@@ -1469,8 +1470,10 @@ class QqPeakGate(Star):
         return _handler
 
     def _agent_callbacks(self, target) -> dict:
+        _S = self._stk(target)
         ev = (target or {}).get("event")
         _gid = str((target or {}).get("gid") or "")
+        _plat = self._plat(target)
         _uid = str((target or {}).get("uid") or "")
         _umo = str((target or {}).get("umo") or "")
         try:
@@ -1494,19 +1497,19 @@ class QqPeakGate(Star):
             it = None
             if sid:
                 try:
-                    it = stickers.find(sid)
+                    it = _S.find(sid)
                 except Exception:
                     it = None
             if not it:
                 cand = []
                 try:
                     if mood or sid:
-                        cand = stickers.pick(mood or sid, limit=6)
+                        cand = _S.pick(mood or sid, limit=6)
                 except Exception:
                     cand = []
                 if not cand:                     # 兜底：最久没用过的几张里挑
                     try:
-                        cand = sorted([x for x in (stickers.load() or []) if x.get("id")],
+                        cand = sorted([x for x in (_S.load() or []) if x.get("id")],
                                       key=lambda x: int(x.get("last_used") or 0))[:8]
                     except Exception:
                         cand = []
@@ -1546,15 +1549,15 @@ class QqPeakGate(Star):
             try:
                 if not path:
                     return "没收藏：图取不下来"
-                g = stickers.tag_image(path, str((self.cfg.get("stickers") or {}).get(
+                g = _S.tag_image(path, str((self.cfg.get("stickers") or {}).get(
                     "vision_model") or "glm-4v-flash"))
-                it = stickers.add_file(path, _gid, str(note or g.get("desc") or ""),
+                it = _S.add_file(path, _gid, str(note or g.get("desc") or ""),
                                        g.get("tags") or [], "", int((self.cfg.get("stickers") or {}).get(
                                            "max_store", 300) or 300), g)
                 if not it:
                     return "这张要么重复、要么没存进去"
                 try:
-                    if stickers.add_face(path):
+                    if _S.add_face(path):
                         it["face_pushed"] = True
                 except Exception:
                     pass
@@ -1598,7 +1601,7 @@ class QqPeakGate(Star):
             q = str(query or "").strip().lower()
             rows = []
             try:
-                for it in (stickers.load() or []):
+                for it in (_S.load() or []):
                     blob = ("%s %s %s" % (it.get("desc") or "", " ".join(it.get("tags") or []),
                                           it.get("id") or "")).lower()
                     if q and q not in blob:
@@ -1702,16 +1705,16 @@ class QqPeakGate(Star):
                 return False
 
         def _view_sticker(sid):
-            it = stickers.find(str(sid))
+            it = _S.find(str(sid))
             if not it:
                 return ""
-            pth = stickers.ensure_local(it)
+            pth = _S.ensure_local(it)
             if not pth or not os.path.isfile(pth):
                 return ""
             return agent.vision.describe([pth], self.cfg, "这张表情图画的是什么？一句话说清（≤30字）。", 160)
 
         def _sticker_note(sid, note):
-            return stickers.set_note(str(sid), str(note))
+            return _S.set_note(str(sid), str(note))
 
         def _cancel_wake(scope=""):
             try:
@@ -1725,7 +1728,7 @@ class QqPeakGate(Star):
 
         def _schedule_wake(sec, say, reason, mode="auto", every=0):
             try:
-                item = {"umo": _umo,
+                item = {"umo": _umo, "plat": _plat,
                         "due": time.time() + int(sec), "say": str(say)[:200],
                         "reason": str(reason or "")[:60], "gid": _gid,
                         "mode": str(mode or "say"), "every": int(every or 0),
@@ -1805,12 +1808,58 @@ class QqPeakGate(Star):
         except Exception:
             pass
 
+    # ── 多平台：QQ / 微信（个人微信适配器）各自一套表情库，机制共用 ──────
+    @staticmethod
+    def _plat(event=None, target=None) -> str:
+        """平台标识：AstrBot 的 platform name（aiocqhttp / weixin_oc …）。"""
+        t = target or {}
+        p = str(t.get("plat") or "").strip()
+        if p:
+            return p
+        ev = event if event is not None else t.get("event")
+        for getter in ("get_platform_name", "get_platform_id"):
+            try:
+                g = getattr(ev, getter, None)
+                v = g() if callable(g) else g
+                if v:
+                    return str(v)
+            except Exception:
+                pass
+        try:
+            umo = str(t.get("umo") or getattr(ev, "unified_msg_origin", "") or "")
+            if umo:
+                return umo.split(":", 1)[0]
+        except Exception:
+            pass
+        return ""
+
+    @staticmethod
+    def _plat_is_wx(plat) -> bool:
+        """是不是微信那套适配器（个人微信 weixin_oc；也兼容把平台 id 起成 wx/wechat）。"""
+        p = str(plat or "").strip().lower()
+        return ("weixin" in p) or ("wechat" in p) or p.startswith("wx")
+
+    def _is_wx(self, event=None, target=None) -> bool:
+        return self._plat_is_wx(self._plat(event, target))
+
+    def _stk(self, event=None, target=None):
+        """这次该用哪个表情库模块：QQ=默认库，微信=独立库。"""
+        try:
+            return stickerlibs.for_scope("wx" if self._is_wx(event, target) else "")
+        except Exception as e:
+            self._log_debug("表情库分平台失败，回落默认库 %r" % (e,))
+            return stickers
+
     def _agent_target(self, event=None, target=None, **kw) -> dict:
         t = dict(target or {})
         if event is not None:
             t.setdefault("event", event)
             t.setdefault("umo", str(getattr(event, "unified_msg_origin", "") or ""))
             t.setdefault("gid", self._chat_key(event))
+            try:
+                t.setdefault("plat", self._plat(event))
+            except Exception:
+                pass
             try:
                 t.setdefault("uid", str(event.get_sender_id() or ""))
             except Exception:
@@ -1858,9 +1907,11 @@ class QqPeakGate(Star):
 
     async def _agent_send(self, target, text: str, reply_to_id: str = "",
                           at_user_id: str = "", face: str = "") -> None:
+        _S = self._stk(target)
         try:
             comps = []
-            if reply_to_id:
+            _wx = self._is_wx(target)          # 微信没有 QQ 表情组件，也不支持引用发送
+            if reply_to_id and not _wx:
                 comps.append(Reply(id=str(reply_to_id)))
             if at_user_id:
                 comps.append(At(qq=str(at_user_id)))
@@ -1887,6 +1938,9 @@ class QqPeakGate(Star):
                     if _kind == "text":
                         if _val.strip():
                             comps.append(Plain(_val))
+                    elif _wx:
+                        # 微信没有 QQ 自带表情组件：标记丢掉，别当文字发出去
+                        self._log_debug("发送口：微信平台丢掉 QQ 表情标记 [QQ表情:%s]" % _val)
                     else:
                         _fid = self._face_id_by_name(_val)
                         if _fid and Face is not None:
@@ -1899,14 +1953,14 @@ class QqPeakGate(Star):
             for _sid in _imgs[:2]:
                 try:
                     _it = None
-                    for _cand in (stickers.load() or []):
+                    for _cand in (_S.load() or []):
                         if _sid and str(_cand.get("id") or "") == _sid:
                             _it = _cand
                             break
                     if _it is None and _sid:
-                        _it = stickers.find(_sid)
+                        _it = _S.find(_sid)
                     if _it:
-                        asyncio.create_task(self._agent_send_sticker(self._agent_target(event), _it))
+                        asyncio.create_task(self._agent_send_sticker(target, _it))
                         self._log("agent：图片表情 %s 单独发一条" % _it.get("id"))
                 except Exception as _e3:
                     self._log_debug("抽图片表情失败 %r" % (_e3,))
@@ -1940,8 +1994,9 @@ class QqPeakGate(Star):
             self._log("agent：发送失败 %r" % (e,))
 
     async def _agent_send_sticker(self, target, it: dict, reply_to_id: str = "") -> None:
+        _S = self._stk(target)
         try:
-            path = await asyncio.to_thread(stickers.ensure_local, it)
+            path = await asyncio.to_thread(_S.ensure_local, it)
             if not path or not os.path.exists(path):
                 self._log("agent：表情没落盘，不发 %s" % it.get("id"))
                 return
@@ -1952,18 +2007,18 @@ class QqPeakGate(Star):
                     img = Image(file=path)
             except Exception:
                 img = Image(file=path)
-            comps = [Reply(id=str(reply_to_id))] if reply_to_id else []
+            comps = [Reply(id=str(reply_to_id))] if (reply_to_id and not self._is_wx(target)) else []
             comps.append(img)
             await self._transport_send(target, MessageChain(comps))
-            stickers.mark_used(it.get("id"))
+            _S.mark_used(it.get("id"))
             self._log("agent：发出表情 %s《%s》" % (it.get("id"), it.get("desc")))
         except Exception as e:
             self._log("agent：发表情失败 %r" % (e,))
 
-    def _agent_tools_text(self, key: str = "") -> str:
+    def _agent_tools_text(self, key: str = "", plat: str = "") -> str:
         """给提示词用的工具清单（只在 agent 打开时给；给了 key 就按会话裁剪）。"""
         try:
-            specs = self._agent_specs_for(key) if key else self._agent_tool_specs()
+            specs = self._agent_specs_for(key, plat) if key else self._agent_tool_specs()
             if not specs:
                 return ""
             return "\n".join("- %s：%s" % (n, d) for n, _a, d, _m in specs)
@@ -2020,8 +2075,10 @@ class QqPeakGate(Star):
             pass
         return 0
 
-    def _face_menu_text(self) -> str:
-        """给她一份"能发的 QQ 自带表情"清单（官方名字=id）。"""
+    def _face_menu_text(self, plat: str = "") -> str:
+        """给她一份"能发的 QQ 自带表情"清单（官方名字=id）。微信没这个组件 → 返回空。"""
+        if self._plat_is_wx(plat):
+            return ""
         try:
             self._qq_face_name(-1)
             m = getattr(self, "_face_map", {}) or {}
@@ -2093,8 +2150,10 @@ class QqPeakGate(Star):
     async def _agent_proactive(self, it: dict, reason: str) -> None:
         """定时到点的"主动轮"：没有新消息进来，她自己决定说什么/做什么（可用全部工具）。"""
         gid = str(it.get("gid") or "")
+        _plat = str(it.get("plat") or "")
         target = self._agent_target(target={"gid": gid, "umo": str(it.get("umo") or ""),
                                             "uid": str(it.get("poke_uid") or ""),
+                                            "plat": _plat,
                                             "text": reason or ""})
         private = gid.startswith("p:")
         _kcfg = self.cfg.get("kb") or {}
@@ -2102,17 +2161,17 @@ class QqPeakGate(Star):
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else gid, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                  "tools_text": self._agent_tools_text(gid), "tools_send": True,
+                  "tools_text": self._agent_tools_text(gid, _plat), "tools_send": True,
                   "self_id": str(self.cfg.get("allowed_self_id") or ""),
                   "aliases": list(self.cfg.get("keywords") or [])})
-        _menu = self._sticker_menu_text("private" if private else gid)
+        _menu = self._sticker_menu_text("private" if private else gid, _plat)
         if _menu:
             _txt += "\n\n" + _menu
-        _fmenu = self._face_menu_text()
+        _fmenu = self._face_menu_text(_plat)
         if _fmenu:
             _txt += "\n\n" + _fmenu
         t = agent.tools.Tools(gid, self._agent_callbacks(target), self._agent_cfg())
-        schema = agent.loop.spec_to_openai(self._agent_specs_for(gid))
+        schema = agent.loop.spec_to_openai(self._agent_specs_for(gid, _plat))
         lines = []
         try:
             for item in list(self.recent.get(gid) or [])[-8:]:
@@ -2135,6 +2194,7 @@ class QqPeakGate(Star):
                   % (len(t.sent), t.finished, str((r or {}).get("usage") or {})))
 
     async def _wake_fire(self, it: dict) -> None:
+        _S = self._stk(None, {"plat": it.get("plat")})
         try:
             umo = str(it.get("umo") or "")
             ctx = getattr(self, "context", None)
@@ -2184,16 +2244,16 @@ class QqPeakGate(Star):
             _m = _re3.search(r"\[表情(?::([^\]\n]{1,24}))?\]", raw)
             if _m:
                 _sid = (_m.group(1) or "").strip()
-                _it2 = stickers.find(_sid) if _sid else None
+                _it2 = _S.find(_sid) if _sid else None
                 if _it2 is None:
                     try:
-                        _cands = stickers.load() or []
+                        _cands = _S.load() or []
                         _it2 = random.choice(_cands) if _cands else None
                     except Exception:
                         _it2 = None
                 if _it2:
                     try:
-                        _p = stickers.ensure_local(_it2)
+                        _p = _S.ensure_local(_it2)
                         if _p and os.path.isfile(_p):
                             try:
                                 _img = (Image.fromFileSystem(_p) if hasattr(Image, "fromFileSystem")
@@ -2201,7 +2261,7 @@ class QqPeakGate(Star):
                             except Exception:
                                 _img = Image(file=_p)
                             ok = bool(await ctx.send_message(umo, MessageChain([_img])))
-                            stickers.mark_used(_it2.get("id"))
+                            _S.mark_used(_it2.get("id"))
                             self._log("定时唤醒：发出图片表情 %s → %s" % (_it2.get("id"), ok))
                         else:
                             self._log("定时唤醒：表情图没落盘，发不出")
@@ -2264,7 +2324,7 @@ class QqPeakGate(Star):
         finally:
             lk.release()
 
-    def _agent_specs_for(self, key: str) -> list:
+    def _agent_specs_for(self, key: str, plat: str = "") -> list:
         """按会话过滤工具清单：不发表情图的群（send/collect_exclude_groups）滤掉表情图工具。"""
         specs = self._agent_tool_specs()
         # 按会话裁剪工具（省前缀 token）：tool_profile_by_group 指到哪个档，就只留那一档的工具
@@ -2288,6 +2348,31 @@ class QqPeakGate(Star):
                 self._log_debug("agent loop：%s 不发表情图 → 滤掉 send_sticker/collect_sticker" % key)
         except Exception:
             pass
+        # 平台级工具档（比如微信单独一套）：tool_profile_by_platform
+        try:
+            _acfg2 = self._agent_cfg()
+            _pbp = _acfg2.get("tool_profile_by_platform") or {}
+            if _pbp:
+                _pname = str(plat or "")
+                _wx2 = self._plat_is_wx(_pname)
+                _prof2 = (_pbp.get(_pname)
+                          or (_pbp.get("weixin_oc") if _wx2 else None)
+                          or (_pbp.get("wx") if _wx2 else None))
+                _allow2 = (_acfg2.get("tool_profiles") or {}).get(str(_prof2)) if _prof2 else None
+                if _allow2:
+                    _keep2 = {str(x) for x in _allow2}
+                    specs = [x for x in specs if x[0] in _keep2]
+                    self._log_debug("agent：%s 平台=%s 用工具档 %s（%d 个）"
+                                    % (key, _pname or "?", _prof2, len(specs)))
+        except Exception:
+            pass
+        # 微信（个人微信适配器）没有 QQ 表情组件、没有拍一拍；私聊也没有"群成员"
+        if self._plat_is_wx(plat):
+            _drop = ("send_poke", "get_active_members", "send_face")
+            _before = len(specs)
+            specs = [x for x in specs if x[0] not in _drop]
+            if _before != len(specs):
+                self._log_debug("agent：微信平台 → 去掉 %s" % "、".join(_drop))
         return specs
 
     async def _agent_loop_body(self, event) -> bool:
@@ -2295,19 +2380,21 @@ class QqPeakGate(Star):
 
         返回 True 表示"这轮我们处理了"（调用方负责 stop_event）；False 表示交回原流程。
         """
+        _S = self._stk(event)
         key = self._chat_key(event)
         private = key.startswith("p:")
+        _plat = self._plat(event)
         _kcfg = self.cfg.get("kb") or {}
         _txt, _meta = promptlib.build_system_prompt(
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key=key, private=private,
             caps={"vision": True, "search": False,
                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                  "tools_text": self._agent_tools_text(key), "tools_send": True,
+                  "tools_text": self._agent_tools_text(key, _plat), "tools_send": True,
                   "self_id": str(event.get_self_id() or ""),
                   "aliases": (list(self.cfg.get("keywords") or []) + ([self._nick] if self._nick else []))})
-        _menu = self._sticker_menu_text("private" if private else key)
+        _menu = self._sticker_menu_text("private" if private else key, _plat)
         system_prompt = _txt + (("\n\n" + _menu) if _menu else "")
-        _fmenu = self._face_menu_text()
+        _fmenu = self._face_menu_text(_plat)
         if _fmenu:
             system_prompt += "\n\n" + _fmenu
         # 每一轮都用**全新**的工具会话：否则上一轮的 sent/finished 会累积，
@@ -2322,7 +2409,7 @@ class QqPeakGate(Star):
         except Exception:
             pass
         self._ensure_wake_timer()          # 定时唤醒的计时任务（懒启动）
-        schema = agent.loop.spec_to_openai(self._agent_specs_for(key))
+        schema = agent.loop.spec_to_openai(self._agent_specs_for(key, _plat))
         if not schema:
             self._log("agent loop：没有可用工具，交回原流程")
             return False
@@ -2490,8 +2577,8 @@ class QqPeakGate(Star):
             # 这张图如果她自己收藏过，把备注/标签一起给她（比纯看图准得多）
             _known = ""
             try:
-                _h = stickers.ahash(_img_paths[0])
-                for _it in (stickers.load() or []):
+                _h = _S.ahash(_img_paths[0])
+                for _it in (_S.load() or []):
                     if str(_it.get("hash") or "") == str(_h):
                         _known = ("%s %s" % (str(_it.get("desc") or ""),
                                              " ".join(_it.get("tags") or []))).strip()
@@ -2599,14 +2686,14 @@ class QqPeakGate(Star):
                         if len(_hits) >= _lim:
                             self._log("看图轮：这个小时收藏够了，先不收")
                         else:
-                            _it = stickers.add_file(_img_paths[0], _key, _desc, [], "",
+                            _it = _S.add_file(_img_paths[0], _key, _desc, [], "",
                                                     int(_sc.get("max_store", 300) or 300), None)
                             if _it:
                                 _hits.append(_now)
                                 self._log("看图轮：收下表情 %s《%s》（她觉得有意思）"
                                           % (_it.get("id"), _desc[:24]))
                                 try:
-                                    if stickers.add_face(_img_paths[0]):
+                                    if _S.add_face(_img_paths[0]):
                                         _it["face_pushed"] = True
                                         self._log("看图轮：已同步进 QQ 表情面板")
                                 except Exception as _e2:
@@ -2750,8 +2837,8 @@ class QqPeakGate(Star):
         except Exception:
             return ""
 
-    def _sticker_menu_text(self, gid: str = "") -> str:
-        """【可用表情包】清单：让模型用 [表情:id] 指名发图。
+    def _sticker_menu_text(self, gid: str = "", plat: str = "") -> str:
+        """【可用表情包】清单：让模型用 [表情:id] 指名发图（按平台取各自的库）。
 
         稳定性：按用过次数排序取一半固定，另一半按小时轮换（同一小时内内容不变 →
         前缀缓存友好，且不会总发同几张）。
@@ -2768,7 +2855,8 @@ class QqPeakGate(Star):
             n = int(cfg.get("prompt_max", 8) or 0)
             if n <= 0:
                 return ""
-            items = [x for x in (stickers.load() or []) if str(x.get("id") or "")]
+            _S0 = stickerlibs.for_scope("wx" if self._plat_is_wx(plat) else "")
+            items = [x for x in (_S0.load() or []) if str(x.get("id") or "")]
             if not items:
                 return ""
             items.sort(key=lambda x: (-int(x.get("used") or 0), str(x.get("id"))))
@@ -3097,7 +3185,7 @@ class QqPeakGate(Star):
                             caps={"vision": bool(self.cfg.get("vision", False)),
                                   "search": bool((self.cfg.get("search") or {}).get("enabled")),
                                   "kb": bool(_kcfg.get("enabled", True) and not private),
-                                  "tools_text": self._agent_tools_text(gid),
+                                  "tools_text": self._agent_tools_text(gid, self._plat(event)),
                                   "tools_send": bool(self._agent_cfg().get("send_tools")),
                                   "self_id": str(event.get_self_id() or ""),
                                   "aliases": (list(self.cfg.get("keywords") or [])
@@ -3108,7 +3196,7 @@ class QqPeakGate(Star):
                                      _meta["persona_chars"], _meta["behavior_chars"], _meta["chars"],
                                      _meta["participation"], _meta["sticker_level"]))
                     self._ensure_agent_tools()          # 幂等：确保 agent 工具已注册
-                    _menu = self._sticker_menu_text("private" if private else gid)
+                    _menu = self._sticker_menu_text("private" if private else gid, self._plat(event))
                     if _menu:
                         req.system_prompt = (req.system_prompt or "") + "\n\n" + _menu
                 except Exception as e:
@@ -3384,6 +3472,7 @@ class QqPeakGate(Star):
 
     def _spawn_sticker_collect(self, event) -> None:
         """群友发了图 → 后台识图，合格的收进表情包收藏夹。"""
+        _S = self._stk(event)
         try:
             cfg = self.cfg.get("stickers") or {}
             if not cfg.get("enabled", True):
@@ -3416,7 +3505,7 @@ class QqPeakGate(Star):
                     if not path:
                         continue
                     try:
-                        g = await asyncio.to_thread(stickers.tag_image, path,
+                        g = await asyncio.to_thread(_S.tag_image, path,
                                                     str(cfg.get("vision_model") or "glm-4v-flash"))
                         _kind = str(g.get("kind") or "").lower()
                         _worth = g.get("worth")      # 识图自己判的"这图有没有趣、值不值得收"
@@ -3436,14 +3525,14 @@ class QqPeakGate(Star):
                                       % (_kind or "?", _worth, g.get("desc") or "?"))
                             continue
                         it = await asyncio.to_thread(
-                            stickers.add_file, path, gid, g.get("desc", ""), g.get("tags") or [],
+                            _S.add_file, path, gid, g.get("desc", ""), g.get("tags") or [],
                             "", int(cfg.get("max_store", 300) or 300), g)
                         if it:
                             self._log("表情包：收藏 %s《%s》标签=%s"
                                       % (it["id"], it.get("desc"), ",".join(it.get("tags") or [])))
                             # 顺手加进那个 QQ 号自己的表情收藏（手机上就能看到）
                             try:
-                                if await asyncio.to_thread(stickers.add_face, path):
+                                if await asyncio.to_thread(_S.add_face, path):
                                     it["face_pushed"] = True
                                     self._log("表情包：已加进 QQ 表情收藏 %s" % it["id"])
                             except Exception as _e3:
@@ -3497,6 +3586,7 @@ class QqPeakGate(Star):
 
     async def _maybe_sticker(self, event) -> None:
         """回复里带 [表情] / [表情:无语] 标记 → 换一张合适的收藏图发出去。"""
+        _S = self._stk(event)
         import re as _re
         try:
             cfg = self.cfg.get("stickers") or {}
@@ -3538,19 +3628,19 @@ class QqPeakGate(Star):
             recent = " ".join([x[1] for x in list(self.recent.get(gid) or [])[-4:]])
             cands = []
             if hint:                                  # [表情:id] → 指名要这一张
-                _by_id = stickers.find(hint)
+                _by_id = _S.find(hint)
                 if _by_id:
                     cands = [_by_id]
                     self._log_debug("表情包：指名 %s" % hint)
             if not cands:
-                cands = stickers.pick((alltext + " " + hint + " " + recent), [hint] if hint else [])
+                cands = _S.pick((alltext + " " + hint + " " + recent), [hint] if hint else [])
             if not cands:
                 self._log_debug("表情包：没有合适的（hint=%r）" % hint)
                 _strip()
                 return
             it = cands[0]
             # 账号表情要落成本地文件再发（直接发 qq_expression 直链，QQ 那边经常收不到）
-            path = await asyncio.to_thread(stickers.ensure_local, it)
+            path = await asyncio.to_thread(_S.ensure_local, it)
             if not path or not os.path.exists(path):
                 self._log_debug("表情包：图没落盘，先不发（%s）" % it.get("id"))
                 _strip()
@@ -3574,7 +3664,7 @@ class QqPeakGate(Star):
                 nonempty.append(img)
                 result.chain = nonempty
             hits.append(now)
-            stickers.mark_used(it.get("id"))
+            _S.mark_used(it.get("id"))
             self._log("表情包：发了 %s《%s》标签=%s（本小时第 %d 张）"
                       % (it.get("id"), it.get("desc"), ",".join(it.get("tags") or []), len(hits)))
         except Exception as e:
