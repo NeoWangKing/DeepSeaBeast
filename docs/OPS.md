@@ -166,3 +166,29 @@ agent/vision.py   看图：DeepSeek 多模态（不用 GLM）
 - 轮数：`agent.max_rounds` 2→3、`max_calls` 2→4（search→read→回答 至少 3 步；她说完话仍会立刻收工）
 - 回归：`python3 tests/websearch_sim.py`（离线，含 SSRF / 正文提取 / 缓存 / schema）
 - 想升级质量：在 WebUI 里给博查(bocha)或 Tavily 填个 key 即可，代码不用动
+
+## 技能层 skills/（2026-10-07 新增）
+
+把「需要时才用的长说明」从常驻提示词里搬出来：常驻只留一行索引，用到时她自己调
+`use_skill(name)` 把整页拿进上下文（渐进式展开，跟 AstrBot 自带 Skills / Claude·Codex 的 SKILL.md 同格式）。
+
+```
+skills/<name>/SKILL.md     # 也支持 skills/<name>.md
+---
+name: turtle_soup          # 必填（没有 frontmatter/name 的文件不算技能）
+description: 一句话，进索引
+triggers: 触发词, 用逗号隔开（可选，也进索引）
+---
+正文：给模型的完整说明书，可以写很长
+```
+
+- 代码：`promptlib/skills.py`（扫目录/解析 frontmatter/`index_text()`/`load()`，30 秒缓存）
+- 提示词：`promptlib/sections.py` 的 `_skills_index` → 常驻提示词里那段【技能（按需展开）】
+  （只在有工具时注入；新技能只加文件，不用改代码）
+- 工具：`agent/tools.py` 的 `use_skill(name)`（开关 `agent.tools.skills`）；展开会打日志
+  `agent：展开技能 <name>（N 字）`，失败计 `skill_fail`
+- 现有技能：`turtle_soup`（海龟汤怎么开/怎么判/红线）、`verify`（求证流程：先搜→读原文→交叉验证→给结论+来源→记笔记）
+- 什么该做成技能：**按需**才需要的长说明（玩法手册、流程 SOP、某类任务怎么做）
+- 什么不该：常驻行为规范（语气/分条/表情/沉默/安全/真人感）——那些必须每轮都可见，
+  做成技能会因为"她没想起来加载"而失效，继续留在 `promptlib/sections.py`
+- 回归：`python3 tests/skills_sim.py`

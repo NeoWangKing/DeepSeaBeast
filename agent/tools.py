@@ -24,6 +24,7 @@ class Tools:
         self.started = time.time()
         self.calls = 0             # 本轮工具调用次数（main.py 用来限流）
         self.searched = []         # 本轮搜过什么（审计/防重复）
+        self.skills_used = []      # 本轮展开过哪些技能（审计）
         self.errors = []
 
     # ---------- 发送类 ----------
@@ -162,6 +163,26 @@ class Tools:
         except Exception as e:
             self.errors.append("read_url: %r" % (e,))
             return "读不了：%r" % (e,)
+
+    def use_skill(self, name="") -> str:
+        """把某个技能的说明书拿进上下文（按需展开，平时只占索引一行）。"""
+        nm = str(name or "").strip()
+        fn = self.cb.get("use_skill")
+        if not fn:
+            return "没有技能库"
+        try:
+            r = fn(nm)
+        except Exception as e:
+            self.errors.append("use_skill: %r" % (e,))
+            return "拿不到技能：%r" % (e,)
+        if not r:
+            return ("没有这个技能%s。可用技能看系统提示里的【技能】那一段，"
+                    "名字要一模一样" % (("：" + nm) if nm else ""))
+        try:
+            self.skills_used.append(nm)
+        except Exception:
+            pass
+        return str(r)
 
     def list_stickers(self, query="") -> str:
         fn = self.cb.get("list_stickers")
@@ -361,6 +382,11 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                       [{"type": "string", "name": "url",
                         "description": "【必填】要读的网页地址（一般是 web_search 返回里的某个网址）"}],
                       "读一个网页的正文，核对原文（别只看搜索标题就下结论）", "read_url"))
+    if on("skills"):
+        specs.append(("use_skill",
+                      [{"type": "string", "name": "name",
+                        "description": "技能名，必须和系统提示【技能】里列的一模一样（例：turtle_soup）"}],
+                      "把某个技能的完整说明书拿进来看（要用到某项「本事」的细节时先调它）", "use_skill"))
     if on("recent"):
         specs.append(("get_recent_messages",
                       [{"type": "string", "name": "limit", "description": "看几条，默认 20，最多 50"}],

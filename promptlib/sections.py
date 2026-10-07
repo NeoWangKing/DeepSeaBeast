@@ -188,6 +188,27 @@ def _sticker_rules(ctx):
     ])
 
 
+def _skills_index(ctx):
+    """技能索引：只放"名字 + 一句话 + 触发词"，正文要靠 use_skill 按需拉。"""
+    caps = ctx.get("caps") or {}
+    if not caps.get("tools_text"):
+        return ""
+    try:
+        from . import skills as _sk
+        body = _sk.index_text(ctx.get("plugin_dir") or "")
+    except Exception:
+        body = ""
+    if not body:
+        return ""
+    return "\n".join([
+        "【技能（按需展开，别背细节）】",
+        body,
+        "- 这些是你「会做的事」的说明书：真要用的时候调 use_skill(name) 把那一页拿进来看一眼再动手；"
+        "平时不用管，也不要在聊天里念它们的名字。",
+        "- 别人问你会不会某个玩法（比如海龟汤）时，照技能说明里那句「怎么开」直接告诉他，别装懂也别推辞。",
+    ])
+
+
 def _search_rules(ctx):
     caps = ctx.get("caps") or {}
     if not caps.get("search"):
@@ -277,6 +298,7 @@ SECTIONS = [
     ("search_rules", _search_rules),
     ("sticker_rules", _sticker_rules),
     ("agent_tools", _agent_tools),
+    ("skills_index", _skills_index),
     ("scene", _scene),
     ("report_ban", _report_ban),
 ]

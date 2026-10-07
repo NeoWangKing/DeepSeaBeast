@@ -10,11 +10,13 @@
     利于 DeepSeek 前缀缓存；易变内容（资料库/表情清单/记忆）由调用方追加在末尾。
   · 每段都能单独覆盖或关掉，见 sections.py。
 """
+from . import skills  # noqa: F401
 from .persona import load_patch, load_persona, pick_file, resolve  # noqa: F401
 from .sections import PARTICIPATION, SECTIONS, STICKER_LEVELS, build_behavior
 
 __all__ = ["build_system_prompt", "build_behavior", "load_persona", "load_patch",
-           "pick_file", "resolve", "SECTIONS", "PARTICIPATION", "STICKER_LEVELS"]
+           "pick_file", "resolve", "SECTIONS", "PARTICIPATION", "STICKER_LEVELS",
+           "skills"]
 
 
 def build_system_prompt(*, plugin_dir: str, cfg: dict, chat_key: str = "",

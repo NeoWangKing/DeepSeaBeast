@@ -1730,6 +1730,18 @@ class QqPeakGate(Star):
         def _sticker_note(sid, note):
             return stickers.set_note(str(sid), str(note))
 
+        def _use_skill(name):
+            """技能说明书按需展开（正文直接当工具结果给模型）。"""
+            try:
+                txt = promptlib.skills.load(PLUGIN_DIR, str(name or "").strip())
+            except Exception as e:
+                self._fault("skill_fail", repr(e))
+                return ""
+            if not txt:
+                return ""
+            self._log("agent：展开技能 %s（%d 字）" % (name, len(txt)))
+            return "【技能说明书：%s】\n%s" % (name, txt)
+
         def _web_search(q, count=5):
             _scfg = self.cfg.get("search") or {}
             if not _scfg.get("enabled", True):

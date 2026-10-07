@@ -258,7 +258,8 @@
       "vision": true,
       "poke": true,
       "memory_write": true,
-      "search": true
+      "search": true,
+      "skills": true
     },
     "max_calls": 4,
     "send_tools_groups": [],
