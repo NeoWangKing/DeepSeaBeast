@@ -214,6 +214,38 @@ def search_text(query: str, count: int = 5, cfg: dict = None) -> str:
     return "\n".join(lines)
 
 
+# ── 判断"这是不是可查的事实问题"（用来提醒她先查、以及答"不知道"时兜底） ──
+_LOOKUP_STRONG_RE = re.compile(
+    r"(什么时候|啥时候|几号|哪天|多久|多少钱|谁赢|谁是?冠军|版本更新|新版本|下一?版|"
+    r"上线时间|开服时间|活动时间|发售时间|复刻|卡池|打谁|谁打谁|对手是?谁|哪天打|几点打)", re.I)
+_LOOKUP_WEAK_RE = re.compile(
+    r"(更新|上线|开服|公测|定档|赛程|对阵|比分|冠军|排名|积分|价格|售价|发售|打折|"
+    r"最新|新消息|进展|捷报|公告)", re.I)
+_DONTKNOW_RE = re.compile(
+    r"(不知道|不清楚|没听说|不了解|我哪知道|我又不是|不晓得|谁晓得|没有消息|没消息|"
+    r"问官方|等官方|关注官方|查不了)", re.I)
+
+
+def is_lookup_question(text) -> bool:
+    """这句话是不是在问"可查的事实"（版本/时间/赛程/价格/谁是冠军…）。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 140:
+        return False
+    if _LOOKUP_STRONG_RE.search(t):
+        return True
+    if _LOOKUP_WEAK_RE.search(t) and (("?" in t) or ("？" in t) or t.endswith(("吗", "呢", "吧"))):
+        return True
+    return False
+
+
+def is_dontknow(text) -> bool:
+    """这句回复是不是"装傻式"的（不知道/我又不是内部人员…）——可查的问题上不能这么答。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 80:
+        return False
+    return bool(_DONTKNOW_RE.search(t))
+
+
 # ── 读网页 ────────────────────────────────────────────────────────────
 def _decode(raw: bytes, charset: str = "") -> str:
     for enc in [charset, "utf-8", "gb18030", "big5", "latin-1"]:

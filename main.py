@@ -2445,6 +2445,15 @@ class QqPeakGate(Star):
                 user += "\n" + _nd
         except Exception:
             pass
+        # 可查的事实问题：当轮就把话说明白，别让她张口就是"不知道"
+        try:
+            if self._search_on() and agent.websearch.is_lookup_question(
+                    str(getattr(event, "message_str", "") or "")):
+                user += ("\n【这是可查的事实问题】版本/更新时间、赛程比分、谁赢、价格这类事，"
+                         "「不知道」「我又不是内部人员」都不算回答：先调 web_search 查；"
+                         "查到就正常说结论，真查不到就说「我搜了下没找到」。")
+        except Exception:
+            pass
         # 她自己写的记忆：最近几条注入到提示词末尾
         try:
             _mf = os.path.join(PLUGIN_DIR, "data", "agent_memory",
@@ -2773,6 +2782,29 @@ class QqPeakGate(Star):
                                     self._log_debug, _vmodel)
         self._log("agent loop：结束（%s，用了 %s，说了 %d 条，finish=%s）"
                   % (key, str(r.get("usage") or {}), len(t.sent), t.finished))
+        # 可查的问题被她一句"不知道"打发了、而且这轮压根没查 → 补一轮让她去查（只补一次）
+        try:
+            _cur0 = str(getattr(event, "message_str", "") or "")
+            _called0 = {str(c.get("name") or "") for c in (r.get("calls") or [])}
+            _mytxt0 = " ".join([str(x[1]) for x in (t.sent or []) if str(x[0]) == "text"])
+            _n0 = len(t.sent or [])
+            if (self._search_on() and t.spoke
+                    and agent.websearch.is_lookup_question(_cur0)
+                    and not ({"web_search", "read_url"} & _called0)
+                    and agent.websearch.is_dontknow(_mytxt0)):
+                self._fault("no_search_answer", _mytxt0[:60])
+                self._log("查证兜底：可查的问题没查就答「不知道」→ 补一轮让她去查")
+                messages.append({"role": "user", "content": (
+                    "【系统提醒】你刚才那句是「不知道」式的回答，但这是个**可以查**的问题"
+                    "（版本/时间/赛程/价格这类）。现在先调 web_search 查一下，再补一句自然的回复："
+                    "查到就直说结论（别提搜索过程、别念网址）；确实查不到就说「我搜了下没找到」。")})
+                r2 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 2,
+                                             self._log_debug, _vmodel)
+                self._log("查证兜底：补轮后 %s"
+                          % ("补上了" if len(t.sent or []) > _n0 else "仍未说话"))
+                r = r2 if r2 else r
+        except Exception as _e7:
+            self._log_debug("查证兜底失败 %r" % (_e7,))
         # 硬提醒：对方明确要求"X 秒后/过一会儿再说/再做"，但她没调 schedule_wake
         try:
             _cur = str(getattr(event, "message_str", "") or "")
