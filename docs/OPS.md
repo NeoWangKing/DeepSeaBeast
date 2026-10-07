@@ -297,3 +297,45 @@ triggers: 触发词, 用逗号隔开（可选，也进索引）
 新增配置（`search` 块）：`smart_judge` / `judge_model` / `judge_max_per_hour` / `skip_if_evidence` /
 `remember` / `remember_max_per_hour`。
 回归：`python3 tests/search_nudge_sim.py`（含判定缓存、证据阈值、记忆条目、强制首轮等 20+ 用例）。
+
+## 事故：回调没接线（2026-10-07 10:43）
+
+现象：@她查版本更新时间，她回「搜不了，这轮网断了」+「等会儿你再问我一遍，我给你查」。
+日志真相：
+
+```
+agent loop：本轮调用 → web_search、web_search、send_message
+agent loop：web_search({'query': '明日方舟 终末地 下一个版本更新时间 官方公告'}) → 没查：这个会话现在不能联网搜索
+```
+
+**她其实调了（还调了两次，中英文各一遍），但工具一律回"不能联网搜索"**——因为
+`_agent_callbacks` 里定义了 `_web_search / _read_url / _use_skill` 三个回调，却忘了登记进 `cbs` 字典，
+`Tools.cb.get("web_search")` 取不到 → 直接返回那句"不能联网搜索"。所以：
+- 她的"搜不了"是真的（工具确实报不能搜），只有"网断了"是脑补
+- `web_search`/`read_url`/`use_skill` 三个功能从加上线起就一直没用过
+
+修复：
+1. `cbs` 里补上 `web_search` / `read_url` / `use_skill` 三个键
+2. **接线自检**：`agent/tools.py` 用正则自曝 `TOOL_CB_KEYS`（本文件里 `self.cb.get("X")` 用到的所有键），
+   `_agent_callbacks` 在 `return cbs` 前对一遍，缺了就记故障 `callback_missing`（只报一次）
+3. **回归测试** `tests/callback_wiring_sim.py`：把 tools.py 需要的回调键和 main.py 提供的键对比，
+   少一个就 FAIL（这个测试当场就抓到了缺 read_url/use_skill/web_search）
+4. 清掉那条被写进记忆的错误"查证结论"（「我查证后回：搜不了，这轮网断了」）
+
+## 配套：查资料别把轮数用光（2026-10-07）
+
+全链路仿真（真模型+真回调+真搜索，发送口用桩接住）暴露的问题：她会连着搜 6 次、把 3 轮用光，
+**最后一句都没说**。补了两道闸：
+1. `search.max_per_turn`（默认 3）：一轮最多查/读 3 次，超了工具直接回
+   「这轮已经查了 N 次了（上限 3）：别继续搜，直接拿查到的内容说话」
+2. **只查不说 → 强制开口**：收尾时若这轮调过 web_search/read_url 却没发言，
+   补的那一轮用 `tool_choice` **强制 send_message**（提示：「把结论说出来」），不再给她继续搜的机会
+3. 提示词加「**优先用最新那条**」：搜索结果挑发布时间/版本号最新的看，别拿几个月前旧公告当现在的事
+
+仿真结果（同一句 @ 提问）：
+
+```
+调用序列: web_search → read_url → （强制）send_message
+她实际要发的内容: ['我翻了下官网公告，最近一版是「雪淞幽夢」，10月初那会儿上的，…',
+                  '下一个版本的具体日期官方还没放，只有前瞻预告，得再等等']
+```

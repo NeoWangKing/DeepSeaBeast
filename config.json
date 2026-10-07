@@ -311,6 +311,7 @@
     "judge_max_per_hour": 30,
     "skip_if_evidence": 0.34,
     "remember": true,
-    "remember_max_per_hour": 4
+    "remember_max_per_hour": 4,
+    "max_per_turn": 3
   }
 }

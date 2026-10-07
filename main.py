@@ -119,6 +119,7 @@ DEFAULTS = {
             "skip_if_evidence": 0.34,  # 本地资料/记忆相关度≥这个就不强制查（先回忆再查）
             "remember": True,        # 查证过的一问一答写回记忆
             "remember_max_per_hour": 4,
+            "max_per_turn": 3,       # 一轮最多查/读几次（防她把轮数全用在搜上，最后没说话）
             "cache_ttl": 600,        # 搜索结果缓存（秒）
             "read_cache_ttl": 3600,  # 网页正文缓存（秒）
             "timeout": 20,
@@ -1748,8 +1749,32 @@ class QqPeakGate(Star):
             self._log("agent：展开技能 %s（%d 字）" % (name, len(txt)))
             return "【技能说明书：%s】\n%s" % (name, txt)
 
+        def _lookup_budget():
+            """这轮还能查几次？返回 (ok, 已用, 上限)。"""
+            try:
+                _scfg = self.cfg.get("search") or {}
+                _lim = int(_scfg.get("max_per_turn", 3) or 3)
+                _tb = getattr(self, "_turn_lookups", None)
+                if _tb is None:
+                    _tb = self._turn_lookups = {}
+                _n = int(_tb.get(_akey, 0) or 0)
+                return (_n < _lim), _n, _lim
+            except Exception:
+                return True, 0, 3
+
+        def _use_lookup():
+            try:
+                self._turn_lookups[_akey] = int(self._turn_lookups.get(_akey, 0) or 0) + 1
+            except Exception:
+                pass
+
         def _web_search(q, count=5):
             _scfg = self.cfg.get("search") or {}
+            _ok, _n, _lim = _lookup_budget()
+            if not _ok:
+                return ("这轮已经查了 %d 次了（上限 %d）：别继续搜，"
+                        "直接拿已经查到的内容说话" % (_n, _lim))
+            _use_lookup()
             if not _scfg.get("enabled", True):
                 return "没查：这个会话现在没开联网搜索"
             try:
@@ -1777,6 +1802,11 @@ class QqPeakGate(Star):
 
         def _read_url(u):
             _scfg = self.cfg.get("search") or {}
+            _ok, _n, _lim = _lookup_budget()
+            if not _ok:
+                return ("这轮已经查了 %d 次了（上限 %d）：别继续读网页，"
+                        "直接拿已知的内容说话" % (_n, _lim))
+            _use_lookup()
             if not _scfg.get("enabled", True):
                 return "没读：这个会话现在没开联网"
             try:
@@ -1841,7 +1871,9 @@ class QqPeakGate(Star):
                "send_face": _send_face,
                "view_sticker": _view_sticker, "sticker_note": _sticker_note,
                "schedule_wake": _schedule_wake, "cancel_wake": _cancel_wake,
-               "memory_append": _memory_append}
+               "memory_append": _memory_append,
+               # 联网/技能的回调（2026-10-07 这三个漏登记过，工具一律返回"不能联网搜索"）
+               "web_search": _web_search, "read_url": _read_url, "use_skill": _use_skill}
         try:                       # 允许发表情/工具？按会话判断（event 不在时也能算，定时轮用得上）
             _ac = self._agent_cfg()
             _gs = [str(x) for x in (_ac.get("send_tools_groups") or [])]
@@ -1852,6 +1884,15 @@ class QqPeakGate(Star):
             # 只有名单内的群/私聊才给发送类工具；否则她照旧用正文说话
             cbs.update({"send_text": _send_text, "send_sticker": _send_sticker,
                         "collect_sticker": _collect, "send_ok": True})
+        # 接线自检：tools.py 用到的回调键少了就记故障（省得以后再"定义了却没接上"）
+        try:
+            _need = set(getattr(agent.tools, "TOOL_CB_KEYS", ()) or ())
+            _miss = sorted(_need - {"send_ok"} - set(cbs))
+            if _miss and not getattr(self, "_cb_miss_warned", False):
+                self._cb_miss_warned = True
+                self._fault("callback_missing", ",".join(_miss))
+        except Exception:
+            pass
         return cbs
 
     @staticmethod
@@ -2848,6 +2889,12 @@ class QqPeakGate(Star):
         except Exception as _ef:
             _force = ""
             self._log_debug("查证前置判定失败 %r" % (_ef,))
+        try:                                  # 这一轮查询计数（限制她别把轮数全用在搜上）
+            if not hasattr(self, "_turn_lookups"):
+                self._turn_lookups = {}
+            self._turn_lookups[_akey] = 0
+        except Exception:
+            pass
         self._log("agent loop：开始（%s，%d 个工具，system %d 字，最多 %d 轮%s）"
                   % (key, len(schema), len(system_prompt), _rounds,
                      "，强制先查" if _force else ""))
@@ -2917,11 +2964,22 @@ class QqPeakGate(Star):
         if not t.spoke and not t.finished:
             # 她既没说也没结束：再提醒一轮（传统渠道已退休，这里就是最后的安全网）
             try:
-                messages.append({"role": "user", "content": (
-                    "【系统提醒】你刚才没有发言。要说话就调 send_message（多条用 ||| 分隔）；"
-                    "不想说话就调 finish。别把话写在正文里，正文不会发出去。")})
+                _lk = {str(c.get("name") or "") for c in (r.get("calls") or [])}
+                _did_lookup = bool({"web_search", "read_url"} & _lk)
+                if _did_lookup:
+                    # 只查了没说：把结论说出来（强制 send_message，别再搜了）
+                    messages.append({"role": "user", "content": (
+                        "【系统提醒】你刚才只查了资料、还没说话。现在把查到的结论说出来："
+                        "调 send_message 说一句自然的回复（要提来源就说网站/媒体名，"
+                        "别念网址、别复述搜索过程）；确实没查到就说「我搜了下没找到」。")})
+                    _ff2 = "send_message"
+                else:
+                    messages.append({"role": "user", "content": (
+                        "【系统提醒】你刚才没有发言。要说话就调 send_message（多条用 ||| 分隔）；"
+                        "不想说话就调 finish。别把话写在正文里，正文不会发出去。")})
+                    _ff2 = ""
                 r2 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 1,
-                                             self._log, _vmodel)
+                                             self._log, _vmodel, _ff2)
                 self._log("agent loop：漏发提醒后 %s" % ("补上了" if t.spoke else "仍未发言"))
                 r = r2 if r2 else r
             except Exception as _e6:

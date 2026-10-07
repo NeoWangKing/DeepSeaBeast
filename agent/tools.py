@@ -10,6 +10,9 @@
 import time
 
 MAX_TEXT_CHARS = 400          # 单次发言总字数上限（防小作文刷屏）
+# 本文件里 self.cb.get("X") 用到的回调键（main.py 用它做接线自检 + 离线测试用）
+TOOL_CB_KEYS = frozenset(__import__("re").findall(
+    r'self\.cb\.get\("([a-z_]+)"\)', open(__file__, encoding="utf-8").read()))
 MAX_PARTS = 4                 # 单次最多分几条
 
 
