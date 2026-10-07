@@ -278,3 +278,22 @@ triggers: 触发词, 用逗号隔开（可选，也进索引）
 1. 判定换成"小模型判一次"（`deepseek-flash`，几十 token）：覆盖正则漏掉的信息需求，代价是每轮多 ~1s
 2. 本地资料库/记忆命中充分时跳过强制搜索（省时间）；查到的新事实让她 `memory_append` 存下来，二次提问就不用再搜
 3. 高事实密度回答（带具体日期/版本号/比分）加"断言闸门"：本轮没查就要求她标注不确定
+
+### 三件套补齐（2026-10-07）
+
+1. **小模型判一次"要不要查"**（`agent/websearch.needs_lookup()`）
+   顺序：规则强命中 → 直接 yes（不花钱）→ 不像问句 → 空（不花钱）→ 其余问句才让小模型判一次。
+   结果缓存 30 分钟；判定调用按会话限 `search.judge_max_per_hour`（默认 30/小时）；模型 `search.judge_model`（空=主模型）。
+   实测：`现在终末地主流阵容是啥`/`明天天气如何` → 要查（0.7~0.8s）；`你会唱歌吗`/`这个任务咋做` → 不用查；
+   `我在摸鱼` → 免判。问句词表含 啥/咋/如何/怎样/哪些/几个/几号…（"是啥"这类以前会漏）。
+2. **本地资料/记忆够硬就不强制查**（`should_force()` + `search.skip_if_evidence`，默认 0.34）
+   证据 = max(资料库最高相关度, 记忆块与问题的重叠度)；够了就**不强制**，交给她自己判断（先回忆再查，像真人）。
+   日志：`查证前置：判定=yes 本地证据=0.42（阈值0.34）→ 不强制，交给她自己判断`
+3. **查证结论写回记忆**（`remember_note()` + `search.remember`）
+   本轮真调了 `web_search` 且她说了话 → 把「他问过 X，我查证后回：Y」写进 `data/agent_memory/<会话>.jsonl`
+   （kind=topic，按会话限 `remember_max_per_hour`=4、近 60 行内去重）。记忆每轮都会注入 → 同类问题第二次不用再搜。
+   日志：`查证记忆：已记下「…」`
+
+新增配置（`search` 块）：`smart_judge` / `judge_model` / `judge_max_per_hour` / `skip_if_evidence` /
+`remember` / `remember_max_per_hour`。
+回归：`python3 tests/search_nudge_sim.py`（含判定缓存、证据阈值、记忆条目、强制首轮等 20+ 用例）。

@@ -305,6 +305,12 @@
     "read_max_chars": 4000,
     "cache_ttl": 600,
     "read_cache_ttl": 3600,
-    "timeout": 20
+    "timeout": 20,
+    "smart_judge": true,
+    "judge_model": "",
+    "judge_max_per_hour": 30,
+    "skip_if_evidence": 0.34,
+    "remember": true,
+    "remember_max_per_hour": 4
   }
 }

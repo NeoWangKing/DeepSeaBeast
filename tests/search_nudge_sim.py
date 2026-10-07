@@ -55,6 +55,40 @@ ck("写明「不知道」不算回答", "不算回答" in txt and "我又不是�
 ck("写明查不到就直说", "我搜了下没找到" in txt)
 ck("关掉搜索就不注入", SEC._search_rules({"caps": {"search": False}}) == "")
 
+print("== 要不要查：规则 → 小模型判一次 → 本地证据够就不强制 ==")
+_calls = []
+
+
+def _stub_judge(msgs):
+    _calls.append(msgs[-1]["content"])
+    return "1" if "终末地" in msgs[-1]["content"] else "0"
+
+
+ck("强规则命中直接 yes（不花钱）",
+   W.needs_lookup("终末地什么时候更新", _stub_judge) == "yes" and not _calls)
+ck("不像问句 → 空（不花钱）",
+   W.needs_lookup("哈哈哈哈笑死", _stub_judge) == "" and not _calls)
+ck("像问句 → 小模型判 yes", W.needs_lookup("终末地值得回坑吗", _stub_judge) == "yes")
+ck("小模型这次真的被调用", bool(_calls))
+_n1 = len(_calls)
+ck("第二次同样的问题走缓存（不再调用）", W.needs_lookup("终末地值得回坑吗", _stub_judge) == "yes"
+   and len(_calls) == _n1)
+ck("判 no 的情况", W.needs_lookup("你在干嘛呢", _stub_judge) == "no")
+ck("判定炸了也不报错", W.needs_lookup("这个问题怎么样", lambda m: (_ for _ in ()).throw(ValueError())) == "")
+ck("chat_fn 缺失 → 空（交给她自己判断）", W.needs_lookup("这个问题怎么样", None) == "")
+
+ck("should_force: yes+没证据 → 强制", W.should_force("yes", 0.0, 0.34))
+ck("should_force: yes+资料够硬 → 不强制", not W.should_force("yes", 0.5, 0.34))
+ck("should_force: 边界（等于阈值）不强制", not W.should_force("yes", 0.34, 0.34))
+ck("should_force: no/空 → 不强制", not W.should_force("no", 0.0) and not W.should_force("", 0.0))
+
+print("== 查证结论写回记忆 ==")
+_note = W.remember_note("终末地下个版本什么时候更新", "查了下，官方公告写的是 10 月 9 日更新")
+ck("正常一问一答生成条目", _note.get("kind") == "topic" and "10 月 9 日" in _note.get("text", ""))
+ck("问题太长不记", W.remember_note("问" * 80, "答") == {})
+ck("答案太长不记", W.remember_note("问", "答" * 200) == {})
+ck("空的不记", W.remember_note("", "答案") == {} and W.remember_note("问", "") == {})
+
 print("== 第一轮强制先查（结构约束） ==")
 from agent import loop as L       # noqa: E402
 from agent import tools as TOOLS  # noqa: E402
@@ -113,6 +147,9 @@ ck("工具调用打到 INFO（可审计）", "agent loop：本轮调用 → " in
 ck("提示词禁止编造搜索过程", "没调 web_search 就不能说" in SEC._search_rules({"caps": {"search": True}}))
 ck("可查问题会在 main 里强制先查", "_force = \"web_search\"" in src)
 ck("提示词给了照做的例子", "照这个例子做" in SEC._search_rules({"caps": {"search": True}}))
+ck("main 里有小模型判定器", "def _judge_fn(" in src)
+ck("main 里本地证据够就不强制", "should_force(_dec, _ev, _th)" in src)
+ck("main 里查证写记忆", "查证记忆：已记下" in src)
 
 print()
 if FAIL:

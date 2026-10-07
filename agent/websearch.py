@@ -247,6 +247,78 @@ def is_dontknow(text) -> bool:
     return bool(_DONTKNOW_RE.search(t))
 
 
+# ── 「要不要先查」的判定：规则优先，不像问句就不花钱，像问句让小模型判一次 ──
+JUDGE_SYS = (
+    "你是群聊助手的调度器。判断用户这句话要回答的话，是否必须查外部资料："
+    "最新消息、具体事实、时间/日期/数据、别人最近说过什么、版本/赛程/价格。"
+    "只输出一个字符：1=必须先查；0=不用查（闲聊、玩笑、情绪、称呼、观点、或助手本来就答得出的常识）。"
+)
+_QUESTION_HINT_RE = re.compile(
+    r"[?？]|吗|呢|什么|啥|怎么|咋|为什么|为啥|如何|怎样|哪|哪些|哪几|哪家|谁|多少|几个|几时|几点|几号|多长|是不是|有没有|能不能|可不可以")
+_JUDGE_CACHE = {}
+
+
+def question_like(text) -> bool:
+    """像不像在问事情（不像就别浪费一次判定调用）。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 120:
+        return False
+    return bool(_QUESTION_HINT_RE.search(t))
+
+
+def needs_lookup(text, chat_fn=None, recent: str = "") -> str:
+    """返回 "yes" / "no" / ""（空=拿不准，交给她自己判断）。
+
+    - 规则强命中（什么时候/几号/谁赢/多少钱…）→ 直接 yes，不花钱
+    - 不像问句 → ""，不花钱
+    - 其余问句 → 让 chat_fn(messages)->str 判一次（结果缓存 30 分钟）
+    """
+    t = str(text or "").strip()
+    if not t:
+        return ""
+    if is_lookup_question(t):
+        return "yes"
+    if not question_like(t) or chat_fn is None:
+        return ""
+    key = re.sub(r"\s+", " ", t)[:120]
+    hit = _JUDGE_CACHE.get(key)
+    if hit and time.time() - float(hit[0]) <= 1800:
+        return hit[1]
+    try:
+        msgs = [{"role": "system", "content": JUDGE_SYS}]
+        if recent:
+            msgs.append({"role": "user", "content": "（最近群聊，仅供参考）\n" + str(recent)[:300]})
+        msgs.append({"role": "user", "content": t})
+        out = str(chat_fn(msgs) or "").strip()
+        d = ("yes" if out[:1] in ("1", "是", "y", "Y")
+             else ("no" if out[:1] in ("0", "不", "n", "N") else ""))
+    except Exception:
+        d = ""
+    _JUDGE_CACHE[key] = (time.time(), d)
+    if len(_JUDGE_CACHE) > 300:
+        _JUDGE_CACHE.clear()
+    return d
+
+
+def should_force(decision: str, evidence: float = 0.0, threshold: float = 0.34) -> bool:
+    """要不要强制先查：判定 yes，且本地资料库/记忆里没有足够证据（先回忆再查）。"""
+    if str(decision or "") != "yes":
+        return False
+    try:
+        return float(evidence or 0.0) < float(threshold or 0.34)
+    except Exception:
+        return True
+
+
+def remember_note(question, answer, max_len: int = 120) -> dict:
+    """查证过的一问一答 → 写进她记忆的条目（下次同类问题直接想起来）。"""
+    q = re.sub(r"\s+", " ", str(question or "")).strip()
+    a = re.sub(r"\s+", " ", str(answer or "")).strip()
+    if not q or not a or len(q) > 60 or len(a) > max_len:
+        return {}
+    return {"kind": "topic", "text": "他问过「%s」，我查证后回：%s" % (q[:60], a[:max_len])}
+
+
 # ── 读网页 ────────────────────────────────────────────────────────────
 def _decode(raw: bytes, charset: str = "") -> str:
     for enc in [charset, "utf-8", "gb18030", "big5", "latin-1"]:

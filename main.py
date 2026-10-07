@@ -113,6 +113,12 @@ DEFAULTS = {
             "count": 5,              # 默认返回几条
             "max_per_hour": 20,      # 每小时最多搜几次（防刷/防额度）
             "read_max_chars": 4000,  # 单个网页最多读多少字给她
+            "smart_judge": True,     # 规则没命中时，让小模型判一次"要不要查"（几十 token）
+            "judge_model": "",       # 判定用哪个模型（空=和主模型一样）
+            "judge_max_per_hour": 30,  # 判定调用每小时上限（防刷）
+            "skip_if_evidence": 0.34,  # 本地资料/记忆相关度≥这个就不强制查（先回忆再查）
+            "remember": True,        # 查证过的一问一答写回记忆
+            "remember_max_per_hour": 4,
             "cache_ttl": 600,        # 搜索结果缓存（秒）
             "read_cache_ttl": 3600,  # 网页正文缓存（秒）
             "timeout": 20,
@@ -2342,6 +2348,29 @@ class QqPeakGate(Star):
         finally:
             lk.release()
 
+    def _judge_fn(self, key: str):
+        """给小模型判定的调用器（带每小时上限，防止判定本身被刷）。"""
+        def _call(msgs):
+            try:
+                _scfg = self.cfg.get("search") or {}
+                _lim = int(_scfg.get("judge_max_per_hour", 30) or 30)
+                _ts = getattr(self, "_judge_ts", None)
+                if _ts is None:
+                    _ts = self._judge_ts = {}
+                _now = time.time()
+                _hits = _ts.setdefault(str(key), [])
+                _hits[:] = [x for x in _hits if _now - x <= 3600]
+                if len(_hits) >= _lim:
+                    self._log_debug("查证判定：这小时判定次数用完了，不再判")
+                    return ""
+                _hits.append(_now)
+                _m = str(_scfg.get("judge_model") or "").strip() or None
+                return agent.llm.chat_text(msgs, self.cfg, 8, model=_m)
+            except Exception as e:
+                self._log_debug("查证判定调用失败 %r" % (e,))
+                return ""
+        return _call
+
     def _agent_specs_for(self, key: str) -> list:
         """按会话过滤工具清单：不发表情图的群（send/collect_exclude_groups）滤掉表情图工具。"""
         specs = self._agent_tool_specs()
@@ -2472,6 +2501,7 @@ class QqPeakGate(Star):
         except Exception:
             pass
         # 本地资料库：按当前话题检索后注入（loop 路径以前没有这一段，等于资料白建）
+        _kb_top = 0.0                     # 最相关的资料块得分（给"要不要强制先查"当证据）
         try:
             _kcfg = self.cfg.get("kb") or {}
             if _kcfg.get("enabled", True) and not private:
@@ -2479,6 +2509,10 @@ class QqPeakGate(Star):
                               [x[1] for x in list(self.recent.get("" if key.startswith("p:") else key) or [])[-3:]])
                 _hits = local_kb.search(_q, int(_kcfg.get("top_k", 3) or 3),
                                         float(_kcfg.get("min_score", 0.08) or 0.08))
+                try:
+                    _kb_top = max([float(h.get("score") or 0.0) for h in (_hits or [])] or [0.0])
+                except Exception:
+                    _kb_top = 0.0
                 if _hits:
                     _buf, _cap, _used = [], int(_kcfg.get("max_chars", 900) or 900), 0
                     for _h in _hits:
@@ -2776,13 +2810,41 @@ class QqPeakGate(Star):
             _rounds = int(self._agent_cfg().get("max_rounds", 2) or 2)
         except Exception:
             _rounds = 2
-        # 需要外部资料的问题：第一轮直接强制她调 web_search（不给她"跳过"的机会）
+        # 要不要"先查再答"：规则 → 不像问句跳过 → 像问句让小模型判一次；本地证据够硬就不强制
         _force = ""
         try:
-            if self._search_on() and agent.websearch.is_lookup_question(
-                    str(getattr(event, "message_str", "") or "")):
+            _scfg2 = self.cfg.get("search") or {}
+            _cur_q = str(getattr(event, "message_str", "") or "")
+            _dec = ""
+            _chatj = None
+            if self._search_on():
+                if _scfg2.get("smart_judge", True):
+                    _chatj = self._judge_fn(key)
+                try:
+                    _rt = " ".join([x[1] for x in list(
+                        self.recent.get("" if key.startswith("p:") else key) or [])[-3:]])[:200]
+                except Exception:
+                    _rt = ""
+                _dec = agent.websearch.needs_lookup(_cur_q, _chatj, _rt)
+            _ev = 0.0
+            try:
+                _ev = max(_ev, float(_kb_top or 0.0))
+            except Exception:
+                pass
+            try:
+                _mb_txt = str(_mb or "")          # 上面算出来的记忆块（群印象/人物档案）
+                if _mb_txt and _cur_q:
+                    _ev = max(_ev, float(scoring._overlap(_cur_q, [_mb_txt])))
+            except Exception:
+                pass
+            _th = float(_scfg2.get("skip_if_evidence", 0.34) or 0.34)
+            if agent.websearch.should_force(_dec, _ev, _th):
                 _force = "web_search"
-                self._log("查证前置：判定这是可查的事实问题 → 第一轮强制 web_search")
+                self._log("查证前置：判定=%s 本地证据=%.2f<%.2f → 第一轮强制 web_search"
+                          % (_dec or "?", _ev, _th))
+            elif _dec:
+                self._log("查证前置：判定=%s 本地证据=%.2f（阈值%.2f）→ 不强制，交给她自己判断"
+                          % (_dec, _ev, _th))
         except Exception as _ef:
             _force = ""
             self._log_debug("查证前置判定失败 %r" % (_ef,))
@@ -2867,6 +2929,49 @@ class QqPeakGate(Star):
         if not t.spoke and not t.finished:
             self._log("agent loop：这轮没发言也没 finish → 视为沉默")
             self._fault("no_speak")
+        # 查证过的一问一答写进她的记忆：同一个问题下次直接想起来，不用再搜
+        try:
+            _scfg3 = self.cfg.get("search") or {}
+            _called3 = {str(c.get("name") or "") for c in (r.get("calls") or [])}
+            _mytext3 = " ".join([str(x[1]) for x in (t.sent or [])
+                                 if str(x[0]) == "text"]).strip()
+            if (self._search_on() and _scfg3.get("remember", True)
+                    and "web_search" in _called3 and _mytext3):
+                _note = agent.websearch.remember_note(
+                    str(getattr(event, "message_str", "") or ""), _mytext3)
+                if _note:
+                    _lim3 = int(_scfg3.get("remember_max_per_hour", 4) or 4)
+                    _ts3 = getattr(self, "_memn_ts", None)
+                    if _ts3 is None:
+                        _ts3 = self._memn_ts = {}
+                    _now3 = time.time()
+                    _h3 = _ts3.setdefault(str(key), [])
+                    _h3[:] = [x for x in _h3 if _now3 - x <= 3600]
+                    if len(_h3) >= _lim3:
+                        self._log_debug("查证记忆：这小时记够了，先不记")
+                    else:
+                        _d3 = os.path.join(PLUGIN_DIR, "data", "agent_memory")
+                        os.makedirs(_d3, exist_ok=True)
+                        _mf3 = os.path.join(_d3, (str(key).replace(":", "_") or "x") + ".jsonl")
+                        _dup = False
+                        try:
+                            with open(_mf3, encoding="utf-8") as _fh3:
+                                for _ln3 in _fh3.readlines()[-60:]:
+                                    if _note["text"][:20] in _ln3:
+                                        _dup = True
+                                        break
+                        except Exception:
+                            pass
+                        if not _dup:
+                            with open(_mf3, "a", encoding="utf-8") as _fh3:
+                                _fh3.write(json.dumps({"ts": int(time.time()),
+                                                       "kind": _note["kind"],
+                                                       "text": _note["text"]},
+                                                      ensure_ascii=False) + "\n")
+                            _h3.append(_now3)
+                            self._log("查证记忆：已记下「%s」" % _note["text"][:50])
+        except Exception as _e8:
+            self._log_debug("查证记忆写入失败 %r" % (_e8,))
         try:
             event.set_extra("_agent_loop_done", True)
         except Exception:
