@@ -130,6 +130,25 @@ def split_faces(text) -> list:
     return out
 
 _PROTO_LINE = re.compile(r"^\s*(图|回|回复|答|收)\s*[:：]\s*")
+# 像是"在描述工具调用/输出协议"而不是人话（发送口用来拦截，别发出去丢人）
+# 注意：故意不放单独的 "arguments"/"参数" —— 群里正常聊代码也会说到，误拦更烦
+_META_WORDS = ("send_message", "调用参数", "参数里要发", "工具调用", "tool_call",
+               "function_call", "发消息工具")
+
+
+def looks_like_meta(text) -> bool:
+    """这句话是不是"在描述工具调用/协议"（不是人话）。发送口拿它拦截。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 200:
+        return False
+    low = t.lower()
+    if any(w in low for w in _META_WORDS):
+        return True
+    if t[0] in "{[" and any(w in low for w in ("name", "arguments", "function", "tool")):
+        return True
+    if len(t) <= 80 and _PROTO_LINE.match(t):
+        return True
+    return False
 
 
 def sanitize(text, strip_bar: bool = True, strip_faces: bool = False,

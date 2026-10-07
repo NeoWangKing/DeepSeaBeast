@@ -1928,6 +1928,15 @@ class QqPeakGate(Star):
     async def _agent_send(self, target, text: str, reply_to_id: str = "",
                           at_user_id: str = "", face: str = "") -> None:
         try:
+            # 兜底：模型偶尔会把"工具调用/协议"当成话写出来（比如
+            # 「send_message 的调用参数里要发的话是「…」」）——这种人话不能发。
+            try:
+                if replyproto.looks_like_meta(text):
+                    self._log("发送口拦截：内容像工具调用/协议描述，不发 →「%s」" % str(text)[:60])
+                    self._fault("meta_text_blocked", str(text)[:80])
+                    return
+            except Exception:
+                pass
             comps = []
             if reply_to_id:
                 comps.append(Reply(id=str(reply_to_id)))
@@ -2577,6 +2586,7 @@ class QqPeakGate(Star):
                     "① 图上有文字就**照抄原文**（一字不改，别意译）；\n"
                     "② 手势/动作只写客观事实：「拇指向上」「手指朝前/朝某人」「握拳」「挥手」「比心」「没有手」；\n"
                     "③ 严禁把朝向或姿势脑补成剧情（手指朝前 ≠ 冲过来、≠ 攻击你）；看不清就写「看不清手势」，**不要猜**。\n"
+                    "（这一轮你不用任何工具，也别提工具、参数、调用；直接说人话。）\n"
                     "然后**只输出三行**（不要别的解释）：\n"
                     "图：<主体 + 图上文字原文 + 客观手势 + 大致情绪，≤40字；这行会被你记住>\n"
                     "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔>\n"
@@ -2593,10 +2603,25 @@ class QqPeakGate(Star):
                 except Exception:
                     pass
                 _vtxt = ""
+                # 看图轮不用工具：把"工具清单/必须调 send_message"那段去掉，免得她写出工具调用的描述
+                _vsys = system_prompt
+                try:
+                    _vsys2, _ = promptlib.build_system_prompt(
+                        plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key=key, private=private,
+                        caps={"vision": True, "search": self._search_on(),
+                              "kb": bool(_kcfg.get("enabled", True) and not private),
+                              "tools_text": "", "tools_send": False,
+                              "self_id": str(event.get_self_id() or ""),
+                              "aliases": (list(self.cfg.get("keywords") or []) +
+                                          ([self._nick] if self._nick else []))})
+                    if _vsys2:
+                        _vsys = _vsys2
+                except Exception as _e0:
+                    self._log_debug("看图轮：提示词裁剪失败，用原提示词 %r" % (_e0,))
                 try:
                     _vtxt = await asyncio.to_thread(
                         agent.llm.chat_vision,
-                        [{"role": "system", "content": system_prompt},
+                        [{"role": "system", "content": _vsys},
                          {"role": "user", "content": _parts}], _vmodel, self.cfg, 500)
                 except Exception as _e:
                     self._log("agent loop：看图轮失败 %r" % (_e,))
@@ -2629,6 +2654,10 @@ class QqPeakGate(Star):
                             continue
                         _rest.append(_l2)
                     _say = " ".join(_rest).strip()
+                    if _say and replyproto.looks_like_meta(_say):
+                        self._log("看图轮：剩下的是工具/协议描述，不当回复发 →「%s」" % _say[:50])
+                        self._fault("meta_text_blocked", _say[:80])
+                        _say = ""
                     if _say:
                         self._log("agent loop：看图轮没给【回】行，用剩余正文兜底 %d 字" % len(_say))
                     else:
@@ -3874,6 +3903,12 @@ class QqPeakGate(Star):
             except Exception:
                 deb = 0.0
             self._log_debug("delay 计算: deb=%.2fs 文本长度=%d" % (deb, len(text or "")))
+            # 被 @ / 被引用的消息是"必回"，不能被下面的连发合并吞掉（真事故：@ 被吞 + 后面那条撞冷却 → 一条没回）
+            _must_reply_now = False
+            try:
+                _must_reply_now = bool(self._at_me(event) or self._quotes_me(event))
+            except Exception:
+                _must_reply_now = False
             if deb > 0:
                 now0 = time.time()
                 udev = str(event.get_sender_id() or "")
@@ -3883,10 +3918,12 @@ class QqPeakGate(Star):
                 newer = [ts for ts, u in st_later if ts > now0 + 0.05 and str(u) == udev]
                 if not newer:      # 兜底（该群不记 sender_times 时，看任意新消息）
                     newer = [ts for ts in (self.msg_times.get(gid) or []) if ts > now0 + 0.05]
-                if newer:
+                if newer and not _must_reply_now:
                     self._log("拟人延迟 %.1fs 期间他还在发 → 这条跳过，交给后面那条合并" % deb)
                     event.stop_event()
                     return
+                if newer:
+                    self._log("拟人延迟 %.1fs 期间他还在发，但这条 @了她/引用了她 → 不合并，照常处理" % deb)
 
             # 识别"对方一个字一个字发过来"（近 20 秒内他连着发了 ≥4 条超短消息）
             try:
