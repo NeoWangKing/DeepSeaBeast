@@ -55,6 +55,54 @@ ck("写明「不知道」不算回答", "不算回答" in txt and "我又不是�
 ck("写明查不到就直说", "我搜了下没找到" in txt)
 ck("关掉搜索就不注入", SEC._search_rules({"caps": {"search": False}}) == "")
 
+print("== 第一轮强制先查（结构约束） ==")
+from agent import loop as L       # noqa: E402
+from agent import tools as TOOLS  # noqa: E402
+
+
+class _Stub(TOOLS.Tools):
+    pass
+
+
+seen = []
+
+
+def _fake_chat(msgs, schema, tc=None):
+    seen.append(tc)
+    return {"content": "", "tool_calls": [{"id": "1", "name": "web_search",
+                                           "arguments": {"query": "x"}}], "usage": {}}
+
+
+t = TOOLS.Tools("g", {"web_search": lambda q, n=5: "搜到 1 条"}, {})
+L.run(t, [{"role": "user", "content": "hi"}], [{"type": "function", "function": {"name": "web_search"}}],
+      _fake_chat, 1, lambda *a: None, None, "web_search")
+ck("第一轮被强制成 web_search", seen and seen[0] == {"type": "function", "function": {"name": "web_search"}},
+   str(seen[0] if seen else None))
+seen2 = []
+
+
+def _fake_chat2(msgs, schema, tc=None):
+    seen2.append(tc)
+    return {"content": "", "tool_calls": [{"id": "1", "name": "web_search",
+                                           "arguments": {"query": "x"}}], "usage": {}}
+
+
+t2 = TOOLS.Tools("g", {"web_search": lambda q, n=5: "ok"}, {})
+L.run(t2, [{"role": "user", "content": "hi"}], [{"type": "function", "function": {"name": "web_search"}}],
+      _fake_chat2, 1, lambda *a: None, None)
+ck("不强制时 tool_choice 为空（＝required）", seen2 and seen2[0] is None, str(seen2[0] if seen2 else None))
+seen3 = []
+
+
+def _fake_chat3(msgs, schema):
+    seen3.append("2参桩")
+    return {"content": "", "tool_calls": [], "usage": {}}
+
+
+L.run(TOOLS.Tools("g", {}, {}), [{"role": "user", "content": "hi"}],
+      [{"type": "function", "function": {"name": "web_search"}}], _fake_chat3, 1, lambda *a: None, None, "web_search")
+ck("老的两参数桩还能用", seen3 == ["2参桩"])
+
 print("== main.py 里的两层兜底在位 ==")
 src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
 ck("当轮提醒可查问题", "【这是可查的事实问题】" in src)
@@ -63,6 +111,8 @@ ck("补轮提示词", "先调 web_search 查一下，再补一句自然的回复
 ck("故障计数 no_search_answer", '_fault("no_search_answer"' in src)
 ck("工具调用打到 INFO（可审计）", "agent loop：本轮调用 → " in src)
 ck("提示词禁止编造搜索过程", "没调 web_search 就不能说" in SEC._search_rules({"caps": {"search": True}}))
+ck("可查问题会在 main 里强制先查", "_force = \"web_search\"" in src)
+ck("提示词给了照做的例子", "照这个例子做" in SEC._search_rules({"caps": {"search": True}}))
 
 print()
 if FAIL:

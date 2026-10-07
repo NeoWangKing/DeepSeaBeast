@@ -2776,10 +2776,21 @@ class QqPeakGate(Star):
             _rounds = int(self._agent_cfg().get("max_rounds", 2) or 2)
         except Exception:
             _rounds = 2
-        self._log("agent loop：开始（%s，%d 个工具，system %d 字，最多 %d 轮）"
-                  % (key, len(schema), len(system_prompt), _rounds))
+        # 需要外部资料的问题：第一轮直接强制她调 web_search（不给她"跳过"的机会）
+        _force = ""
+        try:
+            if self._search_on() and agent.websearch.is_lookup_question(
+                    str(getattr(event, "message_str", "") or "")):
+                _force = "web_search"
+                self._log("查证前置：判定这是可查的事实问题 → 第一轮强制 web_search")
+        except Exception as _ef:
+            _force = ""
+            self._log_debug("查证前置判定失败 %r" % (_ef,))
+        self._log("agent loop：开始（%s，%d 个工具，system %d 字，最多 %d 轮%s）"
+                  % (key, len(schema), len(system_prompt), _rounds,
+                     "，强制先查" if _force else ""))
         r = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, _rounds,
-                                    self._log_debug, _vmodel)
+                                    self._log_debug, _vmodel, _force)
         self._log("agent loop：结束（%s，用了 %s，说了 %d 条，finish=%s）"
                   % (key, str(r.get("usage") or {}), len(t.sent), t.finished))
         # 工具调用打到 INFO：以前这里是 debug，出事了只能靠缓存反推（2026-10-07 那次教训）

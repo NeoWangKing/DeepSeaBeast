@@ -48,16 +48,25 @@ def dispatch(tools, name: str, args: dict, allowed: set) -> str:
 
 
 def run(tools, messages: list, tools_schema: list, chat_fn=None, max_rounds: int = MAX_ROUNDS,
-        log=None, model=None) -> dict:
+        log=None, model=None, force_first: str = "") -> dict:
+    """force_first: 第一轮强制调用某个工具（如 web_search）——把"先查再答"变成结构约束。"""
     """跑一轮"必须用工具"的对话。返回 {rounds, calls, spoke, finished, usage}。"""
     log = log or (lambda *a, **k: None)
     if chat_fn is None:
-        chat_fn = (lambda msgs, schema: llm_mod.chat_tools(msgs, schema, "required", model=model))
+        chat_fn = (lambda msgs, schema, tc=None:
+                   llm_mod.chat_tools(msgs, schema, tc or "required", model=model))
     allowed = {s["function"]["name"] for s in tools_schema}
     calls, usage, rounds = [], {}, 0
     for r in range(1, max(1, int(max_rounds)) + 1):
         rounds = r
-        resp = chat_fn(list(messages), tools_schema)
+        _tc = None
+        if r == 1 and force_first:
+            _tc = {"type": "function", "function": {"name": str(force_first)}}
+            log("loop: 第 1 轮强制调用 %s" % force_first)
+        try:
+            resp = chat_fn(list(messages), tools_schema, _tc)
+        except TypeError:                      # 兼容只收两个参数的桩（离线测试）
+            resp = chat_fn(list(messages), tools_schema)
         if resp.get("usage"):
             for k, v in resp["usage"].items():
                 if isinstance(v, int):
