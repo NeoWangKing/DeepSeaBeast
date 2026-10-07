@@ -11,6 +11,7 @@ from . import llm as llm_mod
 MAX_ROUNDS = 2
 
 REQUIRED = {"send_message": ["text"], "send_sticker": [],
+            "web_search": ["query"], "read_url": ["url"],
             "collect_sticker": ["message_id"], "memory_append": ["text"],
             "send_face": ["name"], "view_sticker": ["sticker_id"],
             "sticker_note": ["sticker_id", "note"], "schedule_wake": ["after_sec"]}

@@ -257,14 +257,15 @@
       "collect": true,
       "vision": true,
       "poke": true,
-      "memory_write": true
+      "memory_write": true,
+      "search": true
     },
-    "max_calls": 2,
+    "max_calls": 4,
     "send_tools_groups": [],
     "rescue_text": false,
     "loop_mode": true,
     "loop_groups": [],
-    "max_rounds": 2,
+    "max_rounds": 3,
     "llm": {
       "vision_model": "deepseek-flash"
     },
@@ -294,5 +295,15 @@
     "enabled": true,
     "max_per_hour": 4,
     "min_interval_sec": 20
+  },
+  "search": {
+    "enabled": true,
+    "provider": "auto",
+    "count": 5,
+    "max_per_hour": 20,
+    "read_max_chars": 4000,
+    "cache_ttl": 600,
+    "read_cache_ttl": 3600,
+    "timeout": 20
   }
 }

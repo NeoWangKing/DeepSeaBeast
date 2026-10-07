@@ -107,6 +107,16 @@ DEFAULTS = {
             "min_score": 0.14,       # 相关度门槛（低了容易污染上下文）
             "max_chars": 900,        # 最多注入多少字
         },
+        "search": {                  # 上网搜索 / 读网页（求证用）
+            "enabled": True,
+            "provider": "auto",      # auto=优先用 AstrBot 里配了 key 的 provider，没 key 走 Firecrawl 免 key
+            "count": 5,              # 默认返回几条
+            "max_per_hour": 20,      # 每小时最多搜几次（防刷/防额度）
+            "read_max_chars": 4000,  # 单个网页最多读多少字给她
+            "cache_ttl": 600,        # 搜索结果缓存（秒）
+            "read_cache_ttl": 3600,  # 网页正文缓存（秒）
+            "timeout": 20,
+        },
         "stickers": {                # 表情包收藏夹
             "enabled": True,
             "collect_exclude_groups": ["966812151"],   # 这些群不自动收图（隐私优先）
@@ -1367,6 +1377,13 @@ class QqPeakGate(Star):
         groups = [str(x) for x in (c.get("send_tools_groups") or [])]
         return (not groups) or (self._chat_key(event) in groups)
 
+    def _search_on(self) -> bool:
+        """联网搜索开关（config: search.enabled）。"""
+        try:
+            return bool((self.cfg.get("search") or {}).get("enabled", True))
+        except Exception:
+            return False
+
     def _agent_tool_specs(self) -> list:
         c = self._agent_cfg()
         if not c.get("enabled"):
@@ -1712,6 +1729,46 @@ class QqPeakGate(Star):
 
         def _sticker_note(sid, note):
             return stickers.set_note(str(sid), str(note))
+
+        def _web_search(q, count=5):
+            _scfg = self.cfg.get("search") or {}
+            if not _scfg.get("enabled", True):
+                return "没查：这个会话现在没开联网搜索"
+            try:
+                _lim = int(_scfg.get("max_per_hour", 20) or 20)
+                _ts = getattr(self, "_search_ts", None)
+                if _ts is None:
+                    _ts = self._search_ts = {}
+                _now = time.time()
+                _hits = _ts.setdefault(_gid, [])
+                _hits[:] = [x for x in _hits if _now - x <= 3600]
+                if len(_hits) >= _lim:
+                    return ("这小时已经查了 %d 次了，先别查了：直接说你知道的，"
+                            "或者老实说不确定" % _lim)
+                _hits.append(_now)
+            except Exception:
+                pass
+            try:
+                _txt = agent.websearch.search_text(q, count, _scfg)
+            except Exception as e:
+                self._fault("search_fail", repr(e))
+                return "查不了：%r" % (e,)
+            if str(_txt).startswith("搜不了"):
+                self._fault("search_fail", str(_txt)[:80])
+            return _txt
+
+        def _read_url(u):
+            _scfg = self.cfg.get("search") or {}
+            if not _scfg.get("enabled", True):
+                return "没读：这个会话现在没开联网"
+            try:
+                txt = agent.websearch.read_text(u, _scfg)
+            except Exception as e:
+                self._fault("search_fail", repr(e))
+                return "读不了：%r" % (e,)
+            if str(txt).startswith("读不了"):
+                self._fault("search_fail", str(txt)[:80])
+            return txt
 
         def _cancel_wake(scope=""):
             try:
@@ -2100,7 +2157,7 @@ class QqPeakGate(Star):
         _kcfg = self.cfg.get("kb") or {}
         _txt, _meta = promptlib.build_system_prompt(
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key="" if private else gid, private=private,
-            caps={"vision": True, "search": False,
+            caps={"vision": True, "search": self._search_on(),
                   "kb": bool(_kcfg.get("enabled", True) and not private),
                   "tools_text": self._agent_tools_text(gid), "tools_send": True,
                   "self_id": str(self.cfg.get("allowed_self_id") or ""),
@@ -2300,7 +2357,7 @@ class QqPeakGate(Star):
         _kcfg = self.cfg.get("kb") or {}
         _txt, _meta = promptlib.build_system_prompt(
             plugin_dir=PLUGIN_DIR, cfg=self.cfg, chat_key=key, private=private,
-            caps={"vision": True, "search": False,
+            caps={"vision": True, "search": self._search_on(),
                   "kb": bool(_kcfg.get("enabled", True) and not private),
                   "tools_text": self._agent_tools_text(key), "tools_send": True,
                   "self_id": str(event.get_self_id() or ""),

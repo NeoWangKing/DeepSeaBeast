@@ -148,3 +148,21 @@ agent/vision.py   看图：DeepSeek 多模态（不用 GLM）
 - 排查：`journalctl -u astrbot | grep -E "发出表情|表情按"`；
   离线回归：`python3 tests/sticker_tool_sim.py`
 - 注意：图片表情**没有**每小时上限；`stickers.max_per_hour` 只管旧的 `[表情:id]` 标记那条老路
+
+## 上网搜索 / 读网页（2026-10-07 新增）
+
+她多了两个工具：`web_search(query, count)` 和 `read_url(url)`。
+
+- 搜索通道（`search.provider`）：
+  1. `auto`（默认）—— 先用 AstrBot 里配了 key 的 provider（WebUI → 网页搜索，key 存 `cmd_config.json`
+     的 `provider_settings.websearch_*_key`，我们直接复用 `astrbot/core/tools/web_search_tools.py` 的实现）
+  2. 都没配 key 就退回 **Firecrawl 的免 key 搜索**（实测中英文都准，~1s；但没额度保障，挂了会记 `search_fail`）
+  3. 想关掉：`search.enabled=false` 或 `agent.tools.search=false`
+- 读网页：抓 HTML → 剥脚本/导航 → 纯文本，**带 SSRF 防护**（禁内网/本机/保留地址）、
+  单页最多 1500KB、最多给 4000 字；`data/_web_cache` 缓存（搜索 10 分钟 / 正文 1 小时）
+- 限额：`search.max_per_hour`（默认 20，按会话算）；失败计入 `agent_faults.json` 的 `search_fail`
+- 提示词：行为层多了【没把握就查，别硬编】（只在 `search.enabled` 时注入）——先搜、关键那条点开原文、
+  搜不到就说没找到、别念网址、查到的新事实用 memory_append 记一条
+- 轮数：`agent.max_rounds` 2→3、`max_calls` 2→4（search→read→回答 至少 3 步；她说完话仍会立刻收工）
+- 回归：`python3 tests/websearch_sim.py`（离线，含 SSRF / 正文提取 / 缓存 / schema）
+- 想升级质量：在 WebUI 里给博查(bocha)或 Tavily 填个 key 即可，代码不用动

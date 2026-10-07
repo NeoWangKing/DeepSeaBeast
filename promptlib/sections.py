@@ -188,6 +188,25 @@ def _sticker_rules(ctx):
     ])
 
 
+def _search_rules(ctx):
+    caps = ctx.get("caps") or {}
+    if not caps.get("search"):
+        return ""
+    return "\n".join([
+        "【没把握就查，别硬编】",
+        "- 只要你不确定——最新的新闻/进展、赛事结果、版本与活动时间、价格、某人最近说过什么、"
+        "某个梗的出处——先调 web_search 查一遍，再回答。",
+        "- 查完别只看标题：觉得关键的那条就调 read_url 打开原文，确认时间和说法再下结论"
+        "（标题经常夸张、过时，甚至和正文对不上）。",
+        "- 一轮最多搜 1~2 次、最多读 2 个页面；够用就收手，别为了保险反复搜。",
+        "- 搜不到、读不懂就说「我搜了下没找到」——绝对不要拿印象凑一个像真的答案，"
+        "也不要把搜索摘要当成原文结论。",
+        "- 说话自然点：可以说「我查一下」，但别念网址、别汇报搜索过程；要提来源就说网站/媒体名"
+        "（比如说「HLTV 上写的」而不是贴链接）。",
+        "- 查到值得留的新事实，用 memory_append 记一条（kind=topic，写清结论和时间）。",
+    ])
+
+
 def _scene(ctx):
     caps = ctx.get("caps") or {}
     lines = ["【QQ 场景规则】",
@@ -255,6 +274,7 @@ SECTIONS = [
     ("not_moderator", _not_moderator),
     ("quote_and_at", _quote_and_at),
     ("memory_notes", _memory_notes),
+    ("search_rules", _search_rules),
     ("sticker_rules", _sticker_rules),
     ("agent_tools", _agent_tools),
     ("scene", _scene),

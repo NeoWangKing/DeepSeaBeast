@@ -23,6 +23,7 @@ class Tools:
         self.finish_reason = ""
         self.started = time.time()
         self.calls = 0             # 本轮工具调用次数（main.py 用来限流）
+        self.searched = []         # 本轮搜过什么（审计/防重复）
         self.errors = []
 
     # ---------- 发送类 ----------
@@ -125,6 +126,42 @@ class Tools:
         except Exception as e:
             return "查不了：%r" % (e,)
         return str(txt) if txt else "对这些人/话题没什么印象"
+
+    # ---------- 上网（求证用，别拿来刷） ----------
+    def web_search(self, query="", count=5) -> str:
+        q = str(query or "").strip()
+        if not q:
+            return "没查：query 是空的"
+        fn = self.cb.get("web_search")
+        if not fn:
+            return "没查：这个会话现在不能联网搜索"
+        try:
+            n = int(count or 5)
+        except Exception:
+            n = 5
+        try:
+            r = fn(q, n)
+        except Exception as e:
+            self.errors.append("web_search: %r" % (e,))
+            return "查不了：%r" % (e,)
+        try:
+            self.searched.append(q)
+        except Exception:
+            pass
+        return str(r)
+
+    def read_url(self, url="") -> str:
+        u = str(url or "").strip()
+        if not u:
+            return "没读：url 是空的"
+        fn = self.cb.get("read_url")
+        if not fn:
+            return "没读：这个会话现在不能联网"
+        try:
+            return str(fn(u))
+        except Exception as e:
+            self.errors.append("read_url: %r" % (e,))
+            return "读不了：%r" % (e,)
 
     def list_stickers(self, query="") -> str:
         fn = self.cb.get("list_stickers")
@@ -312,6 +349,18 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                                        "和她自己从收藏里挑一张贴切的"}],
                       "发一张收藏表情包，单独一条消息发（sticker_id 和 mood 二选一，都没有就随手挑一张）",
                       "send_sticker"))
+    if on("search"):
+        specs.append(("web_search",
+                      [{"type": "string", "name": "query",
+                        "description": "【必填】要搜的问题，用自然语言写清楚（例：IEM 科隆 2026 冠军是谁）"},
+                       {"type": "string", "name": "count",
+                        "description": "可选：要几条结果，默认 5、最多 10"}],
+                      "联网搜索：不确定的事实、最新消息、赛事/版本/价格/某人说过什么，先搜再答",
+                      "web_search"))
+        specs.append(("read_url",
+                      [{"type": "string", "name": "url",
+                        "description": "【必填】要读的网页地址（一般是 web_search 返回里的某个网址）"}],
+                      "读一个网页的正文，核对原文（别只看搜索标题就下结论）", "read_url"))
     if on("recent"):
         specs.append(("get_recent_messages",
                       [{"type": "string", "name": "limit", "description": "看几条，默认 20，最多 50"}],
