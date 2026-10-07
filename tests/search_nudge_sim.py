@@ -42,9 +42,10 @@ for t in NOT_LOOKUPS:
 ck("超长文本不误判", not W.is_lookup_question("什么时候更新" * 30))
 
 print("== 「不知道」式回答识别 ==")
-for t in ["不知道，我又不是鹰角内部人员", "不清楚", "没听说啊", "我哪知道", "等官方吧"]:
+for t in ["不知道，我又不是鹰角内部人员", "不清楚", "没听说啊", "我哪知道", "等官方吧",
+          "我搜了下没找到", "我搜了下没找到，这会儿网也断着", "搜不到", "没查到"]:
     ck("装傻 %s" % t[:20], W.is_dontknow(t))
-for t in ["我搜了下没找到", "我觉得下个月吧", "查了，大概是 11 月", ""]:
+for t in ["我觉得下个月吧", "查了，大概是 11 月，官方公告写的", "哈哈", ""]:
     ck("不算装傻 %s" % (t[:20] or "（空串）"), not W.is_dontknow(t))
 
 print("== 提示词硬规则 ==")
@@ -60,6 +61,8 @@ ck("当轮提醒可查问题", "【这是可查的事实问题】" in src)
 ck("答不知道且没查 → 补一轮", "查证兜底：可查的问题没查就答" in src)
 ck("补轮提示词", "先调 web_search 查一下，再补一句自然的回复" in src)
 ck("故障计数 no_search_answer", '_fault("no_search_answer"' in src)
+ck("工具调用打到 INFO（可审计）", "agent loop：本轮调用 → " in src)
+ck("提示词禁止编造搜索过程", "没调 web_search 就不能说" in SEC._search_rules({"caps": {"search": True}}))
 
 print()
 if FAIL:

@@ -2782,6 +2782,18 @@ class QqPeakGate(Star):
                                     self._log_debug, _vmodel)
         self._log("agent loop：结束（%s，用了 %s，说了 %d 条，finish=%s）"
                   % (key, str(r.get("usage") or {}), len(t.sent), t.finished))
+        # 工具调用打到 INFO：以前这里是 debug，出事了只能靠缓存反推（2026-10-07 那次教训）
+        try:
+            _cl = list(r.get("calls") or [])
+            self._log("agent loop：本轮调用 → %s"
+                      % ("、".join(str(c.get("name")) for c in _cl) if _cl else "（没调任何工具）"))
+            for _c in _cl:
+                _n = str(_c.get("name") or "")
+                if _n in ("web_search", "read_url", "use_skill", "send_sticker", "collect_sticker"):
+                    self._log("agent loop：%s(%s) → %s"
+                              % (_n, str(_c.get("args"))[:100], str(_c.get("result"))[:150]))
+        except Exception as _ec:
+            self._log_debug("工具调用日志失败 %r" % (_ec,))
         # 可查的问题被她一句"不知道"打发了、而且这轮压根没查 → 补一轮让她去查（只补一次）
         try:
             _cur0 = str(getattr(event, "message_str", "") or "")
