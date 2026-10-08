@@ -1542,9 +1542,28 @@ class QqPeakGate(Star):
                 if _owner and _po:
                     self._group_set_active(gid, False, str(event.get_sender_id() or ""))
                     self._log("群 %s：主人说关机 → 退回未激活" % gid)
+                    # ① 先让她自己说一句自然的告别（不固定，模型生成；失败就算了）
+                    try:
+                        if _cfg.get("farewell", True):
+                            _bye = await asyncio.to_thread(
+                                agent.llm.chat_text,
+                                [{"role": "system", "content": (
+                                    "你是群里的助手小鲸鱼。主人让你先退下（关机）。"
+                                    "说一句自然、简短的告别（≤15 字，像真人那样，例如「好的，我先走了」），"
+                                    "不要解释原因，不要提系统/模型/关机这些机制，只输出这一句。")},
+                                 {"role": "user", "content": str(text or "")[:60]}],
+                                self.cfg, 40)
+                            _bye = (str(_bye or "").strip().splitlines() or [""])[0].strip()[:30]
+                            if _bye and not replyproto.looks_like_meta(_bye):
+                                await event.send(MessageChain([Plain(_bye)]))
+                                self._remember_bot_line(event, _bye)
+                                self._log("群 %s：告别语「%s」" % (gid, _bye))
+                    except Exception as _eb:
+                        self._log_debug("告别语生成失败 %r" % (_eb,))
+                    # ② 再输出固定文案
                     try:
                         import random as _r
-                        _line = _r.choice(_cfg.get("off_lines") or ["好，我先退下"])
+                        _line = _r.choice(_cfg.get("off_lines") or ["DeepSeaBeast 已关机"])
                         await event.send(MessageChain([Plain(_line)]))
                         self._remember_bot_line(event, _line)
                         self._log("群 %s：已回关机确认「%s」" % (gid, _line))

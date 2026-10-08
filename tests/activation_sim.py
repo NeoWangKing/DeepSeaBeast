@@ -81,6 +81,7 @@ else:
                                      if isinstance(c, Plain) and getattr(c, "text", "")))
 
     tmp = tempfile.mkdtemp(prefix="act-")
+    main.agent.llm.chat_text = lambda *a, **k: "好的，我先走了"   # 打桩：告别语不真调模型
     o = main.QqPeakGate.__new__(main.QqPeakGate)
     o.cfg = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
     o._log = lambda *a, **k: print("   [log]", *a)
@@ -99,6 +100,8 @@ else:
     ck("主人说关机 → 吞掉这条", asyncio.run(o._group_ready("777888999", _e4, "关机")) is False)
     ck("状态已写回未激活", not o._group_active("777888999"))
     ck("关机确认语是「DeepSeaBeast 已关机」", "DeepSeaBeast 已关机" in (_e4.sent or []), _e4.sent)
+    ck("关机前先自然说了句告别", len([x for x in _e4.sent if x.strip()]) >= 2, _e4.sent)
+    ck("固定文案在最后一条", [x for x in _e4.sent if x.strip()][-1] == "DeepSeaBeast 已关机", _e4.sent)
     _e5 = Ev("又来闲聊", uid="999", at=False)
     ck("再回到未激活：闲聊仍被忽略", asyncio.run(o._group_ready("777888999", _e5, _e5.message_str)) is False)
     _e6 = Ev("", uid="3245938285", at=True)
