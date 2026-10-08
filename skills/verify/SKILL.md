@@ -38,3 +38,12 @@ triggers: 求证, 是不是真的, 你查一下, 最新消息, 谁赢了
 
 直说「我搜了下没找到」或「这个我不确定」，然后把话头递回去（"你那边有消息吗"）。
 **最忌讳的是**：编一个听起来很像的答案，或者把搜索摘要当原文结论讲。
+
+## 来源优先级（2026-10-08 补充）
+
+- **CS 的比赛/赛程/结果/选手/战队/排名/转会 → 先 HLTV（www.hltv.org）**：
+  `/matches` 近期赛程、`/results` 结果、`/rankings` 排名、`/player/<id>`、`/team/<id>`。
+  HLTV 国内慢、直连常被 Cloudflare 拦（403）——直接 read_url 就行，系统会自动走中转；
+  还是读不到就换 Liquipedia（liquipedia.net/counterstrike）或 5EPlay，并说明你用的是哪家。
+- 游戏版本/活动 → 官方公告（如 ak.hypergryph.com）优先，其次官网 5EPlay/B站转载。
+- 引用时只说来源名（"HLTV 上写的"），不贴链接、不复述搜索过程。

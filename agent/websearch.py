@@ -150,6 +150,42 @@ def _firecrawl_search(query: str, count: int, key: str = "", timeout: int = 25) 
     return out
 
 
+def _firecrawl_scrape(url: str, key: str = "", timeout: int = 45) -> dict:
+    """让 Firecrawl 代抓（我们直连被 Cloudflare 拦的站，比如 HLTV）。
+    返回 {"markdown":…, "title":…}；失败返回 {}。"""
+    try:
+        body = json.dumps({"url": str(url), "formats": ["markdown"]}).encode("utf-8")
+        h = {"Content-Type": "application/json", "User-Agent": UA}
+        if key:
+            h["Authorization"] = "Bearer " + str(key)
+        req = urllib.request.Request("https://api.firecrawl.dev/v1/scrape", data=body,
+                                     headers=h, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.loads(r.read().decode("utf-8", "ignore") or "{}")
+        data = d.get("data") if isinstance(d.get("data"), dict) else {}
+        md = str((data or {}).get("markdown") or "")
+        meta = (data or {}).get("metadata") if isinstance((data or {}).get("metadata"), dict) else {}
+        return {"markdown": md, "title": str((meta or {}).get("title") or "")} if md else {}
+    except Exception:
+        return {}
+
+
+def md_to_text(md: str) -> str:
+    """把 Firecrawl 抓回来的 markdown 洗成给模型看的纯文本（去图片/广告/多余空行）。"""
+    s = str(md or "")
+    s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)              # 图片
+    s = re.sub(r"\[([^\]]{0,80})\]\([^)]*\)", r"\1", s)      # 链接保留文字
+    keeps = []
+    for line in s.splitlines():
+        t = line.strip().strip("|").strip()
+        if not t or re.fullmatch(r"[\-*_=·•\s]+", t):
+            continue
+        if len(t) <= 2:
+            continue
+        keeps.append(t)
+    return re.sub(r"[ \t\u00a0]+", " ", "\n".join(keeps)).strip()
+
+
 def search(query: str, count: int = 5, cfg: dict = None) -> dict:
     """联网搜索。返回 {"results":[{title,url,snippet}], "provider":str, "error":str}。"""
     cfg = cfg or {}
@@ -432,17 +468,33 @@ def read_text(url: str, cfg: dict = None) -> str:
     cached = _cache_get("page", u, ttl)
     if isinstance(cached, str) and cached:
         return "（缓存）" + cached
+    final, title, body, _err = u, "", "", ""
     try:
         final, ctype, raw = fetch_page(u, timeout=int(cfg.get("timeout", 20) or 20))
+        if "json" in ctype.lower():
+            body, title = raw.strip()[:cap], "网页数据"
+        else:
+            title, body = html_to_text(raw)
+            body = body[:cap]
     except Exception as e:
-        return "读不了这个网页：%s（换个来源，或者直接说没查到）" % str(e)[:120]
-    if "json" in ctype.lower():
-        body, title = raw.strip()[:cap], "网页数据"
-    else:
-        title, body = html_to_text(raw)
-        body = body[:cap]
+        _err = str(e)[:120]
+    # 直连被拦（403/Cloudflare）或没抓到正文 → 让 Firecrawl 代抓（HLTV 这类站只能这么读）
     if len(body) < 40:
-        return "这个网页没抓到正文（可能要登录/靠 JS 渲染），换一条读"
+        try:
+            _ps = astrbot_provider_settings()
+            _fc = _firecrawl_scrape(u, key=(_keys(_ps, "firecrawl") or [""])[0],
+                                    timeout=int(cfg.get("scrape_timeout", 45) or 45))
+            _b2 = md_to_text(_fc.get("markdown") or "")
+            if len(_b2) > len(body or ""):
+                title = _fc.get("title") or title
+                body = _b2[:cap]
+                final = u
+                _err = ""
+        except Exception as e2:
+            _err = _err or str(e2)[:80]
+    if len(body) < 40:
+        _why = _err or "可能要登录/靠 JS 渲染"
+        return "这个网页没抓到正文（%s），换一条读或直接说没查到" % _why
     tail = "…（太长，只读了前 %d 字）" % cap if len(body) >= cap else ""
     out = "【%s】%s\n%s%s" % (title[:70] or "网页", final, body, tail)
     _cache_put("page", u, out)

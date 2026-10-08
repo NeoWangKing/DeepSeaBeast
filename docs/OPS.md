@@ -422,3 +422,25 @@ agent loop：web_search({'query': '明日方舟 终末地 下一个版本更新�
 '查了下，Spirit 下一场是 10 月 9 日打 Falcons，应该是 EPL 那边，具体几点你再看眼赛程表'
 日志：read_url(...) → 这轮已经查了 3 次了（上限 3）：别继续读网页，直接拿已知的内容说话
 ```
+
+## CS 赛事/选手 → 查 HLTV（2026-10-08）
+
+需求：资料里补一句——CS 的比赛和选手都可以去 https://www.hltv.org 查（国内访问偏慢）。
+
+实测发现：**HLTV 直连 403**（Cloudflare），光让她"去 HLTV 查"会白跑。所以顺手把读网页做成了两层：
+
+1. **read_url 直连失败 → Firecrawl 代抓**：`_firecrawl_scrape()`（POST `api.firecrawl.dev/v1/scrape`，
+   免 key 可用）+ `md_to_text()` 把 markdown 洗成纯文本（去图片/链接/空行），再按 `read_max_chars` 截断
+2. 结果同样进缓存（1 小时），第二次读是 0 秒
+
+实测：`read_text("https://www.hltv.org/matches")` → 拿到真实赛程（ESL Pro League S24 · Oct 3-11 ·
+Katowice · $1,000,000 等）。Liquipedia 也一并受益（以前直连 406，现在能读）。
+
+资料/技能同步补充：
+- `data/kb/cs2-esports.md` 新增「查询渠道」：HLTV 各页面（/matches /results /rankings /events
+  /player/<id> /team/<id> /transfers）+ 备选（Liquipedia / 5EPlay / ESL 官网）+「问下一场先对今天日期」
+- `skills/verify/SKILL.md` 新增「来源优先级」：CS → 先 HLTV（读不到自动中转），再 Liquipedia/5EPlay；
+  引用只说来源名
+- `promptlib/sections.py` 的搜索规则里加一句：CS 的比赛/赛程/选手先搜 HLTV，打不开换 Liquipedia/5EPlay
+
+注意：Firecrawl 免 key 通道没有额度保证，哪天被限流就退回"直连 + 换来源"的老路（会如实说没查到）。

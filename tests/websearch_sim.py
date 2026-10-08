@@ -51,6 +51,22 @@ _d["t"] = time.time() - 100
 json.dump(_d, open(_p, "w", encoding="utf-8"))
 ck("过期（100 秒前写的）读不到", W._cache_get("search", "unit|1", 60) is None)
 
+print("== 代抓回退（HLTV 这类防爬站） ==")
+_md = ("![](https://x/a.png) [**Spirit**](https://www.hltv.org/team/7020) vs Falcons\n\n"
+       "| Oct 9 | 18:00 | ESL Pro League |\n" + "\n" * 3 + "· · ·")
+_txt = W.md_to_text(_md)
+ck("图片/链接语法被清掉", "![" not in _txt and "](http" not in _txt)
+ck("保留正文与队伍名", "Spirit" in _txt and "Falcons" in _txt)
+ck("多余空行被压缩", "\n\n\n" not in _txt)
+_src_ws = open(os.path.join(ROOT, "agent", "websearch.py"), encoding="utf-8").read()
+ck("直连失败会走 Firecrawl 代抓", "_firecrawl_scrape" in _src_ws and "md_to_text(_fc" in _src_ws)
+_kb = os.path.join(ROOT, "data", "kb", "cs2-esports.md")
+if os.path.isfile(_kb):
+    _ks = open(_kb, encoding="utf-8").read()
+    ck("KB 里写了 HLTV 查询渠道", "hltv.org" in _ks and "查询渠道" in _ks)
+_sk = open(os.path.join(ROOT, "skills", "verify", "SKILL.md"), encoding="utf-8").read()
+ck("求证技能里写了来源优先级", "HLTV" in _sk and "Liquipedia" in _sk)
+
 print("== 结果格式化（打桩搜索） ==")
 W.search = lambda q, n=5, c=None: {"results": [{"title": "T1", "url": "http://a",
                                                 "snippet": "摘 要" * 3}], "provider": "fake"}
