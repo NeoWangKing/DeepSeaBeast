@@ -4415,6 +4415,38 @@ class QqPeakGate(Star):
             if self._at_me(event) or called:
                 await self._allow(event)           # 被 @ 或 被叫到名字 → 回复（高峰也放行）
                 return
+            # ── 对话延续：她刚回过话，同一个人接着说 / 引用她 / 内容接她的话 → 直接回 ──
+            # （以前这类会撞"冷却中还需 N 秒"+概率抽签，导致对方必须再 @ 一次）
+            try:
+                _uid_c = str(event.get_sender_id() or "")
+                _now_c = time.time()
+                _last_c = self.last_reply_ts.get(gid, 0.0)
+                _echo = False
+                if _last_c and _uid_c:
+                    try:
+                        _mine = [x[1] for x in (self.recent.get(gid) or []) if str(x[0]) == "我"]
+                        if _mine:
+                            _need = float((cfg.get("scoring") or {}).get("echo_strong", 0.34))
+                            _echo = scoring._overlap(burst_text or text, _mine[-1]) >= _need
+                    except Exception:
+                        _echo = False
+                if scoring.cont_pass(_now_c, _last_c, _uid_c,
+                                     str(self.last_reply_to.get(gid) or ""),
+                                     self._quotes_me(event), _echo,
+                                     float(cfg.get("min_cont_gap_sec", 8) or 8),
+                                     float(cfg.get("cont_window_sec", 180) or 180)):
+                    _h_c, _uc = int(_now_c // 3600), self.hour_count.get((gid, int(_now_c // 3600)), 0)
+                    _cap_c = int(cfg.get("max_cont_per_hour", 12) or 12)
+                    if _uc < _cap_c:
+                        self.hour_count[(gid, _h_c)] = _uc + 1
+                        self.last_auto[gid] = _now_c
+                        self._log("对话延续：他接着说（隔 %.0fs）→ 放行（本小时 %d/%d）"
+                                  % (_now_c - _last_c, _uc + 1, _cap_c))
+                        await self._allow(event)
+                        return
+                    self._log_debug("对话延续：本小时说得够多了（%d/%d）→ 不回" % (_uc, _cap_c))
+            except Exception as _ec:
+                self._log_debug("对话延续判断失败 %r" % (_ec,))
             offpeak = in_offpeak(cfg)
             if offpeak and event.is_at_or_wake_command:
                 await self._allow(event)           # 低峰：被引用/唤醒词也放行

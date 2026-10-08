@@ -316,5 +316,7 @@
     "max_per_turn": 3,
     "ack_first": true,
     "ack_only_directed": true
-  }
+  },
+  "min_cont_gap_sec": 8,
+  "max_cont_per_hour": 12
 }

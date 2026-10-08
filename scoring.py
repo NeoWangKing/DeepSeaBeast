@@ -84,6 +84,26 @@ def _ngrams(text: str, n: int = 2) -> set:
     return {s[i:i + n] for i in range(len(s) - n + 1)}
 
 
+def cont_pass(now, last_reply_ts, uid, to_uid, quotes_me, echo_hit,
+              gap: float = 8.0, window: float = 180.0) -> bool:
+    """是不是"对话延续"：她刚回过话，同一个人接着说 / 引用她 / 内容在接她的话。
+
+    - gap：避免她刚说完 1 秒又接一句（连着刷）
+    - window：超过这个时间就不算同一段对话了
+    """
+    try:
+        if not last_reply_ts or not uid:
+            return False
+        dt = float(now) - float(last_reply_ts)
+        if dt < float(gap or 0) or dt > float(window or 180):
+            return False
+        if to_uid and str(to_uid) == str(uid):
+            return True                     # 正是她刚回的那个人接着说
+        return bool(quotes_me or echo_hit)  # 引用她 / 内容接她的话
+    except Exception:
+        return False
+
+
 def _overlap(a: str, b: str) -> float:
     """两条消息的字符 2-gram 重合度（0~1）。中文不分词也能用。"""
     A, B = _ngrams(a), _ngrams(b)
