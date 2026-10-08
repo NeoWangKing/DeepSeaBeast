@@ -66,3 +66,4 @@ data/kb_refresh_status.json
 !prompts/personas/project_assistant.txt
 # 群激活状态（运行数据）
 data/agent_active.json
+data/sticker_audit.json
