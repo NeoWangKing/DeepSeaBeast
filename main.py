@@ -2328,6 +2328,10 @@ class QqPeakGate(Star):
                 user += "\n" + _pt2 + "\n"
         except Exception:
             pass
+        if _pt2:
+            # 有未做完的事：优先把它查完补上，别去问别人、别闲聊
+            user += ("[先办这件事] 上面【你之前没做完的事】还没办完：**先 web_search/read_url 查清楚**，"
+                     "再用 send_message 把结论补上（查不到就明确说没查到）；这件事办完之前别闲聊、别问别人。\n")
         user += ("[主动机会] 现在是你自己之前定的时间点（%s）。没有人刚叫你，是你自己想说话："
                  "想说什么就调 send_message，想发表情/拍一拍也行；不想说就调 finish。"
                  "别解释定时、别提系统、别汇报。") % (reason or "随便看看")
