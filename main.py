@@ -2573,14 +2573,23 @@ class QqPeakGate(Star):
             self._log("agent loop：没有可用工具，交回原流程")
             return False
         lines, _mine = [], []
+        # 上下文预算（可配：config.context.*）——实测 token 有余量，放宽点更像真人
+        _cctx = (self.cfg.get("context") or {})
+        try:
+            _n_recent = max(1, min(80, int(_cctx.get("recent_lines", 20) or 20)))
+            _l_chars = max(20, min(240, int(_cctx.get("line_chars", 100) or 100)))
+            _n_mine = max(1, min(40, int(_cctx.get("mine_lines", 10) or 10)))
+            _m_chars = max(20, min(240, int(_cctx.get("mine_chars", 60) or 60)))
+        except Exception:
+            _n_recent, _l_chars, _n_mine, _m_chars = 20, 100, 10, 60
         try:
             _rk = "" if key.startswith("p:") else str(event.get_group_id() or "")
             _recent = list(self.recent.get(_rk) or [])
-            for item in _recent[-10:]:
-                lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:60]))
-            for item in _recent[-8:]:
+            for item in _recent[-_n_recent:]:
+                lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:_l_chars]))
+            for item in _recent[-_n_recent:]:
                 if str(item[0] or "") == "我" and str(item[1] or "").strip():
-                    _mine.append(str(item[1])[:30])
+                    _mine.append(str(item[1])[:_m_chars])
         except Exception:
             pass
         user = ""
@@ -2588,7 +2597,8 @@ class QqPeakGate(Star):
             user += "[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines) + "\n"
         if _mine:
             user += ("[你最近说过的几句（尽量换个说法、别老用同一句；语境确实需要重复时可以重复，"
-                     "但别连着重复同一句）]\n" + "\n".join("- " + m for m in _mine[-5:]) + "\n")
+                     "但别连着重复同一句）]\n"
+                     + "\n".join("- " + m for m in _mine[-_n_mine:]) + "\n")
         user += "[当前消息] " + str(getattr(event, "message_str", "") or "")
         try:
             if _face_note:
@@ -2642,8 +2652,13 @@ class QqPeakGate(Star):
                                (key.replace(":", "_") or "x") + ".jsonl")
             if os.path.isfile(_mf):
                 _notes = []
+                _cctx2 = (self.cfg.get("context") or {})
+                try:
+                    _mem_n = max(1, min(80, int(_cctx2.get("memory_notes", 20) or 20)))
+                except Exception:
+                    _mem_n = 20
                 with open(_mf, encoding="utf-8") as _fh:
-                    for _line in _fh.readlines()[-8:]:
+                    for _line in _fh.readlines()[-_mem_n:]:
                         try:
                             _o = json.loads(_line)
                             _notes.append("- [%s] %s" % (_o.get("kind"), _o.get("text")))

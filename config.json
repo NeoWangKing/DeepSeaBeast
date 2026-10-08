@@ -8,17 +8,17 @@
     "鲸鱼",
     "小鲸"
   ],
-  "min_interval_sec": 180,
-  "max_auto_per_hour": 6,
+  "min_interval_sec": 90,
+  "max_auto_per_hour": 10,
   "force_mode": "",
   "inject_memes": true,
   "memes_file": "memes.md",
   "image_fastpath": false,
   "smart_quote": true,
   "engaged_interval_sec": 2,
-  "engaged_window_sec": 90,
-  "engaged_rest_sec": 60,
-  "max_engaged_streak": 6,
+  "engaged_window_sec": 180,
+  "engaged_rest_sec": 30,
+  "max_engaged_streak": 12,
   "quote_when_stale": true,
   "quote_when_replied": false,
   "compact_context": true,
@@ -65,7 +65,7 @@
   "no_log_groups": [
     "966812151"
   ],
-  "cont_window_sec": 180,
+  "cont_window_sec": 600,
   "dump_prompt": false,
   "memory": {
     "enabled": true,
@@ -220,13 +220,13 @@
     "vision_model": "glm-4v-flash",
     "collect_say_prob": 0.18,
     "collect_say_max_per_hour": 2,
-    "prompt_max": 12,
+    "prompt_max": 20,
     "encourage": 3,
     "nudge_prob": 0.35
   },
   "followup": {
     "enabled": true,
-    "chance": 0.12,
+    "chance": 0.15,
     "max_per_hour": 2,
     "delay_ms": 2600,
     "exclude_groups": [
@@ -245,7 +245,7 @@
   "agent": {
     "enabled": true,
     "send_tools": true,
-    "session_ttl": 300,
+    "session_ttl": 600,
     "tools": {
       "recent": true,
       "members": true,
@@ -261,12 +261,12 @@
       "search": true,
       "skills": true
     },
-    "max_calls": 4,
+    "max_calls": 6,
     "send_tools_groups": [],
     "rescue_text": false,
     "loop_mode": true,
     "loop_groups": [],
-    "max_rounds": 4,
+    "max_rounds": 5,
     "llm": {
       "vision_model": "deepseek-flash"
     },
@@ -285,13 +285,13 @@
     "tool_profile_by_group": {
       "966812151": "lean"
     },
-    "max_sends_per_turn": 6
+    "max_sends_per_turn": 8
   },
   "kb": {
     "enabled": true,
-    "top_k": 3,
-    "min_score": 0.08,
-    "max_chars": 900
+    "top_k": 4,
+    "min_score": 0.06,
+    "max_chars": 1500
   },
   "poke_reply": {
     "enabled": true,
@@ -301,9 +301,9 @@
   "search": {
     "enabled": true,
     "provider": "auto",
-    "count": 5,
+    "count": 6,
     "max_per_hour": 20,
-    "read_max_chars": 4000,
+    "read_max_chars": 6000,
     "cache_ttl": 600,
     "read_cache_ttl": 3600,
     "timeout": 20,
@@ -313,10 +313,17 @@
     "skip_if_evidence": 0.34,
     "remember": true,
     "remember_max_per_hour": 4,
-    "max_per_turn": 3,
+    "max_per_turn": 4,
     "ack_first": true,
     "ack_only_directed": true
   },
-  "min_cont_gap_sec": 8,
-  "max_cont_per_hour": 12
+  "min_cont_gap_sec": 3,
+  "max_cont_per_hour": 30,
+  "context": {
+    "recent_lines": 20,
+    "line_chars": 100,
+    "mine_lines": 10,
+    "mine_chars": 60,
+    "memory_notes": 20
+  }
 }
