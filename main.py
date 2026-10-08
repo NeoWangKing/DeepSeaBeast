@@ -4471,11 +4471,44 @@ class QqPeakGate(Star):
             pass
         return False
 
+    async def _admin_console(self, event) -> bool:
+        """主人私聊里的只读后台：命中关键词就念现成数据（零 token、不改任何东西）。
+
+        只认主人（admin.owner_ids，缺省用 activation.owner_ids）+ 只在私聊；
+        别人私聊、任何群聊都不走这条路，照常正常聊天。
+        """
+        try:
+            a = self.cfg.get("admin") or {}
+            if not a.get("enabled", True):
+                return False
+            if str(event.get_group_id() or "").strip() not in ("", "0"):
+                return False
+            _ids = [str(x) for x in (a.get("owner_ids")
+                                     or (self.cfg.get("activation") or {}).get("owner_ids")
+                                     or [])]
+            if not _ids or str(event.get_sender_id() or "") not in _ids:
+                return False
+            _q = str(getattr(event, "message_str", "") or "")
+            handled, parts = agent.admin.route(_q, self.cfg, PLUGIN_DIR)
+            if not handled or not parts:
+                return False
+            self._log("后台（只读）：%s → %d 条" % (" ".join(_q.split())[:24], len(parts)))
+            _tgt = self._agent_target(event)
+            for _p in parts[:4]:
+                await self._agent_send(_tgt, _p)
+            return True
+        except Exception as e:
+            self._log_debug("后台命令出错（当普通聊天处理）%r" % (e,))
+            return False
+
     @filter.event_message_type(_PRIVATE_ET)
     async def gate_private(self, event: AstrMessageEvent) -> None:
-        """私聊：只在开了 agent loop 的会话里接管（其他私聊完全不碰）。"""
+        """私聊：先看是不是主人的只读后台命令，否则走正常聊天。"""
         try:
             self._reload_cfg()
+            if await self._admin_console(event):
+                event.stop_event()
+                return
             if self._agent_loop_on(event):
                 await self._allow(event)
         except Exception as e:
