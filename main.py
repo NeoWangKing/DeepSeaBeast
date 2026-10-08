@@ -1497,6 +1497,7 @@ class QqPeakGate(Star):
         _gid = str((target or {}).get("gid") or "")
         _uid = str((target or {}).get("uid") or "")
         _umo = str((target or {}).get("umo") or "")
+        _tkey = str(_umo or _gid)      # 查询计数的键（必须用本函数里存在的变量，否则计数会失效）
         try:
             _loop = asyncio.get_running_loop()
         except Exception:
@@ -1757,14 +1758,14 @@ class QqPeakGate(Star):
                 _tb = getattr(self, "_turn_lookups", None)
                 if _tb is None:
                     _tb = self._turn_lookups = {}
-                _n = int(_tb.get(_akey, 0) or 0)
+                _n = int(_tb.get(_tkey, 0) or 0)
                 return (_n < _lim), _n, _lim
             except Exception:
                 return True, 0, 3
 
         def _use_lookup():
             try:
-                self._turn_lookups[_akey] = int(self._turn_lookups.get(_akey, 0) or 0) + 1
+                self._turn_lookups[_tkey] = int(self._turn_lookups.get(_tkey, 0) or 0) + 1
             except Exception:
                 pass
 
@@ -2526,6 +2527,13 @@ class QqPeakGate(Star):
                 user += "\n" + _nd
         except Exception:
             pass
+        # 时间锚点：没有"现在"，她就会把打完的比赛当"下一场"
+        try:
+            _nt = agent.websearch.now_text()
+            if _nt:
+                user += "\n【现在】%s（北京时间）" % _nt
+        except Exception:
+            pass
         # 可查的事实问题：当轮就把话说明白，别让她张口就是"不知道"
         try:
             if self._search_on() and agent.websearch.is_lookup_question(
@@ -2922,6 +2930,7 @@ class QqPeakGate(Star):
             if not hasattr(self, "_turn_lookups"):
                 self._turn_lookups = {}
             self._turn_lookups[_akey] = 0
+            self._turn_lookups[str(key)] = 0
         except Exception:
             pass
         self._log("agent loop：开始（%s，%d 个工具，system %d 字，最多 %d 轮%s）"
@@ -2991,6 +3000,7 @@ class QqPeakGate(Star):
         except Exception as _e:
             self._log_debug("定时提醒重试失败 %r" % (_e,))
         _answer_done = False
+        _spoke_before = bool(t.spoke)      # 快照：后面的补轮会改写 t.spoke，日志不能拿它判断
         if not t.spoke and not t.finished:
             # 她既没说也没结束：再提醒一轮（传统渠道已退休，这里就是最后的安全网）
             try:
@@ -3010,7 +3020,9 @@ class QqPeakGate(Star):
                     _ff2 = ""
                 r2 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 1,
                                              self._log, _vmodel, _ff2)
-                self._log("agent loop：漏发提醒后 %s" % ("补上了" if t.spoke else "仍未发言"))
+                self._log("agent loop：漏发提醒后 %s"
+                          % ("补上了" if (t.spoke and not _spoke_before) else
+                             ("仍然没发言" if not t.spoke else "已经说过话")))
                 r = r2 if r2 else r
                 _answer_done = True
             except Exception as _e6:

@@ -258,6 +258,19 @@ _QUESTION_HINT_RE = re.compile(
 _JUDGE_CACHE = {}
 
 
+_WEEK = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+
+def now_text() -> str:
+    """当前时间锚点（放提示词里，免得她分不清"下一场"和"上一场"）。"""
+    try:
+        t = time.localtime()
+        return "%04d-%02d-%02d %02d:%02d %s" % (t.tm_year, t.tm_mon, t.tm_mday,
+                                                t.tm_hour, t.tm_min, _WEEK[t.tm_wday])
+    except Exception:
+        return ""
+
+
 def question_like(text) -> bool:
     """像不像在问事情（不像就别浪费一次判定调用）。"""
     t = str(text or "").strip()

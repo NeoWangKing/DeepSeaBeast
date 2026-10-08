@@ -49,6 +49,10 @@ extra = sorted(provided - need - OPTIONAL)
 if extra:
     print("  （main 多给的，无害）:", ", ".join(extra))
 
+print("== _agent_callbacks 里不许引用外函数的变量 ==")
+_bad_names = [n for n in ("_akey",) if n in body]
+ck("没有引用 _akey（曾导致每轮查询上限失效）", not _bad_names, ",".join(_bad_names))
+
 print("== 工具方法是否都存在 ==")
 cls = T.Tools
 bad = []

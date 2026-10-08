@@ -89,6 +89,15 @@ ck("问题太长不记", W.remember_note("问" * 80, "答") == {})
 ck("答案太长不记", W.remember_note("问", "答" * 200) == {})
 ck("空的不记", W.remember_note("", "答案") == {} and W.remember_note("问", "") == {})
 
+print("== 时间锚点 + 「下一场」规则 ==")
+_nt = W.now_text()
+ck("now_text 形如 YYYY-MM-DD HH:MM 周X", len(_nt.split()) == 3 and _nt[:4].isdigit() and "周" in _nt, _nt)
+_rt = SEC._search_rules({"caps": {"search": True}})
+ck("提示词要求只给今天之后的信息", "今天之后" in _rt and "下一场" in _rt)
+ck("明确禁止拿打完的比赛当答案", "已经打完的比赛" in _rt)
+check_src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+ck("main 注入了【现在】", "【现在】" in check_src and "now_text()" in check_src)
+
 print("== 第一轮强制先查（结构约束） ==")
 from agent import loop as L       # noqa: E402
 from agent import tools as TOOLS  # noqa: E402
