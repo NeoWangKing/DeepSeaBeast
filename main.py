@@ -1384,6 +1384,69 @@ class QqPeakGate(Star):
         groups = [str(x) for x in (c.get("send_tools_groups") or [])]
         return (not groups) or (self._chat_key(event) in groups)
 
+    # ── 未完成事项（她说过"我再看看/我再查查"）───────────────────────
+    def _pending_path(self) -> str:
+        return os.path.join(PLUGIN_DIR, "data", "agent_pending.json")
+
+    def _pending_load(self) -> dict:
+        try:
+            with open(self._pending_path(), encoding="utf-8") as f:
+                return dict(json.load(f) or {})
+        except Exception:
+            return {}
+
+    def _pending_save(self, d: dict) -> None:
+        try:
+            _d = os.path.join(PLUGIN_DIR, "data")
+            os.makedirs(_d, exist_ok=True)
+            _tmp = self._pending_path() + ".tmp"
+            with open(_tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            os.replace(_tmp, self._pending_path())
+        except Exception:
+            pass
+
+    def _pending_set(self, key: str, question: str, promise: str) -> None:
+        try:
+            self._pending_save(agent.pending.merge(self._pending_load(), key, question, promise))
+        except Exception:
+            pass
+
+    def _pending_clear(self, key: str) -> None:
+        try:
+            d = self._pending_load()
+            if d.pop(str(key), None) is not None:
+                self._pending_save(d)
+        except Exception:
+            pass
+
+    def _pending_text(self, key: str) -> str:
+        try:
+            it = (self._pending_load() or {}).get(str(key)) or {}
+            if not it or not agent.pending.fresh(it.get("ts")):
+                return ""
+            return agent.pending.hint(it.get("q"), it.get("p"))
+        except Exception:
+            return ""
+
+    def _pending_wake(self, key: str, umo: str, plat: str, question: str) -> None:
+        """定一个 90 秒后的主动轮：自己回来把没做完的补上。"""
+        try:
+            items = self._wake_load()
+            for x in items:
+                if str(x.get("gid") or "") == str(key) and "没查完" in str(x.get("reason") or ""):
+                    return
+            items.append({"umo": str(umo or ""), "plat": str(plat or ""),
+                          "due": time.time() + 90, "say": "",
+                          "reason": "把之前没查完的事补上：%s" % str(question or "")[:60],
+                          "gid": str(key), "mode": "think", "every": 0, "poke_uid": ""})
+            if len(items) > 50:
+                items = items[-40:]
+            self._wake_save(items)
+            self._ensure_wake_timer()
+        except Exception as e:
+            self._log_debug("未完成事项定唤醒失败 %r" % (e,))
+
     def _search_on(self) -> bool:
         """联网搜索开关（config: search.enabled）。"""
         try:
@@ -2259,6 +2322,12 @@ class QqPeakGate(Star):
         user = ""
         if lines:
             user += "[最近群聊]\n" + "\n".join(lines) + "\n"
+        try:
+            _pt2 = self._pending_text(gid)
+            if _pt2:
+                user += "\n" + _pt2 + "\n"
+        except Exception:
+            pass
         user += ("[主动机会] 现在是你自己之前定的时间点（%s）。没有人刚叫你，是你自己想说话："
                  "想说什么就调 send_message，想发表情/拍一拍也行；不想说就调 finish。"
                  "别解释定时、别提系统、别汇报。") % (reason or "随便看看")
@@ -2525,6 +2594,13 @@ class QqPeakGate(Star):
             _nd = self._sticker_nudge(key)
             if _nd:
                 user += "\n" + _nd
+        except Exception:
+            pass
+        # 未完成事项：明明白白摆出来，别让"我再看看"变成没人接的话
+        try:
+            _pt = self._pending_text(key)
+            if _pt:
+                user += "\n" + _pt
         except Exception:
             pass
         # 时间锚点：没有"现在"，她就会把打完的比赛当"下一场"
@@ -3076,6 +3152,24 @@ class QqPeakGate(Star):
         if not t.spoke and not t.finished:
             self._log("agent loop：这轮没发言也没 finish → 视为沉默")
             self._fault("no_speak")
+        # 未完成事项：她最后一句还留着"我再看看" → 记下来 + 定 90 秒后自己回来补；反之清掉
+        try:
+            _mylast4, _names4 = "", {str(c.get("name") or "") for c in (r.get("calls") or [])}
+            for _x in reversed(t.sent or []):
+                if str(_x[0]) == "text" and str(_x[1]).strip():
+                    _mylast4 = str(_x[1]).strip()
+                    break
+            _q4 = str(getattr(event, "message_str", "") or "")
+            if _mylast4 and agent.websearch.is_dangling_promise(_mylast4):
+                self._pending_set(key, _q4, _mylast4)
+                self._pending_wake(key, str(getattr(event, "unified_msg_origin", "") or ""),
+                                   self._plat(event) if hasattr(self, "_plat") else "", _q4)
+                self._log("未完成事项：记下了「%s」（并定 90 秒后自己回来补）" % _mylast4[:24])
+            elif _mylast4 and ({"web_search", "read_url"} & _names4):
+                self._pending_clear(key)
+                self._log_debug("未完成事项：这轮给了结论 → 清掉")
+        except Exception as _e11:
+            self._log_debug("未完成事项处理失败 %r" % (_e11,))
         # 查证过的一问一答写进她的记忆：同一个问题下次直接想起来，不用再搜
         try:
             _scfg3 = self.cfg.get("search") or {}
