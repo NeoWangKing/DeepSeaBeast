@@ -153,6 +153,37 @@ def looks_like_syserr(text) -> bool:
     return bool(_SYS_ERR_RE.match(t))
 
 
+# 「她假装做到了自己做不到的事」：进语音频道 / 连麦 / 上号开黑 / 报频道号。
+# 提示词里已经写死禁止（见 sections._capability），这里是发送口的硬兜底——
+# 2026-10-08 真事故：「来打cs」→「来 等我一下」→「我来了，频道号多少」→「频道号 1456 直接进」。
+_FAKE_DEED_RES = (
+    re.compile(r"(我|俺)[^\n]{0,4}?(进|上|来|到)[^\n]{0,4}?(语音|频道|麦|房间|服|号)[^\n]{0,10}"),
+    re.compile(r"(语音|频道|麦|房间|服务器)[^\n]{0,6}?(号|编号)[^\n]{0,4}?(\d{1,6}|多少|几号|几|是啥|是什么)"),
+    re.compile(r"\d{2,6}[^\n]{0,3}(号)?(频道|房间|服务器)"),
+    re.compile(r"(我|俺)[^\n]{0,3}?(上号|开黑|连麦|上麦|进服|进来了|到频道|到语音)"),
+    re.compile(r"(我|俺)(这就|马上)(进|上)(了|去)?[\s。！!～~]*$"),
+)
+# 老实承认做不到的说法不算（"我进不了语音"这种必须放行）
+_HONEST_RE = re.compile(
+    r"(进不了|进不去|上不了|去不了|打不了|不能|没法|不会|不敢|看不到|听不到|去不成)")
+
+
+def looks_like_fake_deed(text) -> bool:
+    """这句话是不是在假装自己进了语音频道/开了游戏（她做不到这些）。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 200:
+        return False
+    if _HONEST_RE.search(t):
+        return False
+    for _re in _FAKE_DEED_RES:
+        try:
+            if _re.search(t):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def looks_like_meta(text) -> bool:
     """这句话是不是"在描述工具调用/协议"（不是人话）。发送口拿它拦截。"""
     t = str(text or "").strip()

@@ -275,6 +275,14 @@ def is_lookup_question(text) -> bool:
     return False
 
 
+# 她**做不到**的事（进语音频道/连麦/打游戏/上号…）：这类"承诺"不该被当成待办去跟进，
+# 否则会出现「我来了 → 频道号多少 → 我这就进」这种越描越假的连环话（2026-10-08 真事故）。
+_CANNOT_RE = re.compile(
+    r"(频道|语音|连麦|上麦|进(房间|房|服)|开黑|上号|上游戏|"
+    r"打\s*(cs|CS|游戏|排位|一局|把)|来\s*(打|玩|一局|把|上|跟你们|一起)|"
+    r"加(你好友|好友|群)|发(个)?(文件|图|视频|语音)|"
+    r"(语音|频道)(里|号|编号)|服务器)")
+
 _PROMISE_RE = re.compile(
     r"(我(再|先)?(去|来)?(看看|瞅瞅|查查|查一下|看下|确认|找找|问问)|"
     r"我这就(去|来|看看|查)|这就去(看|查)|"
@@ -283,10 +291,16 @@ _PROMISE_RE = re.compile(
     r"待会儿(再|说)|一会儿(再|说|看)|让我(看看|确认|查查)|我确认一下|还需要确认)")
 
 
-def is_dangling_promise(text) -> bool:
-    """这句是不是"我再去看看/再查查"这种承诺（说完就该继续查，不能收工）。"""
+def is_dangling_promise(text, context="") -> bool:
+    """这句是不是"我再去看看/再查查"这种承诺（说完就该继续收尾，不能收工）。
+
+    context 是当前话题（对方那句话）：话题本身是"来打 CS / 来频道吗"这种
+    她做不到的事时，她的"等我一下"不算可跟进的待办——不然会连环编下去。
+    """
     t = str(text or "").strip()
     if not t or len(t) > 80:
+        return False
+    if _CANNOT_RE.search(t) or _CANNOT_RE.search(str(context or "")):
         return False
     return bool(_PROMISE_RE.search(t))
 

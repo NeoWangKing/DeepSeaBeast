@@ -2215,6 +2215,11 @@ class QqPeakGate(Star):
                     self._log("发送口拦截：内容像工具调用/协议描述，不发 →「%s」" % str(text)[:60])
                     self._fault("meta_text_blocked", str(text)[:80])
                     return
+                if replyproto.looks_like_fake_deed(text):
+                    self._log("发送口拦截：她假装进了语音/开了游戏（她做不到），不发 →「%s」"
+                              % str(text)[:60])
+                    self._fault("fake_deed_blocked", str(text)[:80])
+                    return
             except Exception:
                 pass
             comps = []
@@ -3319,7 +3324,8 @@ class QqPeakGate(Star):
                 if str(_x[0]) == "text" and str(_x[1]).strip():
                     _mylast = str(_x[1]).strip()
                     break
-            if _mylast and agent.websearch.is_dangling_promise(_mylast):
+            if _mylast and agent.websearch.is_dangling_promise(
+                    _mylast, str(getattr(event, "message_str", "") or "")):
                 self._log("边想边说：她留了「还要再看」的尾巴（%s…）→ 补一轮收尾"
                           % _mylast[:24])
                 messages.append({"role": "user", "content": (
@@ -3369,7 +3375,7 @@ class QqPeakGate(Star):
                     _mylast4 = str(_x[1]).strip()
                     break
             _q4 = str(getattr(event, "message_str", "") or "")
-            if _mylast4 and agent.websearch.is_dangling_promise(_mylast4):
+            if _mylast4 and agent.websearch.is_dangling_promise(_mylast4, _q4):
                 self._pending_set(key, _q4, _mylast4)
                 self._pending_wake(key, str(getattr(event, "unified_msg_origin", "") or ""),
                                    self._plat(event) if hasattr(self, "_plat") else "", _q4)
@@ -3627,10 +3633,10 @@ class QqPeakGate(Star):
             for _c in (getattr(event.get_result(), "chain", None) or []):
                 if isinstance(_c, Plain) and str(_c.text or "").strip():
                     txt = str(_c.text).strip()
-            if not txt or not agent.websearch.is_dangling_promise(txt):
-                return
             key = self._chat_key(event)
             q = str(getattr(event, "message_str", "") or "")
+            if not txt or not agent.websearch.is_dangling_promise(txt, q):
+                return
             self._pending_set(key, q, txt)
             self._pending_wake(key, str(getattr(event, "unified_msg_origin", "") or ""), "",
                                q, self._promise_delay(txt))
