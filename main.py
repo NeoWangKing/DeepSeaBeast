@@ -2894,6 +2894,24 @@ class QqPeakGate(Star):
                 _force = "web_search"
                 self._log("查证前置：判定=%s 本地证据=%.2f<%.2f → 第一轮强制 web_search"
                           % (_dec or "?", _ev, _th))
+                # 边想边说：先让她回一句"我去查"（像真人），再进行主循环
+                try:
+                    _directed = bool(self._at_me(event) or self._quotes_me(event))
+                except Exception:
+                    _directed = False
+                _ack_on = bool(_scfg2.get("ack_first", True))
+                _ack_only_at = bool(_scfg2.get("ack_only_directed", True))
+                if _ack_on and (_directed or not _ack_only_at):
+                    try:
+                        _ackmsg = list(messages) + [{"role": "user", "content": (
+                            "【系统提醒】对方这个问题你得查一下才知道。**先说一句短的**（≤15 字，"
+                            "调 send_message）告诉对方你去查（比如「我不太清楚，这就去查」），"
+                            "**现在不要给结论**；说完继续查，查完再发结论。")}]
+                        await asyncio.to_thread(agent.loop.run, t, _ackmsg, schema, None, 1,
+                                                self._log_debug, _vmodel, "send_message")
+                        self._log("边想边说：先去查的招呼 → %s" % ("已发" if t.spoke else "没发"))
+                    except Exception as _ea:
+                        self._log_debug("先回招呼失败 %r" % (_ea,))
             elif _dec:
                 self._log("查证前置：判定=%s 本地证据=%.2f（阈值%.2f）→ 不强制，交给她自己判断"
                           % (_dec, _ev, _th))
@@ -2972,6 +2990,7 @@ class QqPeakGate(Star):
                     r = r2 if r2 else r
         except Exception as _e:
             self._log_debug("定时提醒重试失败 %r" % (_e,))
+        _answer_done = False
         if not t.spoke and not t.finished:
             # 她既没说也没结束：再提醒一轮（传统渠道已退休，这里就是最后的安全网）
             try:
@@ -2993,8 +3012,29 @@ class QqPeakGate(Star):
                                              self._log, _vmodel, _ff2)
                 self._log("agent loop：漏发提醒后 %s" % ("补上了" if t.spoke else "仍未发言"))
                 r = r2 if r2 else r
+                _answer_done = True
             except Exception as _e6:
                 self._log_debug("漏发提醒失败 %r" % (_e6,))
+        # 查过了但结论没发出去（常见：只发了句"等下我翻翻"就把轮数用光）→ 强制补一条结论
+        try:
+            _lk3 = {str(c.get("name") or "") for c in (r.get("calls") or [])}
+            _did_lk3 = bool({"web_search", "read_url"} & _lk3)
+            _my3 = " ".join([str(x[1]) for x in (t.sent or []) if str(x[0]) == "text"]).strip()
+            _short = (not _my3) or (len(_my3) <= 25)      # 25 字以内基本是"我去查"这类招呼
+            if _did_lk3 and not t.finished and not _answer_done and _short:
+                self._log("边想边说：查过了但还没给结论（已发 %d 字）→ 强制补一条结论" % len(_my3))
+                messages.append({"role": "user", "content": (
+                    "【系统提醒】你已经查完了，但还没把结论告诉对方。现在调 send_message "
+                    "把结论说清楚（一两句就够；要提来源就说网站/媒体名，别念网址、别复述搜索过程）；"
+                    "确实没查到就说「我搜了下没找到」。")})
+                r3 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 1,
+                                             self._log_debug, _vmodel, "send_message")
+                self._log("边想边说：补结论后 %s" % ("说出来了" if len(
+                    " ".join([str(x[1]) for x in (t.sent or []) if str(x[0]) == "text"])) > 25
+                    else "仍然很短/没说"))
+                r = r3 if r3 else r
+        except Exception as _e9:
+            self._log_debug("补结论失败 %r" % (_e9,))
         if not t.spoke and not t.finished:
             self._log("agent loop：这轮没发言也没 finish → 视为沉默")
             self._fault("no_speak")

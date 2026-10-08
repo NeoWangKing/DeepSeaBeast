@@ -285,7 +285,7 @@
     "tool_profile_by_group": {
       "966812151": "lean"
     },
-    "max_sends_per_turn": 3
+    "max_sends_per_turn": 6
   },
   "kb": {
     "enabled": true,
@@ -313,6 +313,8 @@
     "skip_if_evidence": 0.34,
     "remember": true,
     "remember_max_per_hour": 4,
-    "max_per_turn": 3
+    "max_per_turn": 3,
+    "ack_first": true,
+    "ack_only_directed": true
   }
 }

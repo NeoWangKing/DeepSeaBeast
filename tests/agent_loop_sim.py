@@ -112,6 +112,23 @@ check("最多只发 2 条", sent6 == ["又一条", "又一条"], sent6)
 check("超限那轮拿到的是拒绝提示", any("上限" in str(c.get("result")) for c in r6["calls"]),
       [c.get("result") for c in r6["calls"]][-1:])
 
+print("== 连发会被提醒收尾（软提醒，不是硬拦） ==")
+t7, sent7 = mk_tools()
+_seen = []
+
+
+def fake_chatty(msgs, schema):
+    _seen.append([m.get("content") for m in msgs if m.get("role") == "user"])
+    return {"content": "", "finish_reason": "tool_calls", "usage": {},
+            "tool_calls": [{"id": "c", "name": "send_message", "arguments": {"text": "第 N 条"}}]}
+
+
+r7 = agent_loop.run(t7, [{"role": "user", "content": "hi"}], sch, chat_fn=fake_chatty, max_rounds=4)
+_allmsg = [str(x) for batch in _seen for x in batch]
+check("连发后出现收尾提醒", any(("连发" in m and "finish" in m) for m in _allmsg))
+check("提醒里带上了条数", any("连发 2 条" in m for m in _allmsg))
+check("提醒不影响她继续说（4 轮说了 4 条）", len(sent7) == 4, len(sent7))
+
 print("== 循环：模型选择潜水 ==")
 t2, sent2 = mk_tools()
 

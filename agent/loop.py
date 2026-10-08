@@ -87,9 +87,20 @@ def run(tools, messages: list, tools_schema: list, chat_fn=None, max_rounds: int
             calls.append({"round": r, "name": name, "args": tc.get("arguments") or {}, "result": out})
             log("loop: 第 %d 轮 %s(%s) → %s" % (r, name, str(tc.get("arguments"))[:80], out[:60]))
             messages.append({"role": "tool", "tool_call_id": tc.get("id") or "", "content": out})
+        # 连发提醒：每多说一轮就提醒一次（只加进下一轮提示，不多花一次模型调用）
+        try:
+            _said = len([x for x in (tools.sent or []) if str(x[0]) == "text"])
+            if not tools.finished and _said >= 2:
+                messages.append({"role": "user", "content": (
+                    "【系统提醒】你这一轮已经连发 %d 条消息了。群聊里连发很像刷屏："
+                    "除非还有**必要**的信息要补，否则现在就调 finish 收工；"
+                    "还有话就并进下一条、一次说完。" % _said)})
+                log("loop: 第 %d 轮后提醒收尾（这一轮已发 %d 条）" % (r, _said))
+        except Exception:
+            pass
         if tools.finished:
             # 只有 finish 才收工：允许"先说一句 → 继续查/想 → 再说"（真人就是边想边说）
-            # 边界靠 max_rounds 和 Tools 里的每轮发言上限兜着
+            # 边界靠 max_rounds，连发则由上面的提醒 + 发言硬上限兜着
             break
     return {"rounds": rounds, "calls": calls, "spoke": bool(tools.spoke),
             "finished": bool(tools.finished), "usage": usage}
