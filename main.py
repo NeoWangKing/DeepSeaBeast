@@ -2295,6 +2295,15 @@ class QqPeakGate(Star):
                     _buf.append(("我", str(text)[:60], ""))
             except Exception:
                 pass
+            # 【关键】她刚说过话：冷却 / 对话延续 / 接话窗口都要靠这两个戳
+            # （以前只有旧被动路径和拍一拍会写，工具轮发言不写 → 连续对话判断全失效）
+            try:
+                _g_ts = str((target or {}).get("gid") or "")
+                if _g_ts:
+                    self.last_reply_ts[_g_ts] = time.time()
+                    self.last_reply_to[_g_ts] = str((target or {}).get("uid") or "")
+            except Exception:
+                pass
         except Exception as e:
             self._log("agent：发送失败 %r" % (e,))
 
@@ -2316,6 +2325,13 @@ class QqPeakGate(Star):
             async with self._send_lock(str((target or {}).get("gid") or "")):
                 await self._transport_send(target, MessageChain(comps))
             stickers.mark_used(it.get("id"))
+            try:                                   # 发表情也算"她刚说过话"
+                _g2 = str((target or {}).get("gid") or "")
+                if _g2:
+                    self.last_reply_ts[_g2] = time.time()
+                    self.last_reply_to[_g2] = str((target or {}).get("uid") or "")
+            except Exception:
+                pass
             self._log("agent：发出表情 %s《%s》" % (it.get("id"), it.get("desc")))
         except Exception as e:
             self._log("agent：发表情失败 %r" % (e,))
