@@ -1,0 +1,6 @@
+#!/bin/bash
+# 群激活管理：qqbot-activate [list | on <群号> | off <群号>]
+# 新群默认未激活；只有主人（config.activation.owner_ids）@ 她才会激活；
+# 主人 @ 她说「关机」就退回未激活。
+exec /opt/astrbot/.local/share/uv/tools/astrbot/bin/python \
+  /opt/astrbot/data/plugins/qq_peak_gate/tools/group_active.py "$@"

@@ -330,5 +330,16 @@
     "mine_chars": 60,
     "memory_notes": 20
   },
-  "record_at_only_groups": []
+  "record_at_only_groups": [],
+  "activation": {
+    "enabled": true,
+    "owner_ids": [
+      "3245938285"
+    ],
+    "off_lines": [
+      "好，我先退下",
+      "行，那我先不说话了",
+      "收到，安静了"
+    ]
+  }
 }

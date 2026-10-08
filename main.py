@@ -1476,6 +1476,94 @@ class QqPeakGate(Star):
         except Exception as e:
             self._log_debug("未完成事项定唤醒失败 %r" % (e,))
 
+    # ── 群激活状态：新群默认未激活，只有主人 @ 才激活；主人说「关机」退回未激活 ──
+    def _active_path(self) -> str:
+        return os.path.join(PLUGIN_DIR, "data", "agent_active.json")
+
+    def _active_load(self) -> dict:
+        try:
+            with open(self._active_path(), encoding="utf-8") as f:
+                d = json.load(f) or {}
+            if isinstance(d.get("groups"), dict):
+                return d
+        except Exception:
+            pass
+        # 首次启用：把现在在用的群先标成已激活（免得现网群突然全哑）
+        try:
+            _seeds = list(self.cfg.get("allowed_groups") or []) + \
+                list((self.cfg.get("prompt_by_group") or {}).keys())
+            d = agent.activation.seed_from([x for x in _seeds if str(x).isdigit()])
+            self._active_save(d)
+            self._log("群激活：首次启用，现有群已标为已激活（%s）"
+                      % ",".join(sorted((d.get("groups") or {}).keys())))
+            return d
+        except Exception:
+            return {"groups": {}}
+
+    def _active_save(self, d: dict) -> None:
+        try:
+            _d = os.path.join(PLUGIN_DIR, "data")
+            os.makedirs(_d, exist_ok=True)
+            _tmp = self._active_path() + ".tmp"
+            with open(_tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            os.replace(_tmp, self._active_path())
+        except Exception:
+            pass
+
+    def _group_active(self, gid: str) -> bool:
+        try:
+            return agent.activation.is_active(self._active_load(), gid)
+        except Exception:
+            return True
+
+    def _group_set_active(self, gid: str, on: bool, by: str = "") -> None:
+        try:
+            self._active_save(agent.activation.merge_state(self._active_load(), gid, on, by))
+        except Exception:
+            pass
+
+    def _is_owner(self, event) -> bool:
+        try:
+            _ids = [str(x) for x in ((self.cfg.get("activation") or {}).get("owner_ids") or [])]
+            return bool(_ids) and str(event.get_sender_id() or "") in _ids
+        except Exception:
+            return False
+
+    async def _group_ready(self, gid: str, event, text: str = "") -> bool:
+        """群激活状态机。返回 True = 这条继续走后面的流程；False = 直接吞掉。"""
+        try:
+            _cfg = self.cfg.get("activation") or {}
+            if not _cfg.get("enabled", True) or not gid or gid in ("0",):
+                return True
+            _owner = self._is_owner(event)
+            _po = agent.activation.is_poweroff(text)
+            if self._group_active(gid):
+                if _owner and _po:
+                    self._group_set_active(gid, False, str(event.get_sender_id() or ""))
+                    self._log("群 %s：主人说关机 → 退回未激活" % gid)
+                    try:
+                        import random as _r
+                        _line = _r.choice(_cfg.get("off_lines") or ["好，我先退下"])
+                        await event.send(MessageChain([Plain(_line)]))
+                        self._remember_bot_line(event, _line)
+                        self._log("群 %s：已回关机确认「%s」" % (gid, _line))
+                    except Exception as _es:
+                        self._log_debug("关机确认发送失败 %r" % (_es,))
+                    return False
+                return True
+            # 未激活：只有主人 @ 才能唤醒（那条消息照常回答，等于"开机"）
+            if _owner and self._at_me(event):
+                self._group_set_active(gid, True, str(event.get_sender_id() or ""))
+                self._log("群 %s：主人 @她 → 激活%s"
+                          % (gid, "（开机命令）" if agent.activation.is_on_command(text) else ""))
+                return True
+            self._log_debug("群 %s 未激活（等主人 @）→ 忽略这条" % gid)
+            return False
+        except Exception as e:
+            self._log_debug("激活检查出错（放行）%r" % (e,))
+            return True
+
     def _kb_scope(self, key: str, persona: str = "") -> str:
         """这个会话该用哪个资料库域：kb.scope_by_group 优先，其次 kb.scope_by_persona。"""
         try:
@@ -2391,6 +2479,10 @@ class QqPeakGate(Star):
 
     async def _wake_fire(self, it: dict) -> None:
         try:
+            _gw = str(it.get("gid") or "")
+            if _gw and not _gw.startswith("p:") and not self._group_active(_gw):
+                self._log("定时唤醒：群 %s 未激活 → 跳过" % _gw)
+                return
             umo = str(it.get("umo") or "")
             ctx = getattr(self, "context", None)
             if not umo or ctx is None or not hasattr(ctx, "send_message"):
@@ -4267,6 +4359,14 @@ class QqPeakGate(Star):
         try:
             self._reload_cfg()
             cfg = self.cfg
+            # 群激活：没激活的群什么都不做（不记上下文、不收图、不参与任何流程）
+            try:
+                if not await self._group_ready(str(event.get_group_id() or ""), event,
+                                               str(event.message_str or "")):
+                    event.stop_event()
+                    return
+            except Exception as _ea:
+                self._log_debug("激活检查异常（放行）%r" % (_ea,))
             try:
                 _a = self.cfg.get("agent") or {}
                 if _a.get("loop_mode") or _a.get("send_tools"):

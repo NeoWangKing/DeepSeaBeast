@@ -64,3 +64,5 @@ data/kb_refresh_status.json
 
 # ── 技术助手人格卡（要版本管理）──
 !prompts/personas/project_assistant.txt
+# 群激活状态（运行数据）
+data/agent_active.json
