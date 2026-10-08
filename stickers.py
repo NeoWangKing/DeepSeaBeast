@@ -532,7 +532,13 @@ def add_file(path: str, group: str = "", desc: str = "", tags=None, h: str = "",
         size = os.path.getsize(path)
     except Exception:
         return None
-    if size <= 0 or size > 2 * 1024 * 1024:
+    try:                                   # 单文件上限可配（QQ 动图表情常有 2~3MB）
+        import json as _json, os as _os
+        _mb = float((_json.load(open(_os.path.join(HERE, "config.json"), encoding="utf-8"))
+                     .get("stickers") or {}).get("max_file_mb", 2) or 2)
+    except Exception:
+        _mb = 2.0
+    if size <= 0 or size > _mb * 1024 * 1024:
         return None
     h = h or ahash(path)
     items = load()

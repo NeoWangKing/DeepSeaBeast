@@ -226,7 +226,8 @@
     "collect_say_max_per_hour": 2,
     "prompt_max": 20,
     "encourage": 3,
-    "nudge_prob": 0.35
+    "nudge_prob": 0.35,
+    "max_file_mb": 4
   },
   "followup": {
     "enabled": true,
