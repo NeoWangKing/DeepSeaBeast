@@ -91,14 +91,31 @@ ck("空的不记", W.remember_note("", "答案") == {} and W.remember_note("问"
 
 print("== 「我再看/我再查」不能变成悬空承诺 ==")
 for t in ["HLTV 上写的，具体几点没标，我再看看是哪个赛事", "等下我查查", "稍等，我确认一下",
-          "回头再告诉你", "让我确认下"]:
+          "回头再告诉你", "让我确认下",
+          "我这就去看看，等我一下",                    # 真实案例
+          "想看的话我晚上帮你瞅瞅具体对阵",              # 真实案例
+          "等我一下", "我去瞅瞅", "我查查啊", "马上回来"]:
     ck("认得出尾巴 %s" % t[:20], W.is_dangling_promise(t))
-for t in ["查到了，明天 10 月 9 日打 Falcons", "我搜了下没找到", "哈哈哈哈", ""]:
+for t in ["查到了，明天 10 月 9 日打 Falcons", "我搜了下没找到", "哈哈哈哈", "",
+           "你去看看这个", "看完了", "我看完了", "这周末有比赛"]:
     ck("不误判 %s" % (t[:20] or "（空串）"), not W.is_dangling_promise(t))
 _src_m = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
 ck("收尾会补一轮", "她留了「还要再看」的尾巴" in _src_m)
 ck("连发提醒不再一味劝收工", "别留一句「我再看看/我再查查」就收工" in
    open(os.path.join(ROOT, "agent", "loop.py"), encoding="utf-8").read())
+
+print("== 承诺的唤醒延迟 ==")
+import importlib.util as _iu  # noqa: E402
+
+
+class _Stub:  # 借用 main.py 里的静态方法（不实例化插件）
+    pass
+
+
+_src_m = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+ck("有延迟函数（晚上→1小时）", "_promise_delay" in _src_m and '"晚上"' in _src_m)
+ck("被动路径也检测承诺（挂在 smart_quote 前）", "_note_promise(event)" in _src_m)
+ck("唤醒延迟用 _promise_delay", "_promise_delay(txt)" in _src_m)
 
 print("== 时间锚点 + 「下一场」规则 ==")
 _nt = W.now_text()

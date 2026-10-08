@@ -1429,15 +1429,28 @@ class QqPeakGate(Star):
         except Exception:
             return ""
 
-    def _pending_wake(self, key: str, umo: str, plat: str, question: str) -> None:
-        """定一个 90 秒后的主动轮：自己回来把没做完的补上。"""
+    @staticmethod
+    def _promise_delay(text: str) -> int:
+        """承诺里的时间词 → 回来补的延迟（晚上/晚点 → 1 小时；待会/一会 → 5 分钟；其余 90 秒）。"""
+        t = str(text or "")
+        for k in ("晚上", "今晚", "晚点", "稍后"):
+            if k in t:
+                return 3600
+        for k in ("待会", "一会儿", "稍等", "等我一下", "马上一"):
+            if k in t:
+                return 300
+        return 90
+
+    def _pending_wake(self, key: str, umo: str, plat: str, question: str,
+                      delay: int = 90) -> None:
+        """定一个主动轮：自己回来把没做完的补上（延迟按承诺措辞给）。"""
         try:
             items = self._wake_load()
             for x in items:
                 if str(x.get("gid") or "") == str(key) and "没查完" in str(x.get("reason") or ""):
                     return
             items.append({"umo": str(umo or ""), "plat": str(plat or ""),
-                          "due": time.time() + 90, "say": "",
+                          "due": time.time() + max(60, int(delay or 90)), "say": "",
                           "reason": "把之前没查完的事补上：%s" % str(question or "")[:60],
                           "gid": str(key), "mode": "think", "every": 0, "poke_uid": ""})
             if len(items) > 50:
@@ -3400,6 +3413,25 @@ class QqPeakGate(Star):
                 pass
         return ""
 
+    def _note_promise(self, event) -> None:
+        """发出的最后一条若是「我这就去看看/等我一下」这类承诺 → 记进未完成事项 + 排唤醒。"""
+        try:
+            txt = ""
+            for _c in (getattr(event.get_result(), "chain", None) or []):
+                if isinstance(_c, Plain) and str(_c.text or "").strip():
+                    txt = str(_c.text).strip()
+            if not txt or not agent.websearch.is_dangling_promise(txt):
+                return
+            key = self._chat_key(event)
+            q = str(getattr(event, "message_str", "") or "")
+            self._pending_set(key, q, txt)
+            self._pending_wake(key, str(getattr(event, "unified_msg_origin", "") or ""), "",
+                               q, self._promise_delay(txt))
+            self._log("未完成事项：最后一条是承诺「%s」→ 已记下并排唤醒（%d 秒后）"
+                      % (txt[:24], self._promise_delay(txt)))
+        except Exception as e:
+            self._log_debug("承诺记录失败 %r" % (e,))
+
     @filter.on_decorating_result()
     async def smart_quote(self, event: AstrMessageEvent) -> None:
         """发送前最后一步：只在需要指明"回哪条"时才加引用（全局 reply_with_quote 已关）。"""
@@ -3452,6 +3484,10 @@ class QqPeakGate(Star):
             except Exception:
                 pass
             self._remember_reply(event)
+            try:
+                self._note_promise(event)        # 承诺要记下来（工具轮/被动路径都覆盖）
+            except Exception as _enp:
+                self._log_debug("承诺记录失败 %r" % (_enp,))
             await self._maybe_sticker(event)
             self._maybe_followup(event, multi=pr.multi)   # 已经自己分了多条就不再补话
             if not self.cfg.get("smart_quote", True):

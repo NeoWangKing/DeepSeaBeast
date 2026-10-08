@@ -371,6 +371,25 @@ def push_to_face(limit: int = 50) -> int:
     return n
 
 
+def push_pending(limit: int = 80) -> int:
+    """只补推"还没进面板"的那些（面板偶发失败自愈；不碰已推过的、也不回推账号同步来的）。"""
+    items = load()
+    n = 0
+    for it in items[: int(limit or 80)]:
+        if it.get("face_pushed") or it.get("src") == "account":
+            continue
+        p = ensure_local(it)
+        if not p or not os.path.isfile(p):
+            continue
+        if add_face(p):
+            n += 1
+            it["face_pushed"] = True
+            print("  ↑ 补推进面板:", it.get("id"), it.get("desc") or "")
+    if n:
+        save(items)
+    return n
+
+
 def load() -> list:
     try:
         with open(INDEX, encoding="utf-8") as f:
@@ -707,6 +726,13 @@ def main() -> int:
         _dry = ("dry" in (a.tags or "")) or (str(a.arg).strip().lower() == "dry")
         r = reconcile_deletions(dry=_dry, limit=120)
         print("反向同步（以 QQ 面板为准）：", r)
+        if not _dry:                     # 顺手把"上次没推上去"的补推（偶发失败自愈）
+            try:
+                _n = push_pending()
+                if _n:
+                    print("补推面板:", _n, "张")
+            except Exception as _e:
+                print("补推面板失败:", _e)
         return 0
     if a.cmd == "push":
         n = push_to_face(int(a.tags or 50))
