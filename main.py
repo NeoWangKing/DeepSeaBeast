@@ -4130,8 +4130,55 @@ class QqPeakGate(Star):
         except Exception:
             return ""
 
+    def _img_kinds(self, event) -> list:
+        """从原始报文里取每个图片元素的 (sub_type, summary)。
+
+        AstrBot 的 Image 组件只留 file/url/path，sub_type 会丢；但 abm.raw_message
+        就是 OneBot 原始事件，里面 image 元素带 sub_type：
+            1 = QQ 面板表情（我们要收的） 0 = 普通图片（照片/截图，不收）
+        """
+        out = []
+        try:
+            raw = getattr(event, "raw_message", None)
+            if raw is None:
+                _mo = getattr(event, "message_obj", None)
+                raw = getattr(_mo, "raw_message", None) or getattr(_mo, "message", None)
+            if isinstance(raw, str):
+                import json as _j
+                try:
+                    raw = _j.loads(raw)
+                except Exception:
+                    raw = None
+            msg = (raw or {}).get("message") if isinstance(raw, dict) else None
+            for el in (msg or []):
+                if isinstance(el, dict) and str(el.get("type") or "") == "image":
+                    d = el.get("data") or {}
+                    out.append((d.get("sub_type"), str(d.get("summary") or "")))
+        except Exception as e:
+            self._log_debug("读图片 sub_type 失败: %r" % (e,))
+        return out
+
+    def _collect_intent(self, gid: str, text: str = "") -> bool:
+        """主人是不是明确说了"收藏这张"（只有这时候才允许收普通图片）。"""
+        _kw = ("收藏", "收下", "收进", "存起来", "存一下", "加进表情", "加到表情",
+               "放进表情", "当表情", "表情包库", "存表情")
+        try:
+            if text and any(k in str(text) for k in _kw):
+                return True
+            for it in list(self.recent.get(gid) or [])[-3:]:
+                _t = it[1] if isinstance(it, (tuple, list)) and len(it) > 1 else ""
+                if _t and any(k in str(_t) for k in _kw):
+                    return True
+        except Exception:
+            pass
+        return False
+
     def _spawn_sticker_collect(self, event) -> None:
-        """群友发了图 → 后台识图，合格的收进表情包收藏夹。"""
+        """群友发了图 → 后台识图，合格的收进表情包收藏夹。
+
+        主人规矩（2026-10-08）：**只收表情，不收图片**；表情尽量卡通、有趣好玩。
+        所以默认只处理 QQ 面板表情（sub_type=1），普通图片直接跳过。
+        """
         try:
             cfg = self.cfg.get("stickers") or {}
             if not cfg.get("enabled", True):
@@ -4146,6 +4193,8 @@ class QqPeakGate(Star):
             comps = [m for m in event.get_messages() if isinstance(m, Image)]
             if not comps:
                 return
+            subs = self._img_kinds(event)            # 图片元素类型（表情 / 普通图片）
+            intent = self._collect_intent(gid, str(getattr(event, "message_str", "") or ""))
             now = time.time()
             lst = getattr(self, "sticker_collect_ts", None)
             if lst is None:
@@ -4159,36 +4208,40 @@ class QqPeakGate(Star):
             hits.append(now)
 
             async def _run():
-                for c in comps[:2]:
+                for _i, c in enumerate(comps[:3]):
+                    _st, _sm = (subs[_i] if _i < len(subs) else (None, ""))
+                    try:
+                        _st = int(_st)
+                    except Exception:
+                        _st = None
+                    if _st != 1 and not intent:
+                        # 只收表情：普通图片（照片/截图/海报）一律不进收藏夹
+                        self._log("表情包：不是 QQ 表情（sub_type=%r summary=%r），不收"
+                                  % (_st, _sm))
+                        continue
                     path = await asyncio.to_thread(self._save_tmp_image, c)
                     if not path:
                         continue
                     try:
                         g = await asyncio.to_thread(stickers.tag_image, path,
                                                     str(cfg.get("vision_model") or "glm-4v-flash"))
-                        _kind = str(g.get("kind") or "").lower()
-                        _worth = g.get("worth")      # 识图自己判的"这图有没有趣、值不值得收"
-                        _hard_bad = _kind in ("qr", "ad")     # 二维码/广告：一律不收
-                        if (not private) and _kind == "screenshot":
-                            keep = False                     # 群里：屏幕截图一律不收（游戏/软件/网页/聊天记录）
-                        elif _worth is not None:
-                            # 其余以"她看过觉得有没有梗"为准（真人梗图 selfie 也照收）
-                            keep = bool(_worth) and _kind not in ("qr", "ad")
-                        elif g:
-                            # 识图没给这个字段（解析失败/旧缓存）→ 只挡二维码/广告，其余先收
-                            keep = _kind not in ("qr", "ad")
-                        else:
-                            keep = True              # 识图整个失败：宁可先收下，别漏掉好图
+                        _long = await asyncio.to_thread(stickers.image_size, path)
+                        if g:
+                            g["src"] = "sub_type=%s %s" % (_st, _sm)
+                        keep, _why = stickers.judge_collect(
+                            g, private=private, sub_type=_st, long_side=_long, explicit=intent)
                         if not keep:
-                            self._log("表情包：识图觉得没梗/不适合，没收（kind=%s worth=%s desc=%s）"
-                                      % (_kind or "?", _worth, g.get("desc") or "?"))
+                            self._log("表情包：没收（%s｜kind=%s style=%s fun=%s desc=%s）"
+                                      % (_why, g.get("kind") or "?", g.get("style") or "?",
+                                         g.get("fun"), g.get("desc") or "?"))
                             continue
                         it = await asyncio.to_thread(
                             stickers.add_file, path, gid, g.get("desc", ""), g.get("tags") or [],
                             "", int(cfg.get("max_store", 300) or 300), g)
                         if it:
-                            self._log("表情包：收藏 %s《%s》标签=%s"
-                                      % (it["id"], it.get("desc"), ",".join(it.get("tags") or [])))
+                            self._log("表情包：收藏 %s《%s》标签=%s（%s）"
+                                      % (it["id"], it.get("desc"),
+                                         ",".join(it.get("tags") or []), _why))
                             # 顺手加进那个 QQ 号自己的表情收藏（手机上就能看到）
                             try:
                                 if await asyncio.to_thread(stickers.add_face, path):

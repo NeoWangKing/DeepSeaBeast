@@ -41,29 +41,40 @@ def prefer_cfg() -> dict:
     _PREFER_CACHE.update({"key": key, "ids": ids, "boost": boost})
     return {"ids": ids, "boost": boost}
 
-VISION_RULES = """这张图是不是"适合在 QQ 群里当表情包/梗图转发"的图？
+VISION_RULES = """这张图是不是"适合收进 QQ 表情收藏夹、拿来当表情包发"的图？
 
-算（is_meme=true）：表情包、梗图、沙雕图、可爱动物、搞笑截图（把关键信息涂掉的）、明星/动漫表情包。
-不算（is_meme=false）：真人自拍、私人照片、聊天记录截图、证件/工牌、二维码、名片、
-                        涉黄涉暴、血腥、广告海报、纯文字长图。
+**主人的规矩：只要表情包，不要图片；表情尽量卡通风格、有趣好玩。**
 
-最后再判一次 「worth」：这张图**发出来好不好笑、有没有梗、值不值得收进常用表情包库**？
-- worth=true：看见就想笑/有梗/可爱/能拿来接话，包括可爱动物、沙雕图、搞笑截图（关键信息涂掉的）。
-- worth=false：普通自拍或私人照片、聊天/网页截图、二维码名片、广告、纯文字长图、风景美食等普通照片、
-  画质太糊看不出是什么、没什么梗的随手拍。
-- **屏幕截图一律 worth=false**：游戏画面/加载界面、软件或网页界面、聊天记录、系统提示、纯文字长图
-  ——这些只是"把屏幕截下来"，不是拿来玩的梗图。只有明显被二次加工成梗（加了吐槽文字/涂掉关键信息当段子）才算 true。
-- 注意：**真人照片也可能是表情包**——如果姿势/表情夸张、明显在玩梗（比如瘫在椅子上摆烂、指着镜头笑、
-  战队选手照、沙雕自拍），而且是拿来当梗用的，worth 就该判 true。别只因为它"是真人"就判 false。
-（is_meme 和 worth 的区别：is_meme 是"这算不算表情包"，worth 是"她该不该把它收进自己收藏夹"。
-两个判断要一致：kind 是 meme/animal、is_meme=true 的，只要不糊、不是纯风景/美食/随手拍，worth 一般就是 true；
-只有真的没梗、看不出是什么、或只是普通照片才判 false。宁可收下也别把好玩的图漏掉。）
+先判 kind（这张图到底是什么）：
+- meme=表情包/梗图（包括"截图被加工成梗"：加了吐槽文字、涂掉隐私信息当段子）
+- cartoon=卡通/动漫/Q版/手绘/emoji 风格的图（没文字也算）
+- animal=可爱动物的表情图（宠物卖萌图、被加工过的萌宠表情）
+- photo=实拍照片（真人、风景、美食、物品、商品实拍、桌面、随手拍）
+- group_photo=合影/集体照/战队照/选手照/颁奖照
+- screenshot=屏幕截图（游戏画面、战绩/数据界面、软件或网页界面、聊天记录、系统提示、纯文字长图）
+- poster=海报/宣传图/活动公告/菜单/价格表/名片
+- qr=二维码；ad=广告；other=说不清
 
-只输出 JSON：{"is_meme": true/false, "worth": true/false, "kind": "meme|selfie|screenshot|qr|ad|animal|other",
-"desc": "≤14字描述", "tags": ["3~5个中文标签"]}
-（kind 用来说清这是什么：meme=表情包/梗图、selfie=真人自拍或私人照片、screenshot=聊天/网页截图、
-qr=二维码名片、ad=广告海报、animal=普通动物照、other=其它）
-标签用群里会说的词：无语、笑死、绷不住、疑惑、生气、委屈、吃瓜、摸鱼、躺平、干饭、猫、狗、点赞……"""
+再判 style：cartoon=卡通/动漫/emoji｜real=真人或实拍｜text=纯文字｜mixed=混着来
+
+**硬规则（命中就直接 worth=false）**：
+- kind 是 screenshot / poster / photo / group_photo / qr / ad → 不收
+- 主体是真人或实拍 → 不收（除非整张已被重度加工成梗：加了明显吐槽文字 + 夸张表情，
+  这种 kind=meme、style=real、fun 打到 8 以上才可能收）
+- 风景、美食、宠物日常照、商品实拍、纯文字长图 → 不收
+
+**有趣好玩的打分 fun（0~10）**：
+- 8~10：看见就想笑 / 很想拿来接话（夸张表情、沙雕、有梗文字、萌到爆）
+- 5~7：还行，能用但没特别
+- 0~4：平淡、普通、不好笑
+
+还有 cartoon：这张图是不是卡通/动漫/Q版/emoji 画风（true/false）。
+判的时候**从严**，拿不准就把 fun 打低、worth 判 false——收错了要主人手动去删，比漏收一张麻烦得多。
+
+只输出 JSON：{"kind": "上面那几种之一", "style": "cartoon|real|text|mixed",
+"is_meme": true/false（算不算表情包/梗图）, "worth": true/false（值不值得收进收藏夹）,
+"fun": 0~10 的整数, "cartoon": true/false, "desc": "≤14字描述", "tags": ["3~5个中文标签"]}
+"""
 
 
 def _vision_key() -> str:
@@ -118,8 +129,15 @@ def tag_image(path: str, model: str = "glm-4v-flash", key: str = "") -> dict:
                 if out.get(_k) is not None:
                     _w = out.get(_k)
                     break
+        try:
+            _fun = int(out.get("fun")) if out.get("fun") is not None else None
+        except Exception:
+            _fun = None
         return {"is_meme": bool(out.get("is_meme")),
                 "worth": (None if _w is None else bool(_w)),
+                "fun": _fun,
+                "style": str(out.get("style") or "")[:12].lower(),
+                "cartoon": (None if out.get("cartoon") is None else bool(out.get("cartoon"))),
                 "kind": str(out.get("kind") or "")[:16],
                 "desc": str(out.get("desc") or "")[:30],
                 "tags": [str(x)[:8] for x in (out.get("tags") or []) if str(x).strip()][:6],
@@ -127,6 +145,60 @@ def tag_image(path: str, model: str = "glm-4v-flash", key: str = "") -> dict:
     except Exception as e:
         print("[stickers] 识图失败: %r" % (e,))
         return {}
+
+
+def image_size(path: str) -> int:
+    """图片长边像素（拿不到返回 0）。"""
+    try:
+        from PIL import Image
+        w, h = Image.open(path).size
+        return int(max(w, h))
+    except Exception:
+        return 0
+
+
+def judge_collect(g: dict, private: bool = False, sub_type=None, long_side: int = 0,
+                  explicit: bool = False) -> tuple:
+    """这张图收不收进收藏夹，返回 (keep, reason)。
+
+    主人的规矩（2026-10-08）：**只收表情，不收图片**；表情尽量卡通、有趣好玩。
+    - sub_type==1 才是 QQ 面板表情（图片元素里的 sub_type；AstrBot 的 Image 组件会丢，
+      得从原始报文的 raw_message 里取）。普通图片（sub_type==0）默认不收。
+    - explicit=True：主人明确说了"收藏/存起来"，这时才允许收普通图片（仍要看识图结论）。
+    """
+    g = g or {}
+    kind = str(g.get("kind") or "").lower()
+    style = str(g.get("style") or "").lower()
+    try:
+        fun = int(g.get("fun") or 0)
+    except Exception:
+        fun = 0
+    # 1) 只收表情
+    if not explicit and sub_type != 1:
+        if sub_type is None:
+            return False, "拿不到图片类型，按普通图片处理（只收表情）"
+        return False, "不是 QQ 表情（sub_type=%s），是普通图片" % (sub_type,)
+    if not g:
+        return (True, "识图失败，但它确实是表情元素，先收下") if sub_type == 1 \
+            else (False, "识图失败")
+    # 2) 拍照/截图/海报类一律不收
+    if kind in ("screenshot", "poster", "photo", "group_photo", "qr", "ad"):
+        return False, "识图判成 %s（截图/实拍/海报类不收）" % (kind or "?")
+    if style == "text":
+        return False, "纯文字图，不是表情"
+    if g.get("is_meme") is False:
+        return False, "识图觉得不算表情包"
+    if g.get("worth") is False:
+        return False, "识图觉得没意思"
+    if long_side and int(long_side) > 1600:
+        return False, "%dpx 太大，长的不像表情" % int(long_side)
+    # 3) 尽量卡通：实拍/真人要明显好玩才收
+    real = (style == "real") or (g.get("cartoon") is False)
+    if real and fun < 8:
+        return False, "实拍/真人风格，不够好玩（fun=%d）" % fun
+    if fun and fun < 4:
+        return False, "不太好玩（fun=%d）" % fun
+    return True, "表情：%s/style=%s/fun=%d" % (kind or "?", style or "?", fun)
 
 
 # ---------------- SnowLuma 面板接口（读/写那个 QQ 号自己的表情收藏） ----------------
@@ -591,7 +663,10 @@ def add_file(path: str, group: str = "", desc: str = "", tags=None, h: str = "",
         return None
     it = {"id": sid, "file": fn, "hash": h, "desc": desc or "", "tags": list(tags or []),
           "group": str(group or ""), "added_at": int(time.time()), "used": 0, "last_used": 0,
-          "size": size, "token": int((ge or {}).get("token") or 0)}
+          "size": size, "token": int((ge or {}).get("token") or 0),
+          # 收图时的识图结论，方便事后审计（哪些是照片混进来的）
+          "kind": str((ge or {}).get("kind") or ""), "style": str((ge or {}).get("style") or ""),
+          "fun": (ge or {}).get("fun"), "src": str((ge or {}).get("src") or "")}
     items.append(it)
     if len(items) > int(max_store or 300):
         items.sort(key=lambda x: (int(x.get("used") or 0), int(x.get("last_used") or x.get("added_at") or 0)))
@@ -722,11 +797,119 @@ def reconcile_deletions(uin: str = "", limit: int = 120, dry: bool = False,
             "left": len(load()) if not dry else len(items)}
 
 
+# ---------------- 面板审核 / 清理 ----------------
+
+def fetch_face_detail(uin: str = "", count: int = 300) -> list:
+    """面板表情详情：[{emoji_id, md5, url, desc}]（md5 与原图一致，可当配对键）。"""
+    d = panel("fetch_custom_face_detail", {"count": int(count)}, uin)
+    if isinstance(d, dict):
+        d = d.get("items") or list(d.values())
+    out = []
+    for x in (d or []):
+        if isinstance(x, dict) and x.get("emoji_id"):
+            out.append({"emoji_id": str(x.get("emoji_id")),
+                        "md5": str(x.get("md5") or "").lower(),
+                        "url": str(x.get("url") or ""),
+                        "desc": str(x.get("desc") or "")})
+    return out
+
+
+def delete_face(emoji_id: str, uin: str = "") -> bool:
+    """从那个 QQ 号的收藏面板删掉一张表情。"""
+    if not str(emoji_id or "").strip():
+        return False
+    return bool(panel("delete_custom_face", {"emoji_id": str(emoji_id)}, uin))
+
+
+def face_pairs(uin: str = "", count: int = 300) -> dict:
+    """本地库 ↔ 面板配对：{md5: {"local": item|None, "face": detail}}。"""
+    import hashlib
+    faces = fetch_face_detail(uin, count)
+    by_md5 = {}
+    for f in faces:
+        if f.get("md5"):
+            by_md5.setdefault(f["md5"], {"local": None, "face": f})
+    for it in load():
+        pth = abs_path(it)
+        if not pth or not os.path.isfile(pth):
+            continue
+        try:
+            h = hashlib.md5(open(pth, "rb").read()).hexdigest().lower()
+        except Exception:
+            continue
+        if h in by_md5:
+            by_md5[h]["local"] = it
+        else:
+            by_md5.setdefault(h, {"local": it, "face": None})
+    return by_md5
+
+
+def _face_image(path: str, url: str) -> str:
+    """拿到能识别的本地文件：优先本地库里的，否则下载面板图。"""
+    if path and os.path.isfile(path):
+        return path
+    if url:
+        try:
+            return _download_remote(url) or ""
+        except Exception:
+            return ""
+    return ""
+
+
+def audit_faces(vision: bool = True, uin: str = "", count: int = 300,
+                progress=None) -> dict:
+    """按新规则复判面板里每一张表情。返回 {items, suggest_del, ...}。
+
+    只判断"值不值得留"，不动手删——删由 delete_face 单独做（决定权在人）。
+    """
+    pairs = face_pairs(uin, count)
+    rows, bad = [], []
+    for h, v in pairs.items():
+        it, face = v.get("local"), v.get("face")
+        pth = abs_path(it) if it else ""
+        row = {"md5": h,
+               "local_id": (it or {}).get("id", ""),
+               "emoji_id": (face or {}).get("emoji_id", ""),
+               "desc": (it or {}).get("desc", "") or (face or {}).get("desc", ""),
+               "tags": "/".join((it or {}).get("tags") or []),
+               "face": bool(face), "local": bool(it),
+               "long": image_size(pth) if (pth and os.path.isfile(pth)) else 0,
+               "verdict": "", "why": "", "kind": "", "style": "", "fun": ""}
+        if vision:
+            img = _face_image(pth, (face or {}).get("url", ""))
+            if not img:
+                row["verdict"], row["why"] = "?", "拿不到图，没法判"
+            else:
+                g = tag_image(img)
+                keep, why = judge_collect(g, sub_type=1, long_side=row["long"])
+                row.update({"verdict": "留" if keep else "删", "why": why,
+                            "kind": g.get("kind", ""), "style": g.get("style", ""),
+                            "fun": g.get("fun", "")})
+                if not keep:
+                    bad.append(row)
+            try:
+                if img.startswith("/tmp/"):
+                    os.remove(img)
+            except Exception:
+                pass
+        rows.append(row)
+        if progress:
+            try:
+                progress(row)
+            except Exception:
+                pass
+    return {"rows": rows, "suggest_del": bad, "total": len(rows),
+            "panel": sum(1 for r in rows if r["face"]),
+            "local_only": sum(1 for r in rows if r["local"] and not r["face"]),
+            "panel_only": sum(1 for r in rows if r["face"] and not r["local"])}
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="表情包收藏夹")
     ap.add_argument("cmd", choices=["list", "stats", "add", "del", "tag", "sync", "faces",
-                                    "history", "push", "mirror"], nargs="?", default="stats")
+                                    "history", "push", "mirror", "audit", "rmface",
+                                    "faceinfo"], nargs="?", default="stats")
     ap.add_argument("arg", nargs="?", default="")
     ap.add_argument("--tags", default="")
     ap.add_argument("--group", default="")
@@ -773,6 +956,56 @@ def main() -> int:
                     print("补推面板:", _n, "张")
             except Exception as _e:
                 print("补推面板失败:", _e)
+        return 0
+    if a.cmd == "faceinfo":
+        for f in fetch_face_detail(count=int(a.tags or 300)):
+            print("%-58s %s %s" % (f["emoji_id"], f["md5"][:12], f["desc"]))
+        return 0
+    if a.cmd == "rmface":
+        ids = [x for x in str(a.arg or "").split(",") if x.strip()]
+        if not ids:
+            print("用法：qqbot-sticker rmface <emoji_id>[,<emoji_id>...]")
+            return 1
+        n = 0
+        for eid in ids:
+            ok = delete_face(eid)
+            print("%s %s" % ("删除" if ok else "删除失败（id 不对或面板抽风）", eid))
+            n += 1 if ok else 0
+            time.sleep(0.4)
+        print("面板删除 %d/%d 张；跑一次 qqbot-sticker mirror 同步本地" % (n, len(ids)))
+        return 0
+    if a.cmd == "audit":
+        _v = "novision" not in (a.tags or "")
+        if _v:
+            print("逐张识图复判（%s 张，慢，喝口水）…" % "面板")
+        _cnt = 300
+        try:
+            _cnt = int(a.group) if str(a.group or "").strip() else 300
+        except Exception:
+            _cnt = 300
+        r = audit_faces(vision=_v, count=_cnt,
+                        progress=(lambda row: print("  %-4s %-8s fun=%-3s %-16s %s"
+                                                    % (row["verdict"], row["kind"],
+                                                       row["fun"], row["local_id"] or "-",
+                                                       str(row["desc"])[:22]),
+                                  flush=True) if _v else None))
+        print()
+        print("面板 %d 张 / 只在本地 %d / 只在面板 %d" % (r["panel"], r["local_only"],
+                                                         r["panel_only"]))
+        try:
+            import json as _j
+            _o = os.path.join(HERE, "data", "sticker_audit.json")
+            os.makedirs(os.path.dirname(_o), exist_ok=True)
+            _j.dump(r, open(_o, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            print("完整结果写到", _o)
+        except Exception as _e:
+            print("写 json 失败:", _e)
+        if _v:
+            print("建议删掉 %d 张：" % len(r["suggest_del"]))
+            for row in r["suggest_del"]:
+                print("  %-8s fun=%-3s %-18s %s ｜ %s"
+                      % (row["kind"], row["fun"], str(row["desc"])[:20], row["why"],
+                         row["emoji_id"]))
         return 0
     if a.cmd == "push":
         n = push_to_face(int(a.tags or 50))

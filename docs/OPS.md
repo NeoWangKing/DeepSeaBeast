@@ -887,3 +887,44 @@ DeepSeaBeast 已关机        ← 固定文案（activation.off_lines）
 - 表情清单（`_sticker_menu_text`）里这 7 张**常驻**，每轮清单都能看到 → 她自然挑得更勤。
 - 想收手：`prefer_ids: []` 或 `prefer_boost: 0`，改配置即时生效（prefer_cfg 按 mtime 缓存）。
 - 验证：`tests/self_face_sim.py`（配置 / 加分 / 情绪优先级 / 最近用过照样压 / 清单常驻）。
+
+### 收图关收紧：只收表情，不收图片（2026-10-08 晚）
+
+主人发现 QQ 收藏面板里混进了"普通图片"（截图、海报、商品实拍、合影），自己删了一批。
+根因：原来的收集逻辑**只要识图说"好玩"就收**，而识图对"实拍照片算不算梗图"判得很松。
+
+**关键发现**：QQ 消息里的图片元素自带 `sub_type` 和 `summary`：
+
+| sub_type | summary | 是什么 |
+|---|---|---|
+| 1 | `[动画表情]` | **QQ 面板表情**（要收的就是这个） |
+| 0 | `[图片]` | 普通图片（照片/截图，不收） |
+| 7 / 11 | `[赞]` `[？]` | 其他系统表情 |
+
+AstrBot 的 `Image` 组件只留 `file/url/path`，`sub_type` 会被丢掉——但
+`abm.raw_message` 就是 OneBot 原始事件，里面还留着。于是 `main._img_kinds(event)`
+从原始报文取 sub_type，`stickers.judge_collect()` 统一判定：
+
+- **sub_type != 1 → 一律不收**（"不是 QQ 表情，是普通图片"）
+- 只有主人私聊里明确说了「收藏/存起来」才例外（`_collect_intent`）
+- 表情内部再挑：`kind` 是 screenshot/poster/photo/group_photo/qr/ad → 不收；
+  `style=text`（纯文字图）→ 不收；实拍/真人风格要 `fun >= 8` 才收；`fun < 4` 不收；
+  长边 > 1600px（长的不像表情）→ 不收
+- 识图整个失败：是表情元素（sub_type=1）就先收下，普通图片直接不收
+- 入库时把识图结论（`kind/style/fun/src`）一起存进 index.json，方便事后审计
+
+识图提示词（`VISION_RULES`）也重写了：kind 增加 cartoon/photo/group_photo/poster，
+新增 style（cartoon|real|text|mixed）、fun（0~10 有趣度）、cartoon 字段，
+并写明"从严判，拿不准就 fun 打低、worth 判 false——收错要主人手动删，比漏收麻烦"。
+
+### 审核 / 清理面板：`qqbot-sticker audit`
+
+- `qqbot-sticker faceinfo`：列出面板每张表情的 `emoji_id / md5 / 备注`
+- `qqbot-sticker audit`：逐张识图复判（走上面的新规则），结果写 `data/sticker_audit.json`，
+  并在屏幕上列出"建议删掉"的（含 emoji_id）
+- `qqbot-sticker rmface <emoji_id>[,<emoji_id>...]`：**从 QQ 收藏面板删掉**（真删，
+  删完跑 `qqbot-sticker mirror`，`reconcile_deletions` 会把本地也清掉，并备份到 `_rejected/`）
+- 面板 ↔ 本地配对靠 **md5**（面板 `fetch_custom_face_detail` 返回的 md5 和本地文件一致），精确到张
+
+> 说明：`audit` 只"给建议"，不自己删——删面板是不可逆的对外动作，决定权留给人。
+> 识图对"实拍梗图"会误判（把熊猫头、化学梗判成 photo），所以建议删的清单要人再扫一眼。
