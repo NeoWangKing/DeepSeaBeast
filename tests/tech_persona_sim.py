@@ -45,12 +45,22 @@ cfg = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
 print("== 全局身份：不管哪个人格，都是「灵其啊的朋友」 ==")
 for _key, _who in (("869622030", "闲聊群"), ("966812151", "工具群"),
                    ("1105410423", "技术群"), ("p:287383512", "私聊")):
-    _t, _m = promptlib.build_system_prompt(
+    _t, _mm = promptlib.build_system_prompt(
         plugin_dir=ROOT, cfg=cfg, chat_key=_key, private=_key.startswith("p:"),
         caps={"vision": True, "search": True, "kb": True,
               "tools_text": "- send_message：发言", "tools_send": True})
-    ck("%s 人格也认「灵其啊的朋友」" % _who, "灵其啊的朋友" in _t, _m["persona"])
-    ck("%s 人格仍保留「普通群友」底色" % _who, "混在 QQ 群里的普通群友" in _t)
+    ck("%s 人格也认「灵其啊的朋友」" % _who, "灵其啊的朋友" in _t, _mm["persona"])
+    ck("%s 人格保留「普通群友」底色" % _who, "混在 QQ 群里的普通群友" in _t)
+_tool_card = open(os.path.join(ROOT, "prompts", "system_prompt_tool.txt"), encoding="utf-8").read()
+ck("豹群卡写明「灵其啊的朋友」", "灵其啊的朋友" in _tool_card)
+ck("豹群卡严格规则没被动（只 @ 才说 / 不玩梗 / 不假装是人）",
+   ("你只在被 @ 的时候说话" in _tool_card) and ("不玩梗" in _tool_card) and ("不假装是人" in _tool_card))
+_tb, _mb2 = promptlib.build_system_prompt(
+    plugin_dir=ROOT, cfg=cfg, chat_key="966812151", private=False,
+    caps={"vision": True, "search": True, "kb": True,
+          "tools_text": "- send_message：发言", "tools_send": True})
+ck("豹群提示词同时含身份与严格语气",
+   ("灵其啊的朋友" in _tb) and ("不假装是人" in _tb) and ("完全不玩梗" in _tb))
 
 print("== 按人格禁用行为段 ==")
 _ctx = {"plugin_dir": ROOT, "prompts_dir": ROOT, "cfg": cfg, "persona": "personas/project_assistant.txt",
