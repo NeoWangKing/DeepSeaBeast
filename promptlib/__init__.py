@@ -35,6 +35,7 @@ def build_system_prompt(*, plugin_dir: str, cfg: dict, chat_key: str = "",
         "bot_name": bot_name or pcfg.get("bot_name") or "小鲸鱼",
         "participation": pcfg.get("participation") or "normal",
         "sticker_level": (cfg.get("stickers") or {}).get("encourage", 1),
+        "persona": persona_src or "",
         "caps": caps or {},
     }
     behavior = build_behavior(ctx)

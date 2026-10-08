@@ -564,3 +564,61 @@ Katowice · $1,000,000 等）。Liquipedia 也一并受益（以前直连 406，
 - 日志：`对话延续：他接着说（隔 18s）→ 放行（本小时 3/12）`
 
 回归：`tests/continuation_sim.py`（10 条判定用例 + 接线断言）；全量 11 个离线测试通过。
+
+## 技术助手人格 project_assistant（2026-10-08 建好，暂未启用）
+
+需求：给项目做一张"技术助手"人格卡——只认 @、有上下文记忆、发言严谨讲逻辑、不玩梗、
+每个群有自己独立的资料库（可以是整个 GitHub 仓库）。
+
+### 怎么启用（三步）
+
+```jsonc
+// config.json
+"prompt_by_group": { "<群号>": "project_assistant.txt" },     // ① 这个群用人格卡
+"only_at_groups": ["<群号>"],                                  // ② 只 @ 才回（这个键早就有了）
+"record_at_only_groups": ["<群号>"],                           // ③ 只把"@她的 + 她自己说的"记成上下文
+"prompt": {
+  "disable_sections_by_persona": {                             // ④ 按人格关掉不合风格的段落
+    "project_assistant.txt": ["sticker_rules", "subjectivity", "anti_ai"]
+  }
+},
+"kb": {
+  "scope_by_group":   { "<群号>": "<资料库域>" },               // ⑤ 每个群用自己的资料库
+  "scope_by_persona": { "project_assistant.txt": "<资料库域>" } //    （群没配就按人格给）
+}
+```
+
+### 资料库分域 + 收仓库
+
+```bash
+# 把一个 GitHub 仓库（或本地目录）收进资料库，落到 data/kb/<域>/
+python3 tools/kb_import_repo.py https://github.com/user/repo myproj
+python3 tools/kb_import_repo.py --list        # 看有哪些域
+python3 tools/kb_import_repo.py --rm myproj   # 删掉某个域
+python3 -c "import kb; kb.build_all()"        # 重建所有域索引（导入时已自动建过一次）
+```
+
+- 域 = `data/kb/<域名>/`，里面放一个 `_scope.json` 做标记；**默认域（就是原来那些散文件）
+  会自动跳过所有子域**，所以老资料不会被串进项目域，反之亦然
+- 域内除了 md/txt，还会索引常见代码/配置后缀（.py/.ts/.go/.rs/.json/.yaml…），
+  问她"这个函数在哪、怎么实现的"就能翻到源码
+- 导入会跳过 node_modules/.git/dist/二进制/大于 400KB 的文件，单仓库最多 3000 个文件
+- 检索隔离靠 `kb.search(..., scope=...)`；顺手修了一个真 bug：索引缓存原来是**全局单槽**，
+  两个域在同一秒内建索引会互相串味（现在按域缓存）
+
+### 这套人格的开关（生效后）
+
+| 行为 | 靠什么 |
+|---|---|
+| 只在被 @ 时回 | `only_at_groups`（既有机制） |
+| 只记 @她的 + 她自己的话 | `record_at_only_groups`（本次新增） |
+| 不玩梗/不用表情包 | 人格卡 + `disable_sections_by_persona` 关掉 `sticker_rules` 等段落 |
+| 严谨/讲来源 | 人格卡正文（要求标注文件名/函数名，不确定就说不确定） |
+| 有上下文记忆 | 与其他人格共用记忆与上下文机制（本次把上下文预算也放宽了） |
+| 独立资料库 | `kb.scope_by_group` / `kb.scope_by_persona` + `tools/kb_import_repo.py` |
+
+### 验证
+
+`tests/tech_persona_sim.py`（人格卡内容、按人格关段、分域隔离与检索、导入工具接线、只记 @ 的接线）
+＋ 端到端脚本验证过：人格解析 → 关段生效（7967→6880 字）、假仓库导入（跳过 node_modules/二进制）、
+按群/按人格取域、非 @ 消息不进上下文。全部 13 个脚本测试 + 冒烟测试通过。

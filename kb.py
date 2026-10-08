@@ -32,13 +32,47 @@ def _tok(s: str) -> list:
     return out
 
 
-def _files() -> list:
+DOC_EXTS = (".md", ".txt", ".markdown")
+CODE_EXTS = (".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml", ".toml", ".ini",
+             ".cfg", ".conf", ".go", ".rs", ".java", ".kt", ".c", ".h", ".cpp", ".hpp", ".cs",
+             ".rb", ".php", ".sh", ".sql", ".html", ".css", ".vue", ".svelte", ".gradle",
+             ".properties", ".env", ".proto", ".lua", ".swift", ".mm")
+SKIP_DIRS = (".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea",
+             ".vscode", "target", "vendor", "site-packages")
+
+
+def scope_dir(scope: str = "") -> str:
+    """域目录：scope 为空 → 默认域（data/kb 本身）。"""
+    s = str(scope or "").strip()
+    return os.path.join(DATA, s) if s else DATA
+
+
+def is_scope_dir(path: str) -> bool:
+    return os.path.isfile(os.path.join(path, "_scope.json"))
+
+
+def _index_path(scope: str = "") -> str:
+    """默认域用老的 data/kb/_index.json；子域把索引放自己目录里。"""
+    s = str(scope or "").strip()
+    return os.path.join(scope_dir(s), "_index.json") if s else INDEX
+
+
+def _files(scope: str = "") -> list:
+    """列出该域要索引的文件。默认域跳过所有子域目录，避免混在一起。"""
+    s = str(scope or "").strip()
+    root = scope_dir(s)
+    exts = DOC_EXTS + (CODE_EXTS if s else ())
     out = []
-    for root, _dirs, files in os.walk(DATA):
+    for cur, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs
+                   if d not in SKIP_DIRS and not (not s and is_scope_dir(os.path.join(cur, d)))]
         for f in files:
-            if f.startswith("_") or os.path.splitext(f)[1].lower() not in (".md", ".txt", ".markdown"):
+            if f.startswith("_"):
                 continue
-            out.append(os.path.join(root, f))
+            ext = os.path.splitext(f)[1].lower()
+            if ext not in exts and f.lower() not in ("dockerfile", "makefile", "readme", "license"):
+                continue
+            out.append(os.path.join(cur, f))
     return sorted(out)
 
 
@@ -60,9 +94,9 @@ def _chunks(text: str, source: str) -> list:
     return [{"source": source, "text": c} for c in out]
 
 
-def build(verbose: bool = True) -> dict:
+def build(scope: str = "", verbose: bool = True) -> dict:
     chunks, df = [], {}
-    for path in _files():
+    for path in _files(scope):
         try:
             text = open(path, encoding="utf-8", errors="ignore").read()
         except Exception:
@@ -87,33 +121,37 @@ def build(verbose: bool = True) -> dict:
         norm = math.sqrt(sum(x * x for x in vec.values())) or 1.0
         c["vec"] = {k: v / norm for k, v in vec.items()}
         c.pop("tf", None)
-    os.makedirs(DATA, exist_ok=True)
-    tmp = INDEX + ".tmp"
+    _idx = _index_path(scope)
+    os.makedirs(os.path.dirname(_idx), exist_ok=True)
+    tmp = _idx + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"built_at": int(time.time()), "files": len(_files()), "chunks": chunks},
+        json.dump({"built_at": int(time.time()), "files": len(_files(scope)), "chunks": chunks},
                   f, ensure_ascii=False)
-    os.replace(tmp, INDEX)
-    info = {"files": len(_files()), "chunks": len(chunks)}
+    os.replace(tmp, _idx)
+    info = {"files": len(_files(scope)), "chunks": len(chunks)}
     if verbose:
         print("[kb] 建索引完成：%d 个文件 / %d 块" % (info["files"], info["chunks"]))
     return info
 
 
-_cache = {"mtime": None, "data": None}
+_cache = {}          # 按域缓存：{scope: {mtime, data}}
 
 
-def _load() -> dict:
+def _load(scope: str = "") -> dict:
+    key = str(scope or "")
     try:
-        mt = os.path.getmtime(INDEX)
+        mt = os.path.getmtime(_index_path(key))
     except Exception:
         return {"chunks": []}
-    if _cache["mtime"] != mt:
+    slot = _cache.get(key) or {}
+    if slot.get("mtime") != mt:
         try:
-            _cache["data"] = json.load(open(INDEX, encoding="utf-8"))
+            data = json.load(open(_index_path(key), encoding="utf-8"))
         except Exception:
-            _cache["data"] = {"chunks": []}
-        _cache["mtime"] = mt
-    return _cache["data"] or {"chunks": []}
+            data = {"chunks": []}
+        slot = {"mtime": mt, "data": data}
+        _cache[key] = slot
+    return slot.get("data") or {"chunks": []}
 
 
 _STOP_TOPIC = {"md", "news", "cs", "the", "and", "的", "了"}
@@ -135,7 +173,7 @@ def _file_topic(source: str, text: str) -> set:
     return out
 
 
-def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
+def search(query: str, top_k: int = 3, min_score: float = 0.08, scope: str = "") -> list:
     """按相关度取几块资料。返回 [{source, text, score}]。"""
     toks = _tok(query)
     # 疑问/泛化词不参与打分：不然"原神圣遗物怎么刷"会被含"怎么"的其他资料挤掉
@@ -146,7 +184,7 @@ def search(query: str, top_k: int = 3, min_score: float = 0.08) -> list:
         toks = _keep
     if not toks:
         return []
-    d = _load()
+    d = _load(scope)
     chunks = d.get("chunks") or []
     if not chunks:
         return []
@@ -254,3 +292,25 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def build_all(verbose: bool = True) -> dict:
+    """重建默认域 + 所有子域索引（子域 = 带 _scope.json 的目录）。"""
+    out = {}
+    try:
+        out["default"] = build("", verbose)
+    except Exception as e:
+        out["default"] = {"error": str(e)[:80]}
+    try:
+        subs = [d for d in sorted(os.listdir(DATA))
+                if os.path.isdir(os.path.join(DATA, d)) and is_scope_dir(os.path.join(DATA, d))]
+    except Exception:
+        subs = []
+    for s in subs:
+        try:
+            out[s] = build(s, verbose)
+        except Exception as e:
+            out[s] = {"error": str(e)[:80]}
+    if verbose:
+        print("[kb] 全部域重建完成：%s" % out)
+    return out

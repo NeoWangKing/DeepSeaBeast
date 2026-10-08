@@ -316,6 +316,22 @@ class QqPeakGate(Star):
             lines = 6
         if self._in("no_context_groups", gid):
             return                                # 该群不记上下文
+        if self._in("record_at_only_groups", gid):
+            # 这些群只记「@她 / 叫她名字」的内容（她自己的话另走 _remember_bot_line）
+            _hit = False
+            try:
+                _hit = self._at_me(event)
+                if not _hit:
+                    _kws = [k for k in (self.cfg.get("keywords") or []) if k]
+                    _nk = str(getattr(self, "_nick", "") or "")
+                    if _nk:
+                        _kws.append(_nk)
+                    _t0 = str(text or "")
+                    _hit = any(k and k in _t0 for k in _kws)
+            except Exception:
+                _hit = False
+            if not _hit:
+                return
         buf = self.recent.get(gid)
         if buf is None:
             buf = deque(maxlen=max(2, lines))
@@ -1459,6 +1475,22 @@ class QqPeakGate(Star):
             self._ensure_wake_timer()
         except Exception as e:
             self._log_debug("未完成事项定唤醒失败 %r" % (e,))
+
+    def _kb_scope(self, key: str, persona: str = "") -> str:
+        """这个会话该用哪个资料库域：kb.scope_by_group 优先，其次 kb.scope_by_persona。"""
+        try:
+            _kcfg = self.cfg.get("kb") or {}
+            _g = _kcfg.get("scope_by_group") or {}
+            if str(key) in [str(x) for x in _g.keys()]:
+                return str(_g.get(str(key)) or "")
+            _p2 = _kcfg.get("scope_by_persona") or {}
+            _p = str(persona or "")
+            for _k in (_p, os.path.basename(_p)):
+                if _k and _k in _p2:
+                    return str(_p2.get(_k) or "")
+        except Exception:
+            pass
+        return ""
 
     def _search_on(self) -> bool:
         """联网搜索开关（config: search.enabled）。"""
@@ -2675,8 +2707,10 @@ class QqPeakGate(Star):
             if _kcfg.get("enabled", True) and not private:
                 _q = " ".join([str(getattr(event, "message_str", "") or "")] +
                               [x[1] for x in list(self.recent.get("" if key.startswith("p:") else key) or [])[-3:]])
-                _hits = local_kb.search(_q, int(_kcfg.get("top_k", 3) or 3),
-                                        float(_kcfg.get("min_score", 0.08) or 0.08))
+                _scope_kb = self._kb_scope(key, str((_meta or {}).get("persona") or ""))
+                _hits = local_kb.search(_q, int(_kcfg.get("top_k", 4) or 4),
+                                        float(_kcfg.get("min_score", 0.06) or 0.06),
+                                        scope=_scope_kb)
                 try:
                     _kb_top = max([float(h.get("score") or 0.0) for h in (_hits or [])] or [0.0])
                 except Exception:
@@ -2692,8 +2726,10 @@ class QqPeakGate(Star):
                     if _buf:
                         system_prompt += ("\n\n【本地资料库（可能和当前话题有关；自然的时候用上，"
                                           "别照抄、别提\"资料库\"三个字）】\n" + "\n\n".join(_buf))
-                        self._log("loop 资料库：注入 %d 块（%s）"
-                                  % (len(_buf), "、".join(str(_h.get("source")) for _h in _hits[:len(_buf)])))
+                        self._log("loop 资料库：注入 %d 块（%s）%s"
+                                  % (len(_buf),
+                                     "、".join(str(_h.get("source")) for _h in _hits[:len(_buf)]),
+                                     ("｜域=%s" % _scope_kb) if _scope_kb else ""))
         except Exception as _ek:
             self._log_debug("loop 资料库注入失败 %r" % (_ek,))
         # 记忆块（群印象/人物档案）也带进 loop 的提示词
@@ -3673,8 +3709,10 @@ class QqPeakGate(Star):
                 if _kcfg.get("enabled", True) and not private:
                     _q = " ".join([str(event.message_str or "")] +
                                   [x[1] for x in list(self.recent.get(gid) or [])[-3:]])
-                    _hits = local_kb.search(_q, int(_kcfg.get("top_k", 3) or 3),
-                                            float(_kcfg.get("min_score", 0.14) or 0.14))
+                    _scope_kb2 = self._kb_scope(gid, str((_meta or {}).get("persona") or ""))
+                    _hits = local_kb.search(_q, int(_kcfg.get("top_k", 4) or 4),
+                                            float(_kcfg.get("min_score", 0.06) or 0.06),
+                                            scope=_scope_kb2)
                     if _hits:
                         _buf, _cap, _used = [], int(_kcfg.get("max_chars", 900) or 900), 0
                         for _h in _hits:

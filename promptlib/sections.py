@@ -339,6 +339,18 @@ def build_behavior(ctx: dict) -> str:
     if isinstance(disabled, dict):
         disabled = [k for k, v in disabled.items() if not v]
     disabled = {str(x) for x in disabled}
+    # 按人格禁用段落：prompt.disable_sections_by_persona: {"project_assistant.txt": ["sticker_rules", …]}
+    # 注意 ctx["persona"] 可能是 "prompt_by_group:project_assistant.txt" 这种来源串，所以用"包含"匹配
+    try:
+        _map = pcfg.get("disable_sections_by_persona") or {}
+        _p = str(ctx.get("persona") or "")
+        _pbase = os.path.basename(_p.split(":")[-1])
+        for _k, _v in _map.items():
+            _k = str(_k)
+            if _k and (_k == _p or _k == _pbase or _k in _p):
+                disabled |= {str(x) for x in (_v or [])}
+    except Exception:
+        pass
     prompts_dir = ctx.get("prompts_dir") or ""
     parts = []
     for sid, fn in SECTIONS:

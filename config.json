@@ -240,7 +240,9 @@
     "persona_patch": "personas/_common_patch.txt",
     "persona_patch_by_group": {},
     "disable_sections": [],
-    "extra": ""
+    "extra": "",
+    "disable_sections_by_persona": {},
+    "prompt_by_group": {}
   },
   "agent": {
     "enabled": true,
@@ -291,7 +293,9 @@
     "enabled": true,
     "top_k": 4,
     "min_score": 0.06,
-    "max_chars": 1500
+    "max_chars": 1500,
+    "scope_by_group": {},
+    "scope_by_persona": {}
   },
   "poke_reply": {
     "enabled": true,
@@ -325,5 +329,6 @@
     "mine_lines": 10,
     "mine_chars": 60,
     "memory_notes": 20
-  }
+  },
+  "record_at_only_groups": []
 }

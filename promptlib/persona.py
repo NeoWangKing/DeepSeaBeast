@@ -51,6 +51,7 @@ def pick_file(plugin_dir: str, cfg: dict, chat_key: str = "", private: bool = Fa
     pcfg = cfg.get("prompt") or {}
 
     for _src, _map in (("persona_by_group", pcfg.get("persona_by_group") or {}),
+                       ("prompt_by_group", pcfg.get("prompt_by_group") or {}),
                        ("prompt_by_group", cfg.get("prompt_by_group") or {})):
         if not isinstance(_map, dict):
             continue
