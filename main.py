@@ -1552,11 +1552,19 @@ class QqPeakGate(Star):
                         self._log_debug("关机确认发送失败 %r" % (_es,))
                     return False
                 return True
-            # 未激活：只有主人 @ 才能唤醒（那条消息照常回答，等于"开机"）
+            # 未激活：只有主人 @ 才能唤醒（先回一句"已激活"，再照常回答这条）
             if _owner and self._at_me(event):
                 self._group_set_active(gid, True, str(event.get_sender_id() or ""))
                 self._log("群 %s：主人 @她 → 激活%s"
                           % (gid, "（开机命令）" if agent.activation.is_on_command(text) else ""))
+                try:
+                    import random as _r2
+                    _oline = _r2.choice(_cfg.get("on_lines") or ["DeepSeaBeast 已激活"])
+                    await event.send(MessageChain([Plain(_oline)]))
+                    self._remember_bot_line(event, _oline)
+                    self._log("群 %s：已回激活语「%s」" % (gid, _oline))
+                except Exception as _eo:
+                    self._log_debug("激活语发送失败 %r" % (_eo,))
                 return True
             self._log_debug("群 %s 未激活（等主人 @）→ 忽略这条" % gid)
             return False

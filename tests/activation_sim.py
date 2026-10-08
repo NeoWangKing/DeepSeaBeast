@@ -91,13 +91,14 @@ else:
     ck("未激活群 + 非主人 @ → 忽略", asyncio.run(o._group_ready("777888999", _e1, _e1.message_str)) is False)
     _e2 = Ev("随便聊聊", uid="999", at=False)
     ck("未激活群 + 别人闲聊 → 忽略", asyncio.run(o._group_ready("777888999", _e2, _e2.message_str)) is False)
-    _e3 = Ev("@你 帮我看看这个函数", uid="3245938285", at=True)     # 主人 @ → 激活
+    _e3 = Ev("@你 自我介绍一下", uid="3245938285", at=True)        # 主人 @ → 先回激活语再放行
     ck("未激活群 + 主人 @ → 激活并放行", asyncio.run(o._group_ready("777888999", _e3, _e3.message_str)) is True)
+    ck("先回了「DeepSeaBeast 已激活」", "DeepSeaBeast 已激活" in (_e3.sent or []), _e3.sent)
     ck("状态已写入（已激活）", o._group_active("777888999"))
     _e4 = Ev("来 @你 关机", uid="3245938285", at=True)             # 主人说关机
     ck("主人说关机 → 吞掉这条", asyncio.run(o._group_ready("777888999", _e4, "关机")) is False)
     ck("状态已写回未激活", not o._group_active("777888999"))
-    ck("回了一句关机确认", bool([x for x in _e4.sent if x.strip()]), _e4.sent)
+    ck("关机确认语是「DeepSeaBeast 已关机」", "DeepSeaBeast 已关机" in (_e4.sent or []), _e4.sent)
     _e5 = Ev("又来闲聊", uid="999", at=False)
     ck("再回到未激活：闲聊仍被忽略", asyncio.run(o._group_ready("777888999", _e5, _e5.message_str)) is False)
     _e6 = Ev("", uid="3245938285", at=True)
