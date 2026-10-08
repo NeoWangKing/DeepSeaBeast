@@ -815,14 +815,31 @@ def fetch_face_detail(uin: str = "", count: int = 300) -> list:
 
 
 def delete_face(emoji_id: str, uin: str = "") -> bool:
-    """从那个 QQ 号的收藏面板删掉一张表情。"""
-    if not str(emoji_id or "").strip():
+    """从那个 QQ 号的收藏面板删掉一张表情。
+
+    注意：delete_custom_face 成功时 data 是空的（panel() 会返回 {} → 看着像失败），
+    所以删完要**复核**面板列表里那张是不是真没了。
+    """
+    eid = str(emoji_id or "").strip()
+    if not eid:
         return False
-    return bool(panel("delete_custom_face", {"emoji_id": str(emoji_id)}, uin))
+    panel("delete_custom_face", {"emoji_id": eid}, uin)
+    try:
+        left = {f.get("emoji_id") for f in fetch_face_detail(uin, 300)}
+        if left:
+            return eid not in left
+    except Exception:
+        pass
+    return False
 
 
 def face_pairs(uin: str = "", count: int = 300) -> dict:
-    """本地库 ↔ 面板配对：{md5: {"local": item|None, "face": detail}}。"""
+    """本地库 ↔ 面板配对：{md5: {"local": item|None, "face": detail}}。
+
+    用 md5 精确配对（面板返回的 md5 就是原图 md5，实测 55/55 全中）。
+    QQ 偶尔会重编码导致 md5 不同——那种情况 reconcile_deletions 会用 aHash 兜底，
+    这里不重算 aHash（省一次全量下载）。
+    """
     import hashlib
     faces = fetch_face_detail(uin, count)
     by_md5 = {}
