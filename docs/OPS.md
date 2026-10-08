@@ -697,3 +697,37 @@ DeepSeaBeast 已关机        ← 固定文案（activation.off_lines）
 ```
 
 后续：等用户给仓库地址，用 `python3 tools/kb_import_repo.py <仓库> denial` 导进这个域（README/文档/代码一起可检索）。
+
+### 已导入：Denial 仓库（2026-10-08）
+
+域名 `denial`（= Denial 社区群 1105410423 专属），来源 `https://github.com/denialwm/denial` @ `c56aa2d`：
+
+```
+收进资料库 1227 个文件（跳过 45 个二进制/超大）→ 建索引 1210 文件 / 18497 块 / 3.1s
+域内占用 41MB（文本 + 索引）
+```
+
+检索验证（`kb.search(..., scope="denial")`）：
+
+| 问法 | 命中 |
+|---|---|
+| 窗口规则 window rule | `compositor/src/bin/deniald/wayland_*.rs`（0.20） |
+| 合成器 compositor 架构 | `native_s*`、`cpu_sche*`、`compositor/README.md` |
+| 毛玻璃 blur 效果 | `packages/denial_flutter_sdk/lib/src/...` |
+| 安装/构建 nix | `tools/denial-nix`、`nix/plugin-build-kit.nix` |
+| 明日方舟（应无） | 空 ✓（游戏资料没串进来；默认域仍是 13 文件） |
+
+查询延迟 ~0.1s（首查 0.7s 冷缓存）；KB 注入仍受 `top_k=4 / max_chars=1500` 限制，
+**仓库再大也不会撑爆提示词**。
+
+顺手两个工具升级（这仓库逼出来的）：
+
+1. **资料库域改成"非二进制就收"**（`kb.BINARY_EXTS` 黑名单）：原来只认白名单后缀，
+   而 Denial 是 Dart+Nix —— `.dart`/`.nix` 都不在名单里，照旧规则导进去几乎是空的。
+   默认域仍是老规则（只收 md/txt），不受影响。
+2. **GitHub 导入走 tarball + 加速镜像**（`tools/kb_import_repo.py`）：直连 GitHub 在本机被限速到
+   ~25KB/s（29MB 要半小时），镜像 `gh-proxy.com` 实测 1.6MB/s（28MB 用 85s）；
+   代码里按 `gh-proxy.com → ghfast.top → 直连 → git clone` 顺序回退。
+
+> 以后要再导仓库：`python3 tools/kb_import_repo.py <地址> <域名>`；
+> 某个群要用某个域：`kb.scope_by_group: {"<群号>": "<域名>"}`。

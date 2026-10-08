@@ -34,9 +34,21 @@ def _tok(s: str) -> list:
 
 DOC_EXTS = (".md", ".txt", ".markdown")
 CODE_EXTS = (".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml", ".toml", ".ini",
-             ".cfg", ".conf", ".go", ".rs", ".java", ".kt", ".c", ".h", ".cpp", ".hpp", ".cs",
-             ".rb", ".php", ".sh", ".sql", ".html", ".css", ".vue", ".svelte", ".gradle",
-             ".properties", ".env", ".proto", ".lua", ".swift", ".mm")
+             ".cfg", ".conf", ".go", ".rs", ".java", ".kt", ".kts", ".c", ".h", ".cpp", ".hpp",
+             ".cs", ".rb", ".php", ".sh", ".bash", ".sql", ".html", ".css", ".scss", ".vue",
+             ".svelte", ".gradle", ".properties", ".env", ".proto", ".lua", ".swift", ".mm",
+             ".dart", ".nix", ".zig", ".mjs", ".cjs", ".ex", ".exs", ".erl", ".hs", ".scala",
+             ".groovy", ".pl", ".r", ".jl", ".tf", ".hcl", ".cmake", ".mk", ".bzl", ".mdx",
+             ".rst", ".adoc", ".json5", ".jsonc", ".tex", ".vim", ".el", ".fish", ".ps1",
+             ".bat", ".cmd", ".asm", ".s", ".v", ".sv", ".vhd")
+# 明确是二进制的后缀（导入仓库时按"不是二进制就收"来筛，免得漏掉冷门语言）
+BINARY_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svgz", ".pdf",
+               ".zip", ".gz", ".tgz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".tar",
+               ".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp3", ".ogg", ".wav", ".flac",
+               ".mp4", ".webm", ".mov", ".avi", ".mkv", ".so", ".dylib", ".dll", ".exe",
+               ".bin", ".o", ".a", ".rlib", ".class", ".jar", ".pyc", ".pyo", ".wasm",
+               ".ttc", ".pfb", ".psd", ".ai", ".sketch", ".blend", ".fbx", ".glb", ".db",
+               ".sqlite", ".sqlite3", ".lock", ".snap", ".img", ".iso", ".deb", ".rpm")
 SKIP_DIRS = (".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea",
              ".vscode", "target", "vendor", "site-packages")
 
@@ -61,17 +73,22 @@ def _files(scope: str = "") -> list:
     """列出该域要索引的文件。默认域跳过所有子域目录，避免混在一起。"""
     s = str(scope or "").strip()
     root = scope_dir(s)
-    exts = DOC_EXTS + (CODE_EXTS if s else ())
     out = []
     for cur, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs
                    if d not in SKIP_DIRS and not (not s and is_scope_dir(os.path.join(cur, d)))]
         for f in files:
-            if f.startswith("_"):
+            if f.startswith("_") or f.lower() in ("license", "licenses", "notice"):
                 continue
             ext = os.path.splitext(f)[1].lower()
-            if ext not in exts and f.lower() not in ("dockerfile", "makefile", "readme", "license"):
-                continue
+            if s:
+                # 子域（仓库）：不是二进制就收 —— 免得仓库主语言不在白名单时导进去是空的
+                if ext in BINARY_EXTS:
+                    continue
+            else:
+                # 默认域保持老规则：只收文档类
+                if ext not in DOC_EXTS and f.lower() not in ("dockerfile", "makefile", "readme"):
+                    continue
             out.append(os.path.join(cur, f))
     return sorted(out)
 

@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,13 +49,14 @@ def _scopes() -> list:
 
 
 def _iter_files(root: str):
-    exts = KB.DOC_EXTS + KB.CODE_EXTS
+    """非二进制的文本文件都收（仓库主语言可能是冷门的，白名单会漏）。"""
     for cur, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in KB.SKIP_DIRS and not d.startswith(".")]
         for f in files:
+            if f.lower() in ("license", "licenses", "notice"):
+                continue
             p = os.path.join(cur, f)
-            ext = os.path.splitext(f)[1].lower()
-            if ext not in exts and f.lower() not in ("dockerfile", "makefile", "readme", "license"):
+            if os.path.splitext(f)[1].lower() in KB.BINARY_EXTS:
                 continue
             try:
                 if os.path.getsize(p) > MAX_FILE:
@@ -84,6 +86,73 @@ def _texty(path: str) -> bool:
             return False
 
 
+# GitHub 下载用的加速镜像（按顺序试；空字符串 = 走官方 codeload）
+MIRRORS = ("https://gh-proxy.com/", "https://ghfast.top/", "")
+
+
+def _gh_parts(url: str):
+    """https://github.com/OWNER/REPO(.git) → (owner, repo)，不是 GitHub 就返回 None。"""
+    u = str(url or "").strip().rstrip("/")
+    for pre in ("https://github.com/", "http://github.com/", "git@github.com:"):
+        if u.startswith(pre):
+            u = u[len(pre):]
+            break
+    else:
+        return None
+    u = u.removesuffix(".git")
+    parts = [x for x in u.split("/") if x]
+    return (parts[0], parts[1]) if len(parts) >= 2 else None
+
+
+def _gh_api(path: str, timeout: int = 20) -> dict:
+    try:
+        req = urllib.request.Request("https://api.github.com" + path,
+                                     headers={"User-Agent": UA, "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8", "ignore") or "{}")
+    except Exception:
+        return {}
+
+
+def _fetch_tarball(repo: str, dst_dir: str, verbose: bool = True) -> str:
+    """下 GitHub 仓库 tarball 并解包。返回解包出来的目录（失败返回空串）。"""
+    gp = _gh_parts(repo)
+    if not gp:
+        return ""
+    owner, name = gp
+    meta = _gh_api("/repos/%s/%s" % (owner, name))
+    branch = str(meta.get("default_branch") or "main")
+    sha = ""
+    try:
+        ref = _gh_api("/repos/%s/%s/commits/%s" % (owner, name, branch))
+        sha = str((ref.get("sha") or ""))[:7]
+    except Exception:
+        sha = ""
+    tgz = os.path.join("/tmp", "dsb-kb-%s.tar.gz" % name)
+    url_path = "https://codeload.github.com/%s/%s/tar.gz/refs/heads/%s" % (owner, name, branch)
+    for mir in MIRRORS:
+        url = mir + url_path if mir else url_path
+        try:
+            if verbose:
+                print("  下载（%s）…" % (mir or "直连 GitHub"))
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=300) as r, open(tgz, "wb") as f:
+                shutil.copyfileobj(r, f, 256 * 1024)
+            if os.path.getsize(tgz) < 1024:
+                continue
+            if os.path.isdir(dst_dir):
+                shutil.rmtree(dst_dir, ignore_errors=True)
+            os.makedirs(dst_dir, exist_ok=True)
+            r2 = subprocess.run(["tar", "xzf", tgz, "-C", dst_dir, "--strip-components=1"],
+                                capture_output=True, timeout=600)
+            if r2.returncode == 0 and os.listdir(dst_dir):
+                return dst_dir + "|" + sha
+        except Exception as e:
+            if verbose:
+                print("  这个源不行：%r" % (str(e)[:80],))
+    return ""
+
+
 def import_repo(repo: str, scope: str = "", verbose: bool = True) -> dict:
     scope = str(scope or "").strip() or os.path.basename(str(repo).rstrip("/")).replace(".git", "")
     if not scope or scope.startswith("/"):
@@ -93,13 +162,21 @@ def import_repo(repo: str, scope: str = "", verbose: bool = True) -> dict:
     is_url = str(repo).startswith(("http://", "https://", "git@"))
     try:
         if is_url:
-            if os.path.isdir(tmp):
-                shutil.rmtree(tmp, ignore_errors=True)
-            subprocess.run(["git", "clone", "--depth", "1", str(repo), tmp],
-                           check=True, capture_output=True, timeout=600)
-            src_dir = tmp
-        commit = (subprocess.run(["git", "-C", src_dir, "rev-parse", "--short", "HEAD"],
-                                 capture_output=True, text=True).stdout or "").strip()
+            # 先试 tarball（可挂镜像，快得多）；不行再退 git clone
+            got = _fetch_tarball(str(repo), tmp, verbose)
+            if got:
+                src_dir, commit = got.split("|", 1)
+            if not got:
+                if os.path.isdir(tmp):
+                    shutil.rmtree(tmp, ignore_errors=True)
+                if verbose:
+                    print("  回退 git clone …")
+                subprocess.run(["git", "clone", "--depth", "1", str(repo), tmp],
+                               check=True, capture_output=True, timeout=1800)
+                src_dir = tmp
+        if not commit:
+            commit = (subprocess.run(["git", "-C", src_dir, "rev-parse", "--short", "HEAD"],
+                                     capture_output=True, text=True).stdout or "").strip()
     except Exception as e:
         if verbose:
             print("!! 取仓库失败：%r" % (e,))
