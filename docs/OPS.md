@@ -487,3 +487,29 @@ Katowice · $1,000,000 等）。Liquipedia 也一并受益（以前直连 406，
    **接着做完再回**，禁止答「说什么/忘了/刚在忙」
 
 回归：`tests/pending_sim.py`（新鲜度、提示词片段、落盘结构、接线断言）
+
+## 二游官网清单（2026-10-08）
+
+需求：资料里补上明日方舟/终末地/原神的官网，并把主流二游官网都给她。
+
+做法：**地址全部逐个实测（curl -L 看状态码）后才写进去**，验证结果：
+- 200 可访问：ak.hypergryph.com、endfield.hypergryph.com、yuanshen.com、ys.mihoyo.com、
+  sr.mihoyo.com、zzz.mihoyo.com、bh3.mihoyo.com、wd.mihoyo.com、mc.kurogames.com、
+  zspms.kurogames.com、bluearchive-cn.com、game.bilibili.com/blhx、re.bluepoch.com、
+  gf2.sunborngame.com、wqmt.aisnogames.com、deepspace.papegames.com、
+  infinitynikki.nuanpaper.com、www.cbjq.com、ht.wanmei.com、yys.163.com、skzy.ys4fun.com、
+  game.bilibili.com/pcr、wutheringwaves.kurogames.com
+- 猜错的地址已修正：恋与深空 → deepspace.papegames.com（不是 papegames.cn）、
+  无限暖暖 → infinitynikki.nuanpaper.com、尘白禁区 → www.cbjq.com、无期迷途 → wqmt.aisnogames.com
+- 未采纳：白荆回廊（bjhl.wanmei.com 连不通）、光与夜之恋（game.qq.com/love 404）——宁缺毋滥
+
+落地位置（两处，互补）：
+1. `data/kb/games-official-sites.md`（+ 在 arknights.md / endfield.md / genshin.md 里各加了「官方渠道」）
+   → 按话题检索时注入
+2. **`skills/official_sites/SKILL.md`** → 技能索引常驻一行，问"官网/公告/渠道/在哪看"时
+   她 `use_skill("official_sites")` 展开完整清单（**不依赖 KB 排序**，实测 KB 检索"明日方舟 官网"
+   会优先命中终末地那份资料，所以这条技能是更稳的路径）
+3. 提示词/`verify` 技能同步加一句：游戏版本/活动/卡池/公告 → **先查对应官网**，
+   抓不到正文就 read_url（自动中转），再退 B站官方号/微博，并说明来源；注意发布时间取最新
+
+回归：`tests/skills_sim.py` 加了官网技能与关键域名断言；10 个离线测试全过。

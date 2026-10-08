@@ -45,5 +45,8 @@ triggers: 求证, 是不是真的, 你查一下, 最新消息, 谁赢了
   `/matches` 近期赛程、`/results` 结果、`/rankings` 排名、`/player/<id>`、`/team/<id>`。
   HLTV 国内慢、直连常被 Cloudflare 拦（403）——直接 read_url 就行，系统会自动走中转；
   还是读不到就换 Liquipedia（liquipedia.net/counterstrike）或 5EPlay，并说明你用的是哪家。
-- 游戏版本/活动 → 官方公告（如 ak.hypergryph.com）优先，其次官网 5EPlay/B站转载。
+- 游戏版本/活动/卡池/公告 → **先去对应官网**（清单见资料库【二游官方渠道速查】：明日方舟 ak.hypergryph.com、
+  终末地 endfield.hypergryph.com、原神 yuanshen.com、星铁 sr.mihoyo.com、绝区零 zzz.mihoyo.com、
+  鸣潮 mc.kurogames.com、重返未来1999 re.bluepoch.com、无期迷途、恋与深空…）；官网抓不到就走 read_url 中转，
+  再退 B站官方号/微博，并说明来源。
 - 引用时只说来源名（"HLTV 上写的"），不贴链接、不复述搜索过程。

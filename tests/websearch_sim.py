@@ -51,6 +51,19 @@ _d["t"] = time.time() - 100
 json.dump(_d, open(_p, "w", encoding="utf-8"))
 ck("过期（100 秒前写的）读不到", W._cache_get("search", "unit|1", 60) is None)
 
+print("== 二游官网清单（资料库） ==")
+_kbp = os.path.join(ROOT, "data", "kb", "games-official-sites.md")
+if os.path.isfile(_kbp):
+    _kt = open(_kbp, encoding="utf-8").read()
+    for _u in ("ak.hypergryph.com", "endfield.hypergryph.com", "yuanshen.com", "sr.mihoyo.com",
+               "zzz.mihoyo.com", "mc.kurogames.com"):
+        ck("清单含 %s" % _u, _u in _kt)
+    ck("清单写了「先看官网」", "先看对应官网的公告" in _kt)
+else:
+    print("  （资料库文件不存在，跳过——KB 内容不入库，属正常）")
+_sec_sites = open(os.path.join(ROOT, "promptlib", "sections.py"), encoding="utf-8").read()
+ck("提示词要求游戏信息先查官网", "先查对应官网" in _sec_sites)
+
 print("== 代抓回退（HLTV 这类防爬站） ==")
 _md = ("![](https://x/a.png) [**Spirit**](https://www.hltv.org/team/7020) vs Falcons\n\n"
        "| Oct 9 | 18:00 | ESL Pro League |\n" + "\n" * 3 + "· · ·")
