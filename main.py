@@ -1972,6 +1972,15 @@ class QqPeakGate(Star):
             self._log("agent：发送失败 %r" % (e,))
             return False
 
+    def _send_lock(self, key: str):
+        """同一会话的发送串行化：连续几条消息要按顺序到达（并发发会乱序）。"""
+        if not hasattr(self, "_send_locks"):
+            self._send_locks = {}
+        lk = self._send_locks.get(str(key))
+        if lk is None:
+            lk = self._send_locks[str(key)] = asyncio.Lock()
+        return lk
+
     async def _agent_send(self, target, text: str, reply_to_id: str = "",
                           at_user_id: str = "", face: str = "") -> None:
         try:
@@ -2046,7 +2055,8 @@ class QqPeakGate(Star):
                 self._log("发送口兜底：内容全是内部标记，这条不发")
                 self._fault("marker_only_text")
                 return
-            await self._transport_send(target, MessageChain(comps))
+            async with self._send_lock(str((target or {}).get("gid") or "")):
+                await self._transport_send(target, MessageChain(comps))
             self._log("agent：发出「%s」%s" % (str(text)[:40],
                                               ("＋表情%s" % "、".join(_faces)) if _faces else ""))
             try:                                   # 自己说过的也记进"最近群聊"（供上下文 + 防重复）
@@ -2079,7 +2089,8 @@ class QqPeakGate(Star):
                 img = Image(file=path)
             comps = [Reply(id=str(reply_to_id))] if reply_to_id else []
             comps.append(img)
-            await self._transport_send(target, MessageChain(comps))
+            async with self._send_lock(str((target or {}).get("gid") or "")):
+                await self._transport_send(target, MessageChain(comps))
             stickers.mark_used(it.get("id"))
             self._log("agent：发出表情 %s《%s》" % (it.get("id"), it.get("desc")))
         except Exception as e:

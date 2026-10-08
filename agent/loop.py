@@ -87,7 +87,9 @@ def run(tools, messages: list, tools_schema: list, chat_fn=None, max_rounds: int
             calls.append({"round": r, "name": name, "args": tc.get("arguments") or {}, "result": out})
             log("loop: 第 %d 轮 %s(%s) → %s" % (r, name, str(tc.get("arguments"))[:80], out[:60]))
             messages.append({"role": "tool", "tool_call_id": tc.get("id") or "", "content": out})
-        if tools.spoke or tools.finished:
+        if tools.finished:
+            # 只有 finish 才收工：允许"先说一句 → 继续查/想 → 再说"（真人就是边想边说）
+            # 边界靠 max_rounds 和 Tools 里的每轮发言上限兜着
             break
     return {"rounds": rounds, "calls": calls, "spoke": bool(tools.spoke),
             "finished": bool(tools.finished), "usage": usage}

@@ -266,7 +266,7 @@
     "rescue_text": false,
     "loop_mode": true,
     "loop_groups": [],
-    "max_rounds": 3,
+    "max_rounds": 4,
     "llm": {
       "vision_model": "deepseek-flash"
     },
@@ -284,7 +284,8 @@
     },
     "tool_profile_by_group": {
       "966812151": "lean"
-    }
+    },
+    "max_sends_per_turn": 3
   },
   "kb": {
     "enabled": true,

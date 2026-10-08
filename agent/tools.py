@@ -43,6 +43,14 @@ class Tools:
         parts = self._split(text)
         if not parts:
             return "没发：text 是空的"
+        try:                       # 每轮最多说几条（边想边说可以多条，但别刷屏）
+            _cap = int((self.cfg or {}).get("max_sends_per_turn", 3) or 3)
+        except Exception:
+            _cap = 3
+        _said = len([x for x in self.sent if x[0] == "text"])
+        if _cap and _said >= _cap:
+            return ("没发：这一轮你已经说了 %d 条了（上限 %d）——还有话就先用 ||| 并进上一条，"
+                    "不然就调 finish 收工" % (_said, _cap))
         total = sum(len(p) for p in parts)
         if total > MAX_TEXT_CHARS:
             return "没发：这条太长（%d 字），拆短一点再发" % total
@@ -60,7 +68,7 @@ class Tools:
             except Exception as e:
                 self.errors.append("send_message: %r" % (e,))
                 return "发了 %d 条后出错：%r" % (ok, e)
-        return "已发出 %d 条" % ok
+        return "已发出 %d 条（还想说/还要查就继续调工具；说完了就调 finish 收工）" % ok
 
     def send_sticker(self, sticker_id="", mood="", reply_to_id="") -> str:
         """发一张表情。给 id 就发那张；只给 mood（情绪/场景）就让她自己从收藏里挑。"""
@@ -461,6 +469,7 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
     if on("finish"):
         specs.append(("finish",
                       [{"type": "string", "name": "reason",
-                        "description": "可选：为什么这轮不发言（只写给自己看）"}],
-                      "结束本轮：只在你决定这条不发言时才调；正常聊天不要调它", "finish"))
+                        "description": "可选：为什么收工（只写给自己看）"}],
+                      "结束本轮：话已经说完（或决定这轮不发言）时调它收工；"
+                      "还要继续查/继续说就别调", "finish"))
     return specs

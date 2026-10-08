@@ -63,8 +63,54 @@ def fake_chat(msgs, schema, n=1):
 
 r = agent_loop.run(t, [{"role": "user", "content": "在吗"}], sch, chat_fn=fake_chat)
 check("一轮就说了话", r["spoke"] and sent == ["在的", "干嘛"], "%s %s" % (r, sent))
-check("说了话就收工（不再白跑一轮）", len(calls) == 1, len(calls))
-check("token 用量累计", r["usage"].get("total_tokens") == 100, r["usage"])
+check("说了话后继续跑（不再一发言就收工）", len(calls) == 2, len(calls))
+check("token 用量累计（两轮相加）", r["usage"].get("total_tokens") == 150, r["usage"])
+
+print("== 循环：边想边说（先回一句 → 去查 → 回结论 → 收工） ==")
+t5, sent5 = mk_tools()
+_seq = []
+
+
+def fake_stream(msgs, schema):
+    _seq.append(len(msgs))
+    n = len(_seq)
+    if n == 1:
+        return {"content": "", "finish_reason": "tool_calls", "usage": {},
+                "tool_calls": [{"id": "c1", "name": "send_message",
+                                "arguments": {"text": "我这就去查"}}]}
+    if n == 2:
+        return {"content": "", "finish_reason": "tool_calls", "usage": {},
+                "tool_calls": [{"id": "c2", "name": "get_recent_messages",
+                                "arguments": {"limit": "5"}}]}
+    if n == 3:
+        return {"content": "", "finish_reason": "tool_calls", "usage": {},
+                "tool_calls": [{"id": "c3", "name": "send_message",
+                                "arguments": {"text": "查到了：官网写的是 10 月 9 日"}}]}
+    return {"content": "", "finish_reason": "tool_calls", "usage": {},
+            "tool_calls": [{"id": "c4", "name": "finish", "arguments": {"reason": "说完了"}}]}
+
+
+r5 = agent_loop.run(t5, [{"role": "user", "content": "查一下版本更新时间"}], sch, chat_fn=fake_stream,
+                     max_rounds=5)
+check("边想边说：两条消息都发出去", sent5 == ["我这就去查", "查到了：官网写的是 10 月 9 日"], sent5)
+check("中间那轮工具照跑（没被收工掐掉）", r5["rounds"] == 4, r5["rounds"])
+check("finish 之后才停", r5["finished"] and r5["spoke"])
+
+print("== 循环：每轮发言上限（防刷屏） ==")
+sent6 = []
+t6 = agent_tools.Tools("g1", {"send_text": lambda t, reply_to_id="", at_user_id="", face="":
+                              sent6.append(t)}, {"max_sends_per_turn": 2})
+
+
+def fake_spam(msgs, schema):
+    return {"content": "", "finish_reason": "tool_calls", "usage": {},
+            "tool_calls": [{"id": "c", "name": "send_message", "arguments": {"text": "又一条"}}]}
+
+
+r6 = agent_loop.run(t6, [{"role": "user", "content": "hi"}], sch, chat_fn=fake_spam, max_rounds=5)
+check("最多只发 2 条", sent6 == ["又一条", "又一条"], sent6)
+check("超限那轮拿到的是拒绝提示", any("上限" in str(c.get("result")) for c in r6["calls"]),
+      [c.get("result") for c in r6["calls"]][-1:])
 
 print("== 循环：模型选择潜水 ==")
 t2, sent2 = mk_tools()
