@@ -36,7 +36,7 @@ ck("写了严谨/来源要求", "出处" in _txt and "不确定就直说" in _tx
 ck("写了不玩梗/不发图", "不玩梗" in _txt and "不发任何表情包" in _txt)
 ck("写了资料库先翻仓库", "先翻资料" in _txt)
 ck("知道自己是「大肥鱼 / DeepSeaBeast」", "大肥鱼" in _txt and "DeepSeaBeast" in _txt)
-ck("认知是「灵其的朋友」", "灵其" in _txt and "朋友" in _txt)
+ck("认知是「灵其啊的朋友」", "灵其啊" in _txt and "朋友" in _txt and "灵其**" not in _txt)
 ck("要求活泼活泼有礼貌", "活泼" in _txt and "礼貌" in _txt)
 ck("禁止怼人/骂人/阴阳", "不要怼人" in _txt and "不要骂人" in _txt)
 ck("表情：只收不发", "只收不发" in _txt and "这个群不发" in _txt)
