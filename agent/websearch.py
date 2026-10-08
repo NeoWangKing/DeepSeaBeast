@@ -275,6 +275,20 @@ def is_lookup_question(text) -> bool:
     return False
 
 
+_PROMISE_RE = re.compile(
+    r"(我再(看|查|去|确认|找|问|想想)|再去(看|查|确认)|等下我|等我(看|查|确认)|"
+    r"稍等|一会儿(再|回)|待会儿(再|回)|回头(再|告诉)|我看看|我找找|我去翻|马上回来|"
+    r"让我确认|再确认一下|还需要确认)")
+
+
+def is_dangling_promise(text) -> bool:
+    """这句是不是"我再去看看/再查查"这种承诺（说完就该继续查，不能收工）。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 80:
+        return False
+    return bool(_PROMISE_RE.search(t))
+
+
 def is_dontknow(text) -> bool:
     """这句回复是不是"装傻式"的（不知道/我又不是内部人员…）——可查的问题上不能这么答。"""
     t = str(text or "").strip()

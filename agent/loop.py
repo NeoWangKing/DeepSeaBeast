@@ -92,9 +92,10 @@ def run(tools, messages: list, tools_schema: list, chat_fn=None, max_rounds: int
             _said = len([x for x in (tools.sent or []) if str(x[0]) == "text"])
             if not tools.finished and _said >= 2:
                 messages.append({"role": "user", "content": (
-                    "【系统提醒】你这一轮已经连发 %d 条消息了。群聊里连发很像刷屏："
-                    "除非还有**必要**的信息要补，否则现在就调 finish 收工；"
-                    "还有话就并进下一条、一次说完。" % _said)})
+                    "【系统提醒】你这一轮已经连发 %d 条消息了。群聊里连发很像刷屏，"
+                    "所以：**事情办完了**就调 finish 收工；"
+                    "如果还有**必要**的信息没查完/没说完，就继续查完说完再收工——"
+                    "别留一句「我再看看/我再查查」就收工，那样对方会干等。" % _said)})
                 log("loop: 第 %d 轮后提醒收尾（这一轮已发 %d 条）" % (r, _said))
         except Exception:
             pass

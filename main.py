@@ -3027,6 +3027,32 @@ class QqPeakGate(Star):
                 _answer_done = True
             except Exception as _e6:
                 self._log_debug("漏发提醒失败 %r" % (_e6,))
+        # 最后一句留了「我再看看/我再查查」的尾巴 → 补一轮：查完 or 明确说没查到
+        try:
+            _mylast = ""
+            for _x in reversed(t.sent or []):
+                if str(_x[0]) == "text" and str(_x[1]).strip():
+                    _mylast = str(_x[1]).strip()
+                    break
+            if _mylast and agent.websearch.is_dangling_promise(_mylast):
+                self._log("边想边说：她留了「还要再看」的尾巴（%s…）→ 补一轮收尾"
+                          % _mylast[:24])
+                messages.append({"role": "user", "content": (
+                    "【系统提醒】你刚才跟对方说「还要再看看 / 再查查」，那就别现在收工："
+                    "继续把它查完，然后补一句结论；实在查不到就明确说「我查了下没查到」，"
+                    "不要让对方等一个不会来的回复。")})
+                r4 = await asyncio.to_thread(agent.loop.run, t, messages, schema, None, 2,
+                                             self._log_debug, _vmodel)
+                _mylast2 = ""
+                for _x in reversed(t.sent or []):
+                    if str(_x[0]) == "text" and str(_x[1]).strip():
+                        _mylast2 = str(_x[1]).strip()
+                        break
+                self._log("边想边说：补轮后 %s"
+                          % ("补上了" if (_mylast2 and _mylast2 != _mylast) else "没有新回复"))
+                r = r4 if r4 else r
+        except Exception as _e10:
+            self._log_debug("尾巴补轮失败 %r" % (_e10,))
         # 查过了但结论没发出去（常见：只发了句"等下我翻翻"就把轮数用光）→ 强制补一条结论
         try:
             _lk3 = {str(c.get("name") or "") for c in (r.get("calls") or [])}

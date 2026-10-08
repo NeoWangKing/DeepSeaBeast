@@ -89,6 +89,17 @@ ck("问题太长不记", W.remember_note("问" * 80, "答") == {})
 ck("答案太长不记", W.remember_note("问", "答" * 200) == {})
 ck("空的不记", W.remember_note("", "答案") == {} and W.remember_note("问", "") == {})
 
+print("== 「我再看/我再查」不能变成悬空承诺 ==")
+for t in ["HLTV 上写的，具体几点没标，我再看看是哪个赛事", "等下我查查", "稍等，我确认一下",
+          "回头再告诉你", "让我确认下"]:
+    ck("认得出尾巴 %s" % t[:20], W.is_dangling_promise(t))
+for t in ["查到了，明天 10 月 9 日打 Falcons", "我搜了下没找到", "哈哈哈哈", ""]:
+    ck("不误判 %s" % (t[:20] or "（空串）"), not W.is_dangling_promise(t))
+_src_m = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+ck("收尾会补一轮", "她留了「还要再看」的尾巴" in _src_m)
+ck("连发提醒不再一味劝收工", "别留一句「我再看看/我再查查」就收工" in
+   open(os.path.join(ROOT, "agent", "loop.py"), encoding="utf-8").read())
+
 print("== 时间锚点 + 「下一场」规则 ==")
 _nt = W.now_text()
 ck("now_text 形如 YYYY-MM-DD HH:MM 周X", len(_nt.split()) == 3 and _nt[:4].isdigit() and "周" in _nt, _nt)
