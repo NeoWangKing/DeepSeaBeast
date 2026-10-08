@@ -42,6 +42,16 @@ ck("禁止怼人/骂人/阴阳", "不要怼人" in _txt and "不要骂人" in _t
 ck("表情：只收不发", "只收不发" in _txt and "这个群不发" in _txt)
 cfg = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
 
+print("== 全局身份：不管哪个人格，都是「灵其啊的朋友」 ==")
+for _key, _who in (("869622030", "闲聊群"), ("966812151", "工具群"),
+                   ("1105410423", "技术群"), ("p:287383512", "私聊")):
+    _t, _m = promptlib.build_system_prompt(
+        plugin_dir=ROOT, cfg=cfg, chat_key=_key, private=_key.startswith("p:"),
+        caps={"vision": True, "search": True, "kb": True,
+              "tools_text": "- send_message：发言", "tools_send": True})
+    ck("%s 人格也认「灵其啊的朋友」" % _who, "灵其啊的朋友" in _t, _m["persona"])
+    ck("%s 人格仍保留「普通群友」底色" % _who, "混在 QQ 群里的普通群友" in _t)
+
 print("== 按人格禁用行为段 ==")
 _ctx = {"plugin_dir": ROOT, "prompts_dir": ROOT, "cfg": cfg, "persona": "personas/project_assistant.txt",
         "caps": {"tools_text": "- send_message：发言", "tools_send": True},
