@@ -33,8 +33,13 @@ ck("project_assistant 能找到", bool(_p), _p)
 _txt = open(_p, encoding="utf-8").read() if _p else ""
 ck("写了「只有被 @ 才回」", "只有被 @" in _txt)
 ck("写了严谨/来源要求", "出处" in _txt and "不确定就直说" in _txt)
-ck("写了不玩梗/不用表情包", "不玩梗" in _txt and "不用表情包" in _txt)
+ck("写了不玩梗/不发图", "不玩梗" in _txt and "不发任何表情包" in _txt)
 ck("写了资料库先翻仓库", "先翻资料" in _txt)
+ck("知道自己是「大肥鱼 / DeepSeaBeast」", "大肥鱼" in _txt and "DeepSeaBeast" in _txt)
+ck("认知是「灵其的朋友」", "灵其" in _txt and "朋友" in _txt)
+ck("要求活泼活泼有礼貌", "活泼" in _txt and "礼貌" in _txt)
+ck("禁止怼人/骂人/阴阳", "不要怼人" in _txt and "不要骂人" in _txt)
+ck("表情：只收不发", "只收不发" in _txt and "这个群不发" in _txt)
 cfg = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
 
 print("== 按人格禁用行为段 ==")
@@ -43,7 +48,8 @@ _ctx = {"plugin_dir": ROOT, "prompts_dir": ROOT, "cfg": cfg, "persona": "persona
         "bot_name": "小鲸鱼", "participation": "normal", "sticker_level": 3}
 _off = SEC.build_behavior(dict(_ctx, cfg={**cfg, "prompt": {**cfg.get("prompt", {}),
                                                             "disable_sections_by_persona": {"project_assistant.txt": ["sticker_rules"]}}}))
-_onn = SEC.build_behavior(_ctx)
+_onn = SEC.build_behavior(dict(_ctx, cfg={**cfg, "prompt": {
+    **cfg.get("prompt", {}), "disable_sections_by_persona": {}}}))
 ck("关掉表情段后，行为层里没有表情包规矩", "表情包：像真人一样用" not in _off)
 ck("不关时是有的", "表情包：像真人一样用" in _onn)
 _sec_ids = [s for s, _f in SECTIONS]
@@ -96,6 +102,21 @@ ck("config 预留 scope_by_group / scope_by_persona",
 ck("config 预留 record_at_only_groups", "record_at_only_groups" in cfg)
 ck("config 预留 disable_sections_by_persona",
    "disable_sections_by_persona" in (cfg.get("prompt") or {}))
+
+print("== 表情工具：该群只收不发（需要 astrbot 运行环境） ==")
+try:
+    import main as _m
+except Exception as e:
+    print("  （跳过：%s）" % str(e)[:60])
+else:
+    o2 = _m.QqPeakGate.__new__(_m.QqPeakGate)
+    o2.cfg = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+    o2._log_debug = lambda *a, **k: None
+    names = [x[0] for x in o2._agent_specs_for("1105410423")]
+    ck("该群没有 send_sticker（不发图）", "send_sticker" not in names, names)
+    ck("该群仍有 collect_sticker（能收藏）", "collect_sticker" in names, names)
+    names2 = [x[0] for x in o2._agent_specs_for("869622030")]
+    ck("普通群照旧两个都有", "send_sticker" in names2 and "collect_sticker" in names2, names2)
 
 print()
 if FAIL:

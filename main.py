@@ -2678,11 +2678,17 @@ class QqPeakGate(Star):
             pass
         try:
             _scfg = self.cfg.get("stickers") or {}
-            _no_stk = (key in [str(x) for x in (_scfg.get("send_exclude_groups") or [])]
-                       or key in [str(x) for x in (_scfg.get("collect_exclude_groups") or [])])
-            if _no_stk:
-                specs = [x for x in specs if x[0] not in ("send_sticker", "collect_sticker")]
-                self._log_debug("agent loop：%s 不发表情图 → 滤掉 send_sticker/collect_sticker" % key)
+            _send_off = key in [str(x) for x in (_scfg.get("send_exclude_groups") or [])]
+            _collect_off = key in [str(x) for x in (_scfg.get("collect_exclude_groups") or [])]
+            _drop_stk = []
+            if _send_off:
+                _drop_stk.append("send_sticker")
+            if _collect_off:
+                _drop_stk.append("collect_sticker")
+            if _drop_stk:
+                specs = [x for x in specs if x[0] not in _drop_stk]
+                self._log_debug("agent loop：%s 滤掉 %s（发=%s 收=%s）"
+                                % (key, "、".join(_drop_stk), not _send_off, not _collect_off))
         except Exception:
             pass
         return specs
