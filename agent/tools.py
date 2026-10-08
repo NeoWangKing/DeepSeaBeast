@@ -369,6 +369,9 @@ def spec_list(enabled: dict = None, send_tools: bool = True) -> list:
                         "description": "【必填】要说的话（**这是唯一的发言方式**，写在正文里的话不会发出去）；"
                                        "想分成多条就用 ||| 分隔（最多 4 条、总共 400 字内）"},
                        {"type": "string", "name": "reply_to_id", "description": "可选：要引用哪条消息的 id"},
+                       {"type": "string", "name": "at_user_id",
+                        "description": "可选：要 @ 谁的 QQ 号（纯数字）。只在真需要点名时用"
+                                       "（比如提到写你的人、或明确要叫某个人回话），别每条都 @"},
                        {"type": "string", "name": "face",
                         "description": "可选：在句尾再补一个 QQ 自带表情（官方名）。想插在句子中间/插多个，"
                                        "直接在 text 里写 [QQ表情:名字]，可以写任意多个、放任意位置"}],

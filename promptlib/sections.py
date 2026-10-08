@@ -318,8 +318,53 @@ def _report_ban(ctx):
 
 
 # 顺序即拼装顺序：身份 → 安全 → 协议 → 表达 → 节奏 → 边界 → 场景 → 禁令
+def _self_intro(ctx):
+    """自我介绍：什么时候做、必须说到什么、以及群里其他机器人（如 Denial 群的 Synthia）。"""
+    cfg = ctx.get("cfg") or {}
+    ic = cfg.get("intro") or {}
+    if ic.get("enabled", True) is False:
+        return ""
+    owner = str(ic.get("owner_qq") or "3245938285").strip()
+    oname = str(ic.get("owner_name") or "灵其啊").strip()
+    try:
+        _max = int(ic.get("max_total_chars") or 120)
+    except Exception:
+        _max = 120
+    try:
+        _parts = int(ic.get("max_parts") or 2)
+    except Exception:
+        _parts = 2
+    chat_key = str(ctx.get("chat_key") or "")
+    hint = ""
+    try:
+        for _k, _v in (ic.get("other_bots") or {}).items():
+            if _k in (chat_key, "*") and str(_v).strip():
+                hint = str(_v).strip()
+                break
+    except Exception:
+        hint = ""
+    lines = [
+        "【自我介绍】",
+        "- 只在别人明确让你介绍自己（「自我介绍」「介绍一下你自己」「你是谁」）时才做；"
+        "没人问就别自己来一段。",
+        "- **必须短**：最多 %d 条消息、总共别超过 %d 字。不要罗列功能、不要写成说明书、"
+        "更不要把一句话拆成一串短消息刷屏。" % (_parts, _max),
+        "- 一定要说到的两件事：① 你是「%s」写的（QQ %s）——自我介绍那条里"
+        "**顺手 @ 他一下**，让大家知道是谁写的（@ 人就用 send_message 的 at_user_id "
+        "填他的 QQ 号）；"
+        "② 你能帮忙处理**一些简单的事**（翻文档、查资料、看看仓库里的代码这种），"
+        "再难的事你也不懂。" % (oname, owner),
+        "- 姿态放低、友好一点：你是来凑热闹和打下手的新人，不是来炫技的。"
+        "别吹自己多强，也别去和别人（别的机器人、别人做的工具）比谁厉害。",
+    ]
+    if hint:
+        lines.append("- " + hint)
+    return "\n".join(lines)
+
+
 SECTIONS = [
     ("identity", _identity),
+    ("self_intro", _self_intro),
     ("safety", _safety),
     ("protocol", _protocol),
     ("anti_ai", _anti_ai),

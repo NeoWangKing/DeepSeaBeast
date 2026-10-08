@@ -370,5 +370,15 @@
     ],
     "farewell": true,
     "farewell_max_tokens": 40
+  },
+  "intro": {
+    "enabled": true,
+    "owner_qq": "3245938285",
+    "owner_name": "灵其啊",
+    "max_total_chars": 120,
+    "max_parts": 2,
+    "other_bots": {
+      "1105410423": "这个群（Denial 社区）的群主就是 Denial 项目的作者，群里还有他做的机器人 **Synthia**——大家平时有问题可以直接 @Synthia 问。**Synthia 才是这里的正主**：自我介绍时要主动说「有问题先找 Synthia 呀，我这边只能搭点小忙」，可以提一句「Denial 的文档和代码我能帮着翻」，但别承诺解决复杂问题；绝不能显得自己比 Synthia 强，也不要评价、比较任何机器人。"
+    }
   }
 }
