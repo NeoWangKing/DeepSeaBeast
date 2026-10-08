@@ -136,6 +136,23 @@ _META_WORDS = ("send_message", "调用参数", "参数里要发", "工具调用"
                "function_call", "发消息工具")
 
 
+# 系统/接口报错语气的话（她偶尔会复读这种"系统提示"）——短句命中就不发
+_SYS_ERR_RE = re.compile(
+    r"(服务器繁忙|服务繁忙|请稍后再试|请稍后重试|服务不可用|系统繁忙|系统错误|系统异常|"
+    r"网络错误|网络异常|请求失败|请求超时|连接超时|操作失败|服务异常|"
+    r"rate limit|too many requests|internal server error|gateway timeout)", re.I)
+
+
+def looks_like_syserr(text) -> bool:
+    """是不是"系统提示/报错"语气的话（这种不能当消息发）。"""
+    t = str(text or "").strip()
+    if not t or len(t) > 40:
+        return False
+    # 只拦"开头就是机器话"的（"服务器繁忙，请稍后再试"）；
+    # "我觉得服务器繁忙是官方的锅"这种正常讨论不拦
+    return bool(_SYS_ERR_RE.match(t))
+
+
 def looks_like_meta(text) -> bool:
     """这句话是不是"在描述工具调用/协议"（不是人话）。发送口拿它拦截。"""
     t = str(text or "").strip()
@@ -145,6 +162,8 @@ def looks_like_meta(text) -> bool:
     if any(w in low for w in _META_WORDS):
         return True
     if t[0] in "{[" and any(w in low for w in ("name", "arguments", "function", "tool")):
+        return True
+    if looks_like_syserr(t):
         return True
     if len(t) <= 80 and _PROTO_LINE.match(t):
         return True
