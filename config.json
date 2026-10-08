@@ -50,11 +50,13 @@
     "869622030": "system_prompt_friend.txt",
     "966812151": "system_prompt_tool.txt",
     "private": "system_prompt_private.txt",
-    "p:287383512": "private_warm.txt"
+    "p:287383512": "private_warm.txt",
+    "1105410423": "project_assistant.txt"
   },
   "system_prompt_file": "system_prompt.txt",
   "only_at_groups": [
-    "966812151"
+    "966812151",
+    "1105410423"
   ],
   "no_memes_groups": [
     "966812151"
@@ -153,7 +155,8 @@
   },
   "allowed_groups": [
     "869622030",
-    "966812151"
+    "966812151",
+    "1105410423"
   ],
   "allowed_self_id": "3237702352",
   "auto_persona": {
@@ -230,7 +233,8 @@
     "max_per_hour": 2,
     "delay_ms": 2600,
     "exclude_groups": [
-      "966812151"
+      "966812151",
+      "1105410423"
     ]
   },
   "prompt": {
@@ -241,7 +245,13 @@
     "persona_patch_by_group": {},
     "disable_sections": [],
     "extra": "",
-    "disable_sections_by_persona": {},
+    "disable_sections_by_persona": {
+      "project_assistant.txt": [
+        "sticker_rules",
+        "subjectivity",
+        "not_moderator"
+      ]
+    },
     "prompt_by_group": {}
   },
   "agent": {
@@ -294,7 +304,9 @@
     "top_k": 4,
     "min_score": 0.06,
     "max_chars": 1500,
-    "scope_by_group": {},
+    "scope_by_group": {
+      "1105410423": "denial"
+    },
     "scope_by_persona": {}
   },
   "poke_reply": {
@@ -330,7 +342,9 @@
     "mine_chars": 60,
     "memory_notes": 20
   },
-  "record_at_only_groups": [],
+  "record_at_only_groups": [
+    "1105410423"
+  ],
   "activation": {
     "enabled": true,
     "owner_ids": [

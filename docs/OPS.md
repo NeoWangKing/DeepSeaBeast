@@ -670,3 +670,30 @@ DeepSeaBeast 已关机        ← 固定文案（activation.off_lines）
 - 两条都记进她的上下文（`_remember_bot_line`），顺序由 `await` 保证
 - 实测（真模型）：`关机` → 「好嘞，我先撤啦」；`@她 关机` → 「好的，我先走了~」；`关机吧` → 「好的，我先撤了，拜拜。」
 - 想关掉告别语：`activation.farewell = false`
+
+## 待命：Denial 社区群（1105410423）已按技术助手人格配好（2026-10-08）
+
+用户可能把她拉进「Denial 社区」（群号 `1105410423`），该群用 `project_assistant` 人格。
+**现在只是待命**：只要没把她拉进那个群，就等于什么都没发生（已回归验证现有群不受影响）。
+
+已预置的配置（都只对该群生效）：
+
+| 项 | 值 | 作用 |
+|---|---|---|
+| `allowed_groups` | += `1105410423` | 不加会被"不在白名单→完全忽略"挡掉 |
+| `prompt_by_group["1105410423"]` | `project_assistant.txt` | 用技术助手人格（预配后 `auto_persona` 不会再自动建卡） |
+| `only_at_groups` | += `1105410423` | 只 @ 才回 |
+| `record_at_only_groups` | += `1105410423` | 只把「@她的 + 她自己说的」记成上下文 |
+| `prompt.disable_sections_by_persona` | `project_assistant.txt` → 关 `sticker_rules`/`subjectivity`/`not_moderator` | 不发表情包、不演情绪、不当群管 |
+| `kb.scope_by_group["1105410423"]` | `denial` | 专属资料库域（现在只有一份 README，**不会串进游戏资料**） |
+| `followup.exclude_groups` | += `1105410423` | 不主动补话 |
+| `agent_active.json` | 未写入 | 群默认**未激活** → 等你 @ 她才"开机" |
+
+进群后的实际表现（一条链路）：
+```
+（默认哑，别人说话/别人 @ 都没反应）
+主人 @ 她          → 「DeepSeaBeast 已激活」+ 正常回答
+主人 @她 说「关机」  → 自然告别一句 + 「DeepSeaBeast 已关机」→ 回哑
+```
+
+后续：等用户给仓库地址，用 `python3 tools/kb_import_repo.py <仓库> denial` 导进这个域（README/文档/代码一起可检索）。
