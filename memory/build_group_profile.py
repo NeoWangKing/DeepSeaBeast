@@ -15,8 +15,12 @@ def build(gid: str, cfg: dict, *, window: int = 200, limit: int = 200, force: bo
         return False
     material = store.fmt_lines(rows)
     try:
+        _names = [str(x) for x in (cfg.get("memory") or {}).get("self_aliases") or []]
+        if not _names:
+            _names = [str(x) for x in (cfg.get("keywords") or [])] + ["大肥鱼", "DeepSeaBeast"]
         text, usage = llm.chat(
-            [{"role": "user", "content": prompts.group_prompt(material, limit=limit)}],
+            [{"role": "user", "content": prompts.group_prompt(material, limit=limit,
+                                                              self_names=_names)}],
             cfg, json_mode=bool(((cfg.get("memory") or {}).get("provider") or {}).get("json_mode", False)),
             max_tokens=1500,
         )

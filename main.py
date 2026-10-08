@@ -1262,7 +1262,11 @@ class QqPeakGate(Star):
             if inj.get("group_profile", True):
                 gp = mem_store.read_profile(gid)
                 if gp:
-                    out.append("[本群长期印象（背景资料，可能过时，只作参考：不要照搬、不要主动提起你记过什么）]\n" + gp)
+                    _self = [str(x) for x in (m.get("self_aliases") or [])] or ["大肥鱼", "DeepSeaBeast"]
+                    out.append("[本群长期印象（背景资料，可能过时，只作参考：不要照搬、不要主动提起你记过什么）\n"
+                               "（注意：下面提到的「%s」都是**你自己**——你就是这个群里的那个机器人，"
+                               "不要理解成「群里还有个别的机器人」）]\n%s"
+                               % ("」「".join(_self[:6]), gp))
             if inj.get("members", True):
                 md = (mem_store.read_members(gid).get("members") or {})
                 want = [str(uid or ""), str(last_reply_to or "")]

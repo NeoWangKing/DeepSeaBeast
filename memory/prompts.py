@@ -10,6 +10,10 @@ ANCHOR_RULE = """硬性要求：
 
 GROUP_PROFILE = """你在帮一个 QQ 群机器人维护「对本群的印象」。读下面的群聊记录，然后输出这个群的整体印象。
 
+**重要**：这个群里被提到的 {self_names} 就是指**你自己**——你就是这个群里的那个机器人（主人是灵其啊）。
+群友聊到"调机器人""问机器人问题""机器人会不会吃 token"时，那都是在说你；
+写印象时要写成「群里常提到你/在调试你」，**绝对不要写成"群里还有一个别的机器人"**。
+
 分三个方面写：
 ① 这群人主要聊什么（话题、兴趣、常出现的具体名词）
 ② 说话风格、常用词/梗
@@ -39,8 +43,10 @@ MEMBERS = """你在帮一个 QQ 群机器人维护「对群友的印象」。下
 === 各人发言汇总结束 ==="""
 
 
-def group_prompt(material: str, limit: int = 200) -> str:
-    return GROUP_PROFILE.format(anchor_rule=ANCHOR_RULE.format(limit=limit), material=material)
+def group_prompt(material: str, limit: int = 200, self_names="") -> str:
+    names = "、".join([str(x) for x in (self_names or []) if str(x).strip()]) or "本机器人的名字"
+    return GROUP_PROFILE.format(anchor_rule=ANCHOR_RULE.format(limit=limit),
+                                material=material, self_names=names)
 
 
 def members_prompt(material: str, limit: int = 120) -> str:

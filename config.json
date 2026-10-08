@@ -109,7 +109,16 @@
       "min_msgs_to_create": 5,
       "min_new_msgs_to_update": 20,
       "min_interval_hours": 12
-    }
+    },
+    "self_aliases": [
+      "大肥鱼",
+      "肥鱼",
+      "小鲸鱼",
+      "小鲸",
+      "鲸鱼",
+      "DeepSeaBeast",
+      "蓝色邪恶大肥鱼"
+    ]
   },
   "burst_suppress_sec": 0,
   "split_reply": {
