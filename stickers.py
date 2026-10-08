@@ -17,6 +17,30 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data", "stickers")
 INDEX = os.path.join(DATA, "index.json")
 
+# 「她自己的形象」这组表情：pick 时加分、表情清单里常驻。
+# 配置：stickers.prefer_ids（id 列表）、stickers.prefer_boost（默认加几分）。
+_PREFER_CACHE = {"key": None, "ids": [], "boost": 3.0}
+
+
+def prefer_cfg() -> dict:
+    """读 stickers.prefer_ids / prefer_boost（按文件 mtime 缓存，改配置免重启）。"""
+    p = os.path.join(HERE, "config.json")
+    try:
+        key = os.path.getmtime(p)
+    except Exception:
+        key = None
+    if _PREFER_CACHE["key"] == key and _PREFER_CACHE["key"] is not None:
+        return {"ids": _PREFER_CACHE["ids"], "boost": _PREFER_CACHE["boost"]}
+    ids, boost = [], 3.0
+    try:
+        c = json.load(open(p, encoding="utf-8")).get("stickers") or {}
+        ids = [str(x) for x in (c.get("prefer_ids") or []) if str(x).strip()]
+        boost = float(c.get("prefer_boost", 3) or 0)
+    except Exception:
+        pass
+    _PREFER_CACHE.update({"key": key, "ids": ids, "boost": boost})
+    return {"ids": ids, "boost": boost}
+
 VISION_RULES = """这张图是不是"适合在 QQ 群里当表情包/梗图转发"的图？
 
 算（is_meme=true）：表情包、梗图、沙雕图、可爱动物、搞笑截图（把关键信息涂掉的）、明星/动漫表情包。
@@ -446,10 +470,18 @@ _MOOD_SYN = {
 }
 
 
-def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6) -> list:
-    """按文本里出现的关键词/标签挑候选（返回若干条，交给模型再选）。"""
+def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6,
+         prefer=None, prefer_boost=None) -> list:
+    """按文本里出现的关键词/标签挑候选（返回若干条，交给模型再选）。
+
+    prefer：优先露面的 id（默认读 stickers.prefer_ids，即「她自己的形象」那组），
+    命中这些 id 的候选加 prefer_boost 分，但最近用过的扣分照旧（换着发、别刷屏）。
+    """
     items = load()
     ex = set(str(x) for x in (exclude_ids or []))
+    _pf = prefer_cfg()
+    pset = set(_pf["ids"] if prefer is None else [str(x) for x in prefer])
+    pboost = _pf["boost"] if prefer_boost is None else float(prefer_boost)
     now = int(time.time())
     words = [w for w in (tags_hint or []) if w]
     t = str(text or "")
@@ -475,6 +507,8 @@ def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6) -> l
             score -= 6                     # 24 小时内用过的明显靠后（真人换着发）
         if it.get("last_used") and now - int(it["last_used"]) < 3600:
             score -= 6                     # 1 小时内用过的更靠后
+        if str(it.get("id")) in pset:
+            score += pboost                  # 她自己的形象：更容易被挑中（可配）
         if score > 0:
             scored.append((score, it))
     # 第二排序键：优先「最久没用过的」（而不是用得多的一直被挑中）

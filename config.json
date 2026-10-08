@@ -227,7 +227,17 @@
     "prompt_max": 20,
     "encourage": 3,
     "nudge_prob": 0.35,
-    "max_file_mb": 4
+    "max_file_mb": 4,
+    "prefer_ids": [
+      "s1791462696207",
+      "s1791462846379",
+      "s1791463274545",
+      "s1791463275943",
+      "s1791463279025",
+      "s1791463279754",
+      "s1791463279837"
+    ],
+    "prefer_boost": 3
   },
   "followup": {
     "enabled": true,

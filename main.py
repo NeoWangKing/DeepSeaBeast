@@ -3482,11 +3482,26 @@ class QqPeakGate(Star):
             items.sort(key=lambda x: (-int(x.get("used") or 0), str(x.get("id"))))
             n = max(1, min(int(n), len(items)))
             stable_n = max(1, n // 2)
-            stable = items[:stable_n]
-            pool = list(items[stable_n:])
+            _seen, stable = set(), []
+
+            def _add(it):
+                _i = str(it.get("id") or "")
+                if _i and _i not in _seen:
+                    _seen.add(_i)
+                    stable.append(it)
+
+            _by_id = {str(x.get("id")): x for x in items}
+            for _pid in [str(x) for x in (cfg.get("prefer_ids") or [])]:
+                if _pid in _by_id:               # 她自己的形象图：每轮清单都带上
+                    _add(_by_id[_pid])
+            for _it in items:
+                if len(stable) >= stable_n:
+                    break
+                _add(_it)
+            pool = [x for x in items if str(x.get("id") or "") not in _seen]
             if len(pool) > 1:
                 random.Random(int(time.time() // 3600)).shuffle(pool)
-            picked = stable + pool[:n - stable_n]
+            picked = stable + pool[:max(0, n - len(stable))]
             lines = []
             for it in picked:
                 desc = str(it.get("desc") or "").strip() or "（还没备注这图什么意思）"
