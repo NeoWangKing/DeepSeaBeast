@@ -185,6 +185,47 @@ ck("拿不到原始报文（老平台）→ 不收，别乱收图片", len(saved
 for _f, _fn in _ORIG.items():
     setattr(S, _f, _fn)
 
+
+print("== 收藏表情包不再吭声 ==")
+_cfg_s = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8")).get("stickers") or {}
+ck("配置里 collect_say_enabled = false", _cfg_s.get("collect_say_enabled") is False,
+   str(_cfg_s.get("collect_say_enabled")))
+_msrc2 = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+ck("函数入口有开关（默认闭嘴）", 'if not cfg.get("collect_say_enabled", False):' in _msrc2)
+ck("调用处也判了开关", 'if (cfg.get("collect_say_enabled", False)):' in _msrc2)
+ck("旧的概率配置还留着（方便恢复）", _cfg_s.get("collect_say_prob") is not None)
+
+
+class _EvSay:
+    def __init__(self):
+        self.sent = []
+
+    def get_group_id(self):
+        return "869622030"
+
+    async def send(self, chain):
+        self.sent.append(list(getattr(chain, "chain", None) or list(chain or [])))
+
+
+_os = main.QqPeakGate.__new__(main.QqPeakGate)
+_os.cfg = {"stickers": dict(_cfg_s, collect_say_prob=1.0)}     # 概率拉满也不该说
+_os._log = lambda *a, **k: None
+_os._log_debug = lambda *a, **k: None
+_os._remember_bot_line = lambda *a, **k: None
+_ev = _EvSay()
+asyncio.run(_os._maybe_say_about_sticker(_ev, {"id": "sX", "desc": "测试图"}))
+ck("概率拉满也不说话（后台动作）", not _ev.sent, str(_ev.sent))
+
+_os2 = main.QqPeakGate.__new__(main.QqPeakGate)
+_os2.cfg = {"stickers": dict(_cfg_s, collect_say_enabled=True, collect_say_prob=1.0,
+                             collect_say_lines=["偷了"])}
+_os2._log = lambda *a, **k: None
+_os2._log_debug = lambda *a, **k: None
+_os2._remember_bot_line = lambda *a, **k: None
+_ev2 = _EvSay()
+asyncio.run(_os2._maybe_say_about_sticker(_ev2, {"id": "sX", "desc": "测试图"}))
+ck("把开关打开仍能恢复旧行为", bool(_ev2.sent), str(_ev2.sent)[:60])
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

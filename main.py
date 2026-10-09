@@ -4407,7 +4407,8 @@ class QqPeakGate(Star):
                                     self._log("表情包：已加进 QQ 表情收藏 %s" % it["id"])
                             except Exception as _e3:
                                 self._log("⚠️ 表情包：加进 QQ 表情面板失败（本地已存，面板没同步）%r" % (_e3,))
-                            await self._maybe_say_about_sticker(event, it)
+                            if (cfg.get("collect_say_enabled", False)):
+                                await self._maybe_say_about_sticker(event, it)
                     finally:
                         try:
                             os.remove(path)
@@ -4421,9 +4422,16 @@ class QqPeakGate(Star):
             self._log_debug("表情包收集调度失败: %r" % (e,))
 
     async def _maybe_say_about_sticker(self, event, it: dict) -> None:
-        """收到一张有意思的图时，偶尔（不是每次都）说一句——大部分时候什么都不说。"""
+        """收到一张有意思的图时，偶尔（不是每次都）说一句。
+
+        主人 2026-10-09 要求：**收藏表情包是后台动作，不用说出来** →
+        `stickers.collect_say_enabled` 默认 false，这里直接闭嘴；
+        想恢复"偶尔夸一句"把它设成 true 即可（旧行为，概率 collect_say_prob）。
+        """
         try:
             cfg = self.cfg.get("stickers") or {}
+            if not cfg.get("collect_say_enabled", False):
+                return
             gid = str(event.get_group_id() or "")
             if gid in [str(x) for x in (cfg.get("send_exclude_groups") or [])]:
                 return

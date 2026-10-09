@@ -1191,3 +1191,18 @@ Neo武神：？
 
 验证：`tests/perception_sim.py` 增加日期/节假日段（用可控的小节假日文件测中间/最后一天/调休/
 周末/工作日/下个假期倒计时 + 真文件回归），29 个测试全过。
+
+### 收藏表情包不再"说出来"（2026-10-09 深夜）
+
+主人：收藏表情包是后台动作，不用在群里吭声。
+
+原来 `_maybe_say_about_sticker()` 会在收图后有 18% 概率冒一句「偷了」「好图」
+（`stickers.collect_say_prob`，每小时最多 2 次、两次隔 10 分钟）。
+
+- 新增开关 `stickers.collect_say_enabled`，**默认 false**：函数入口直接返回；
+  调用处（`_spawn_sticker_collect`）也不再白跑一趟。
+- `collect_say_prob` / `collect_say_lines` 保留，想要"偶尔夸一句"把开关设 true 就恢复旧行为。
+- 注意：她**被明确要求收藏**时（`collect_sticker` 工具）仍会正常回"收藏好了"，那是应答，不是自夸。
+
+验证：`tests/sticker_collect_sim.py` 增加一段（配置默认 false / 入口与调用处都有开关 /
+把概率拉满也不说话 / 开关打开能恢复旧行为）。

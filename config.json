@@ -246,7 +246,8 @@
       "s1791463279754",
       "s1791463279837"
     ],
-    "prefer_boost": 3
+    "prefer_boost": 3,
+    "collect_say_enabled": false
   },
   "followup": {
     "enabled": true,
