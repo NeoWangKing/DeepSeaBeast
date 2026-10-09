@@ -1528,10 +1528,11 @@ class QqPeakGate(Star):
             pass
 
     def _hour_cap(self, gid: str, default: int = 6) -> int:
-        """这个群每小时总发言上限。
+        """这个群「主动接话」通道的每小时上限（抽签这条路）。
 
-        `group_tuning.<群>.max_total_per_hour` 是硬上限（抽签通道和"对话延续"通道都受它约束）；
-        没配就退回 max_auto_per_hour —— 行为跟以前完全一样。
+        `group_tuning.<群>.max_total_per_hour` 优先，其次 `max_auto_per_hour`；
+        注意：**「对话延续」不受这个数约束**——那条路有自己的 max_cont_per_hour，
+        否则真聊天会被掐断（2026-10-09 调整）。
         """
         _tot = self._tune(gid, "max_total_per_hour", None)
         try:
@@ -4801,9 +4802,10 @@ class QqPeakGate(Star):
                                      self._tune_f(gid, "cont_window_sec",
                                                   float(cfg.get("cont_window_sec", 180) or 180))):
                     _h_c, _uc = int(_now_c // 3600), self.hour_count.get((gid, int(_now_c // 3600)), 0)
-                    _cap_c = min(self._tune_i(gid, "max_cont_per_hour",
-                                              int(cfg.get("max_cont_per_hour", 12) or 12)),
-                                 cap)          # 总上限是硬的：延续也不能把一小时的总量顶出去
+                    # 「对话延续」有自己的额度：有人真的在跟她聊，就别被"主动接话"的小时上限掐断
+                    # （2026-10-09 主人要求：延续留着，只是提醒她别什么话都接）
+                    _cap_c = self._tune_i(gid, "max_cont_per_hour",
+                                          int(cfg.get("max_cont_per_hour", 12) or 12))
                     if _uc < _cap_c:
                         self.hour_count[(gid, _h_c)] = _uc + 1
                         self.last_auto[gid] = _now_c

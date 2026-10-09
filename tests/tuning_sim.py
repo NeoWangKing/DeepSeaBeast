@@ -30,12 +30,14 @@ ck("每小时额度降到 ≤4（原 %s）" % _cfg.get("max_auto_per_hour"),
    int(_t.get("max_auto_per_hour", 99)) <= 4, str(_t.get("max_auto_per_hour")))
 ck("私下冷却抬到 ≥240s（原 %s）" % _cfg.get("min_interval_sec"),
    float(_t.get("min_interval_sec", 0)) >= 240, str(_t.get("min_interval_sec")))
-ck("对话延续也要等 ≥30s（原 %s）" % _cfg.get("min_cont_gap_sec"),
-   float(_t.get("min_cont_gap_sec", 0)) >= 30, str(_t.get("min_cont_gap_sec")))
-ck("延续额度 ≤6/时（原 %s）" % _cfg.get("max_cont_per_hour"),
-   int(_t.get("max_cont_per_hour", 99)) <= 6, str(_t.get("max_cont_per_hour")))
-ck("连击上限 ≤3（原 %s）" % _cfg.get("max_engaged_streak"),
-   int(_t.get("max_engaged_streak", 99)) <= 3, str(_t.get("max_engaged_streak")))
+ck("对话延续留着：接着说只等 ≤15s（原 %s）" % _cfg.get("min_cont_gap_sec"),
+   float(_t.get("min_cont_gap_sec", 99)) <= 15, str(_t.get("min_cont_gap_sec")))
+ck("对话延续留着：窗口 ≥300s（原 %s）" % _cfg.get("cont_window_sec"),
+   float(_t.get("cont_window_sec", 0)) >= 300, str(_t.get("cont_window_sec")))
+ck("对话延续留着：额度 ≥10/时（原 %s）" % _cfg.get("max_cont_per_hour"),
+   int(_t.get("max_cont_per_hour", 0)) >= 10, str(_t.get("max_cont_per_hour")))
+ck("连击只是收一点（原 %s）" % _cfg.get("max_engaged_streak"),
+   int(_t.get("max_engaged_streak", 99)) <= 8, str(_t.get("max_engaged_streak")))
 
 print("== _tune：按群取值 / 别的群不受影响 ==")
 try:
@@ -50,7 +52,9 @@ o = main.QqPeakGate.__new__(main.QqPeakGate)
 o.cfg = _cfg
 ck("闪电群 min_interval_sec = 配的值",
    o._tune_f("869622030", "min_interval_sec", 90) == float(_t["min_interval_sec"]))
-ck("闪电群 max_auto_per_hour = 4", o._tune_i("869622030", "max_auto_per_hour", 10) == 4)
+ck("闪电群主动接话上限 = 4", o._tune_i("869622030", "max_auto_per_hour", 10) == 4)
+ck("延续额度是独立的一份（%s）" % _t.get("max_cont_per_hour"),
+   o._tune_i("869622030", "max_cont_per_hour", 12) == int(_t.get("max_cont_per_hour")))
 ck("豹群不受影响（拿顶层值）", o._tune_f("966812151", "min_interval_sec", 90) == 90)
 ck("Denial 群不受影响", o._tune_f("1105410423", "min_interval_sec", 90) == 90)
 ck("私聊不受影响", o._tune_f("p:3245938285", "min_interval_sec", 90) == 90)
@@ -69,6 +73,10 @@ ck("具体群号优先于 *", o2._tune_i("869622030", "max_auto_per_hour", 10) =
 print("== 概率乘数真的作用在抽签前 ==")
 _src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
 ck("gate 里读了 reply_prob_mult", "reply_prob_mult" in _src)
+ck("延续不再被主动接话上限掐断",
+   "min(self._tune_i(gid, \"max_cont_per_hour\"" not in _src and
+   "max_total_per_hour` 优先" in _src)
+ck("_hour_cap 文档写明延续不受它约束", "对话延续**不受这个数约束" in _src or "不受这个数约束" in _src)
 ck("乘完做了 0~1 截断", "min(1.0, float(p) * _mult)" in _src)
 ck("决策日志会写出来", "群频率x%0.2f" in _src or "群频率x%.2f" in _src)
 for _k in ("max_auto_per_hour", "min_interval_sec", "max_engaged_streak",
@@ -83,7 +91,7 @@ ck("写了「多数消息你都不用理」", "多数消息你都不用理" in _
 ck("写了「一小时里冒头次数本来就该很少」", "一小时里你冒头的次数本来就该很少" in _card)
 
 
-print("== 真跑：同一个群跑同一批消息，调前 vs 调后 ==")
+print("== 真跑：闲聊场景（少插嘴）+ 对话场景（延续留着） ==")
 try:
     sys.path.insert(0, os.path.join(ROOT, "tests"))
     import gate_sim as G          # 桩 + 真实 gate()
@@ -98,16 +106,22 @@ import collections                              # noqa: E402
 GID = "869622030"
 TEXTS = ["今天天气还行", "这把cs打完了", "晚上吃啥", "有人来频道吗", "困了",
          "这把谁赢了", "deadlock 好玩吗", "我下了", "上班好累", "再看一局"]
-STEPS = [(30, TEXTS[i % len(TEXTS)], {"uid": "u%d" % (i % 5)}) for i in range(400)]
+# A：一群人在闲聊，没人跟她说话（她不该插嘴）
+CHAT = [(30, TEXTS[i % len(TEXTS)], {"uid": "u%d" % (i % 5)}) for i in range(400)]
+# B：同一个人一直在跟她说话（真·对话，延续该放行）
+TALK = [(30, "那你觉得这把他能赢吗", {"uid": "u1"}) for _ in range(12)]
 
 
-async def _run(tuned: bool):
+async def _run(steps, tuned):
     over = {"group_tuning": {GID: json.loads(json.dumps(_t))}} if tuned else {}
-    p = G.new_plugin(over, None)
     clock = G.Clock(G.T0)
+    p = G.new_plugin(over, clock)
+    logs = []
+    p._log = lambda *a, **k: logs.append(" ".join(str(x) for x in a))
+    p._log_debug = lambda *a, **k: None
     hours = collections.Counter()
     n = 0
-    for dt, text, kw in STEPS:
+    for dt, text, kw in steps:
         clock.advance(dt)
         ev = G.FakeEvent(text, gid=GID, **kw)
         _h = int(clock.time() // 3600)
@@ -117,18 +131,52 @@ async def _run(tuned: bool):
             p.last_reply_ts[GID] = clock.time()
             p.last_auto[GID] = clock.time()
             p.last_reply_to[GID] = str(ev.get_sender_id())
-    return n, hours
+    _cont = sum(1 for x in logs if "对话延续：他接着说" in x)
+    return n, hours, _cont
 
 
-_n_off, _h_off = asyncio.run(_run(False))
-_n_on, _h_on = asyncio.run(_run(True))
-print("  调前：共 %d 条；每小时 %s" % (_n_off, dict(sorted(_h_off.items()))))
-print("  调后：共 %d 条；每小时 %s" % (_n_on, dict(sorted(_h_on.items()))))
-ck("调后每小时都不超过 4 条（硬上限）", all(v <= 4 for v in _h_on.values()), str(dict(_h_on)))
-ck("调前确实会超过 4 条/小时（说明改的是真闸门）", any(v > 4 for v in _h_off.values()),
-   str(dict(_h_off)))
-ck("总量不比以前多", _n_on <= _n_off, "%d → %d" % (_n_off, _n_on))
-ck("没被调成哑巴（还能说话）", _n_on >= 1, str(_n_on))
+_a_off, _h_off, _c_off = asyncio.run(_run(CHAT, False))
+_a_on, _h_on, _c_on = asyncio.run(_run(CHAT, True))
+print("  闲聊 400 条：调前 %d 条（延续 %d / 抽签 %d）；调后 %d 条（延续 %d / 抽签 %d）"
+      % (_a_off, _c_off, _a_off - _c_off, _a_on, _c_on, _a_on - _c_on))
+print("     调后每小时 %s" % dict(sorted(_h_on.items())))
+ck("闲聊场景：主动接话（抽签）确实变少", (_a_on - _c_on) <= (_a_off - _c_off),
+   "%d → %d" % (_a_off - _c_off, _a_on - _c_on))
+ck("闲聊场景：总量比原来少", _a_on <= _a_off, "%d → %d" % (_a_off, _a_on))
+ck("闲聊场景：延续额度顶得住（每小时 ≤%s）" % int(_t.get("max_cont_per_hour", 20)),
+   all(v <= int(_t.get("max_cont_per_hour", 20)) for v in _h_on.values()), str(dict(_h_on)))
+ck("闲聊场景：还能开口（没被调成哑巴）", _a_on >= 1, str(_a_on))
+
+# B：对话延续本身要放行（这里直接摆出"她刚回过 u1"的状态，避免靠抽签碰运气）
+from scoring import cont_pass                      # noqa: E402
+_now = 1000.0
+_gap = float(_t.get("min_cont_gap_sec") or 8)
+_win = float(_t.get("cont_window_sec") or 180)
+ck("同一人隔 30 秒接着说 → 算对话延续",
+   cont_pass(_now, _now - 30, "u1", "u1", False, False, _gap, _win))
+ck("隔 5 秒就接 → 不算（防连珠炮）",
+   not cont_pass(_now, _now - 5, "u1", "u1", False, False, _gap, _win))
+ck("超过窗口（>%ds）→ 不算同一段对话" % int(_win),
+   not cont_pass(_now, _now - (_win + 60), "u1", "u1", False, False, _gap, _win))
+ck("别人接着说、不是对她说的 → 不算延续",
+   not cont_pass(_now, _now - 30, "u2", "u1", False, False, _gap, _win))
+
+
+async def _cont_case():
+    clock = G.Clock(G.T0)
+    p = G.new_plugin({"group_tuning": {GID: json.loads(json.dumps(_t))}}, clock)
+    p.last_reply_ts[GID] = clock.time()          # 假装她刚回过 u1
+    p.last_auto[GID] = clock.time()
+    p.last_reply_to[GID] = "u1"
+    clock.advance(30)
+    ev = G.FakeEvent("那你觉得这把他能赢吗", gid=GID, uid="u1")
+    ok = await G.send(p, ev)
+    return bool(ok), p.hour_count.get((GID, int(clock.time() // 3600)), 0)
+
+
+_ok_b, _used_b = asyncio.run(_cont_case())
+ck("真跑：她刚回过 u1，u1 接着说 → 直接放行（不看概率）", _ok_b, str(_ok_b))
+ck("…延续走自己的额度（计入 1 条）", _used_b == 1, str(_used_b))
 
 print()
 if FAIL:
