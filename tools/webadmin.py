@@ -520,6 +520,7 @@ class H(BaseHTTPRequestHandler):
             data = HTML.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -578,9 +579,11 @@ class H(BaseHTTPRequestHandler):
 
 HTML = r"""<!doctype html><html lang=zh><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=color-scheme content=light>
 <title>大肥鱼 · 管理面板</title>
 <style>
-:root{--bd:#e5e7eb;--bg:#f7f8fa;--fg:#1f2328;--acc:#3b6ef0;--warn:#b45309}
+:root{--bd:#e5e7eb;--bg:#f7f8fa;--fg:#1f2328;--acc:#3b6ef0;--warn:#b45309;color-scheme:light}
+html,body{color-scheme:light}
 *{box-sizing:border-box}
 body{font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;background:var(--bg);color:var(--fg)}
 header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--bd);padding:10px 16px;display:flex;gap:12px;align-items:center;z-index:9}
@@ -601,7 +604,11 @@ main{padding:12px 16px 60px}
 .fld input{font-size:12.5px}
 .grid.st{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
 label{display:block;margin:6px 0 2px;color:#555;font-size:13px}
-input[type=text],input[type=number],textarea,select{width:100%;border:1px solid var(--bd);border-radius:8px;padding:6px 8px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#fff}
+input[type=text],input[type=number],textarea,select{width:100%;border:1px solid var(--bd);border-radius:8px;padding:6px 8px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#fff;color:#1f2328;color-scheme:light}
+select{-webkit-appearance:menulist;appearance:auto}
+select option,select optgroup{background:#fff;color:#1f2328}
+select option:checked{background:#dbe7ff;color:#123}
+input::placeholder,textarea::placeholder{color:#9aa1a9}
 textarea{min-height:120px}
 textarea.big{min-height:420px}
 code{background:#f1f3f5;padding:0 4px;border-radius:4px;font-size:12px}
