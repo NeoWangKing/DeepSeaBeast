@@ -185,6 +185,23 @@ finally:
         pass
     ck("测试后清掉临时 known_groups.json", not os.path.exists(W.KNOWN_GROUPS))
 
+
+print("== 面板 JS 完整性（防误删） ==")
+import re as _re
+_page = W.HTML
+_js = _re.search(r"<script>(.*)</script>", _page, _re.S).group(1)
+_fns = set(_re.findall(r"function ([A-Za-z_][A-Za-z0-9_]*)\(", _js))
+_expect = ["render", "renderPersona", "renderGroup", "renderSticker", "renderMisc",
+           "toggleCard", "loadCardInto", "touchCardEl", "saveNameFor", "newPersona",
+           "pcardHtml", "mapChips", "tuningEditor", "onMap", "onList", "onActive",
+           "onAllow", "onNote", "onStkList", "onScope", "onStk", "onDeep", "onTune",
+           "editNote", "delSticker", "togglePref", "applyAll", "reloadState"]
+_missing = [f for f in _expect if f not in _fns]
+ck("关键函数都在（%d 个）" % len(_expect), not _missing, "缺：" + str(_missing))
+ck("人格卡页只列卡片（没有旧的对应表）", "人格卡 → 群 的对应" not in _page)
+ck("群页里有『用哪张人格卡』", "用哪张人格卡" in _page)
+ck("卡片默认折叠（.pcard 没有默认 open）", ".pcard.open{grid-column" in _page)
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

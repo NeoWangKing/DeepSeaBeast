@@ -769,6 +769,19 @@ code{background:#f1f3f5;padding:0 4px;border-radius:4px;font-size:12px}
 .gitem:last-child{border-bottom:0}
 .gname{font-weight:600;margin-bottom:2px}
 .plist{max-height:190px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:6px;background:#fcfcfd}
+.pgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.pcard{background:#fff;border:1px solid var(--bd);border-radius:12px;overflow:hidden;transition:box-shadow .15s}
+.pcard:hover{box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.pcard.open{grid-column:1/-1;box-shadow:0 2px 14px rgba(0,0,0,.08)}
+.phead{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;cursor:pointer}
+.phead:hover{background:#f8fafc}
+.ptitle{font-weight:600;flex:1;word-break:break-word;font-size:14.5px}
+.pmeta{color:#6b7280;font-size:12px;margin-top:2px}
+.pchev{color:#9aa1a9;font-size:13px;line-height:1.4}
+.pbody{display:none;border-top:1px solid #f0f1f3;padding:10px 13px 13px;background:#fcfcfd}
+.pcard.open .pbody{display:block}
+.pbody textarea{min-height:360px}
+.dirtymark{color:#b45309;font-weight:600}
 .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:#333;margin:4px 0}
 .toast{position:fixed;right:16px;bottom:16px;background:#111;color:#fff;padding:10px 14px;border-radius:10px;max-width:60vw;white-space:pre-wrap;display:none;z-index:99}
 .hint{color:#6b7280;font-size:12.5px;margin:2px 0 8px}
@@ -818,87 +831,120 @@ function tuningEditor(gid,t){
 function onTune(gid,k,v){dirty.config.group_tuning=dirty.config.group_tuning||{};
   const g=dirty.config.group_tuning[gid]=dirty.config.group_tuning[gid]||{};
   if(v=== ''){delete g[k];} else {g[k]=isNaN(Number(v))?v:Number(v);} $('#stat').textContent='有未应用的改动';}
+let _expanded=new Set();      // 展开的卡
+let _curCard='';
+function pcardHtml(c){
+  const open=_expanded.has(c.name);
+  const unsaved=(dirty.personas||{})[c.name]!==undefined;
+  const badges=[c.legacy?'旧版':'', c.helper?'辅助':'', c.renamed?'已命名':''].filter(Boolean);
+  return `<div class="pcard ${open?'open':''}" data-card="${c.name}">
+    <div class=phead onclick="toggleCard('${c.name}')">
+      <div class=ptitle>${c.title}
+        <div class=pmeta>${c.name} · ${c.chars} 字${badges.length?' · '+badges.join(' · '):''}
+        ${unsaved?'<span class=dirtymark>● 有未保存改动</span>':''}</div></div>
+      <div class=pchev>${open?'▾ 收起':'▸ 展开'}</div>
+    </div>
+    <div class=pbody>
+      <div class=row style="margin:0 0 8px">
+        <label style="margin:0">显示名</label>
+        <input type=text class=pname style="max-width:260px" value="${c.renamed?c.title:''}" placeholder="（留空 = 用文件名 ${c.name}）">
+        <button onclick="event.stopPropagation();saveNameFor('${c.name}',this)">保存名称</button>
+        <span class=hint>只是面板里好认，不写进卡内容</span>
+      </div>
+      <textarea class="big ptext" data-name="${c.name}" onclick="event.stopPropagation()"
+        oninput="touchCardEl(this)" placeholder="（展开后自动加载内容；改完点右上角『应用到大肥鱼』生效）"></textarea>
+      <div class=hint style="margin-top:6px">文件：<code>${c.legacy?'prompts/':'prompts/personas/'}${c.name}</code>
+        —— 改动要点右上角「应用」；改名是立刻生效的。</div>
+    </div></div>`;
+}
 function renderPersona(){
   const all=S.personas||[];
-  const cards=all.filter(c=>!c.helper);           // 挂到群只能选真卡
-  const helpers=all.filter(c=>c.helper);
-  const pend=dirty.config.prompt_by_group||{};
-  const eff=(g)=>{const k=Object.keys(pend); if(k.includes(g.gid)){const v=pend[g.gid];return (v===null||v==='')?'':v;} return g.persona||'';};
-  const chip=(gid,name,label,cur,tip)=>`<span class="chip ${cur===name?'on':''}" title="${tip||label}" onclick="onMap('${gid}','${name}',this)">${label}</span>`;
-  const rows=S.groups.map(g=>{
-    const cur=eff(g);
-    const chips=[chip(g.gid,"", "默认卡", cur, "走 prompts/system_prompt.txt（默认卡）")]
-      .concat(cards.map(c=>chip(g.gid,c.name,`${c.title}${c.legacy?'（旧版）':''}`, cur, c.name))).join('');
-    const changed=Object.keys(pend).includes(g.gid);
-    return `<div class=gitem data-gid="${g.gid}"><div class=gname>${g.note||''} ${g.gid}`
-      +` <span class=hint>${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">不在白名单，她不理会这个群</b>'}`
-      +`${g.auto_created?' · 自动建档':''}${g.suspect_phantom?'<b style="color:#b45309"> · 疑似残留（她可能已不在这个群）</b>':''}</span>`
-      +`<span class="dtag hint">${changed?' · 已改，待应用':''}</span></div>${chips}</div>`;
-  }).join('');
-  const listOf=(arr,tag)=>(arr||[]).map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" title="${c.name}" onclick="pickPersona('${c.name}')">${c.title}${c.legacy?'（旧版）':''} · ${c.chars}字${tag}</span>`).join('');
+  const cards=all.filter(c=>!c.helper), helpers=all.filter(c=>c.helper);
   $('#t-persona').innerHTML=`
-  <div class=card><h3>人格卡 → 群 的对应</h3>
-    <p class=hint>点一下就是选中（<b>立刻高亮</b>，标上「已改，待应用」），然后点右上角「应用到大肥鱼」才会真正生效。「默认卡」= 删掉这个群的配置，走 <code>prompts/system_prompt.txt</code>。</p>
-    ${rows}</div>
-  <div class=card><h3>编辑人格卡</h3>
-    <p class=hint>点一张卡开始编辑；正在编辑的高亮，有未保存改动的带黄条。</p>
-    <div class=plist>${listOf(cards,'')}</div>
-    ${helpers.length?`<p class=hint style="margin-top:8px">辅助文件（会自动套在所有卡后面 / 是新建卡的模板，<b>别挂到群上</b>）：</p><div class=plist>${listOf(helpers,' · 辅助')}</div>`:''}
-    <div class=row style="margin:6px 0">
-      <button onclick=newPersona()>新建人格卡</button>
-      <span class=hint id=pinfo></span></div>
-    <div class=row style="margin:2px 0 6px">
-      <label style="margin:0">这张卡的显示名</label>
-      <input type=text id=pname style="max-width:260px" placeholder="例：技术助手（Denial 社区）">
-      <button onclick=saveName()>改名称</button>
-      <span class=hint>只是面板里好认，不会写进人格卡内容</span></div>
-    <textarea id=ptext class=big oninput="touchCard()"></textarea></div>`;
-  if(_curCard) loadPersona(_curCard);
-  else if(cards.length) pickPersona(cards[0].name);
+  <div class=card><h3>全部人格卡 <span class=hint>共 ${all.length} 张（${cards.length} 张可用 + ${helpers.length} 张辅助）</span>
+      <button style="float:right" onclick=newPersona()>新建人格卡</button></h3>
+    <p class=hint>点卡片展开：可以改显示名、改内容。卡片默认收起。</p>
+    <div class=pgrid>${cards.map(pcardHtml).join('')}</div>
+    ${helpers.length?`<p class=hint style="margin-top:14px">辅助文件（自动套在所有卡后面 / 新建卡的模板，<b>不要挂到群上</b>）：</p>
+      <div class=pgrid>${helpers.map(pcardHtml).join('')}</div>`:''}
+  </div>`;
+  _expanded.forEach(n=>loadCardInto(n));
 }
-let _curCard='';
-function touchCard(){const t=$('#ptext');if(!t||!t.dataset.name)return;
-  dirty.personas[t.dataset.name]=t.value;
-  const c=document.querySelector(`.chip[data-card="${t.dataset.name}"]`);
-  if(c)c.classList.add('dirty');
-  $('#stat').textContent='有未应用的改动';}
-async function pickPersona(name){
-  const t=$('#ptext'); if(t&&t.dataset.name) touchCard();      // 先留住上一张的改动
-  const r=await api('/api/persona?name='+encodeURIComponent(name));
-  _curCard=name;
-  document.querySelectorAll('.chip[data-card]').forEach(c=>c.classList.toggle('on',c.dataset.card===name));
-  t.value=r.text; t.dataset.name=r.name;
-  $('#pinfo').textContent=r.name;
-  try{const c=(S.personas||[]).find(x=>x.name===r.name);
-      $('#pname').value=(c&&c.renamed)?c.title:'';}catch(e){}
+function toggleCard(name){
+  _expanded.has(name)?_expanded.delete(name):_expanded.add(name);
+  renderPersona();
 }
-async function loadPersona(name){ return pickPersona(name); }
-async function saveName(){const t=$('#ptext');if(!t||!t.dataset.name){toast('先选一张卡');return;}
-  const v=$('#pname').value;
-  const r=await api('/api/persona/name',{name:t.dataset.name,title:v});
-  if(r.ok){toast('名称已改：'+r.title);await reloadState();}else{toast('改失败：'+(r.error||r.title));}}
-function onMap(gid,v,el){const m=dirty.config.prompt_by_group=dirty.config.prompt_by_group||{};
+async function loadCardInto(name){
+  const ta=document.querySelector(`.ptext[data-name="${name}"]`);
+  if(!ta||ta.dataset.loaded)return;
+  try{
+    const r=await api('/api/persona?name='+encodeURIComponent(name));
+    if((dirty.personas||{})[name]!==undefined){ta.value=dirty.personas[name];}
+    else{ta.value=r.text;}
+    ta.dataset.loaded='1';
+  }catch(e){ta.value='（读不到：'+e.message+'）';}
+}
+function touchCardEl(ta){
+  if(!ta||!ta.dataset.name)return;
+  dirty.personas[ta.dataset.name]=ta.value;
+  const card=ta.closest('.pcard');
+  if(card&&!card.querySelector('.dirtymark')){
+    const m=card.querySelector('.pmeta'); if(m)m.insertAdjacentHTML('beforeend',' <span class=dirtymark>● 有未保存改动</span>');
+  }
+  $('#stat').textContent='有未应用的改动';
+}
+function touchCard(){const ta=document.querySelector('.ptext');if(ta)touchCardEl(ta);}
+async function saveNameFor(name,btn){
+  const inp=btn.closest('.pbody').querySelector('.pname');
+  const r=await api('/api/persona/name',{name:name,title:inp.value});
+  if(r.ok){toast('名称已改：'+r.title);
+    try{const c=(S.personas||[]).find(x=>x.name===name);
+        if(c){c.title=r.title;c.renamed=!!(inp.value||'').trim();} }catch(e){}
+    renderPersona();
+  } else {toast('改失败：'+(r.error||r.title));}
+}
+async function pickPersona(name){ return loadCardInto(name); }      // 兼容旧调用
+async function loadPersona(name){ return loadCardInto(name); }
+async function saveName(){const ta=document.querySelector('.ptext');if(ta)return saveNameFor(ta.dataset.name,ta);}
+function newPersona(){const n=prompt('新人格卡文件名（字母数字-_，.txt 结尾，例：csgo_friend.txt）');if(!n)return;
+  _expanded.add(n); dirty.personas[n]='【你是谁】\n你是「大肥鱼」…\n';
+  S.personas=S.personas||[]; S.personas.push({name:n,title:n,chars:0,legacy:false,helper:false});
+  renderPersona();
+  setTimeout(()=>{const ta=document.querySelector(`.ptext[data-name="${n}"]`);
+    if(ta){ta.value=dirty.personas[n];ta.dataset.loaded='1';}},50);
+}
+function onMap(gid,v,el){
+  const m=dirty.config.prompt_by_group=dirty.config.prompt_by_group||{};
   if(v){m[gid]=v;}else{m[gid]=null;}
   try{
-    const row=el&&el.closest?el.closest('.gitem'):document.querySelector(`.gitem[data-gid="${gid}"]`);
-    if(row){
+    const row=(el&&el.parentElement)?el.parentElement
+      :(document.querySelector(`.gitem[data-gid="${gid}"]`)
+        ||document.querySelector(`.chip[data-gid="${gid}"]`));
+    if(row&&row.querySelectorAll){
       row.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
-      if(el) el.classList.add('on');
+      if(el)el.classList.add('on');
       let tag=row.querySelector('.dtag');
-      if(tag) tag.textContent=' · 已改，待应用';
+      if(!tag&&row.appendChild){tag=document.createElement('span');tag.className='dtag hint';
+        tag.textContent='· 已改，待应用';row.appendChild(tag);}
+      else if(tag){tag.textContent='· 已改，待应用';}
     }
   }catch(e){}
-  $('#stat').textContent='有未应用的改动';}
-function newPersona(){const n=prompt('新人格卡文件名（字母数字-_，.txt 结尾，例：csgo_friend.txt）');if(!n)return;
-  $('#ptext').value='【你是谁】\n你是「大肥鱼」…\n';$('#ptext').dataset.name=n;$('#pinfo').textContent=n+'（新的，保存后会出现在列表里）';}
-$('#ptext')&&$('#ptext').addEventListener('input',()=>{});
-function collectPersona(){const t=$('#ptext');if(!t)return;const n=t.dataset.name;if(n&&t.value!==undefined){dirty.personas[n]=t.value;}}
+  $('#stat').textContent='有未应用的改动';
+}
+function mapChips(g){
+  const cards=(S.personas||[]).filter(c=>!c.helper);
+  const pend=dirty.config.prompt_by_group||{};
+  const cur=(Object.prototype.hasOwnProperty.call(pend,g.gid))?((pend[g.gid]===null||pend[g.gid]==='')?'':pend[g.gid]):(g.persona||'');
+  const chip=(name,label,tip)=>`<span class="chip ${cur===name?'on':''}" title="${tip||label}" onclick="onMap('${g.gid}','${name}',this)">${label}</span>`;
+  return [chip('', '默认卡', '走 prompts/system_prompt.txt')]
+    .concat(cards.map(c=>chip(c.name, c.title+(c.legacy?'（旧版）':''), c.name))).join('');
+}
 function renderGroup(){
   $('#t-group').innerHTML=S.groups.map(g=>`<div class=card>
     <h3>${g.name?g.name+' ':'（未知群名）'}<code>${g.gid}</code>`
       +`${g.note?` <span class=tag>备注：${g.note}</span>`:''}
-      <span class=hint>${g.members?g.members+'人 · ':''}${g.in_bot?'她在群里':'<b style="color:#b45309">她已不在这个群</b>'}
-      · ${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">未加入白名单，她不理会</b>'}</span></h3>
+      <span class=hint>${g.members?g.members+'人 · ':''}${g.in_bot?'她在群里':'<b style="color:#b45309">她已不在这个群</b>'}`
+      +` · ${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">未加入白名单，她不理会</b>'}</span></h3>
     <div class=row>
       <label class=chk><input type=checkbox ${g.in_allowlist?'checked':''} onchange="onAllow('${g.gid}',this.checked)"> 服务这个群（加入白名单）</label>
       <label class=chk><input type=checkbox ${g.active?'checked':''} onchange="onActive('${g.gid}',this.checked)"> 激活（她在这个群说话）</label>
@@ -908,6 +954,7 @@ function renderGroup(){
       <label class=chk><input type=checkbox ${g.no_sticker_send?'checked':''} onchange="onStkList('send_exclude_groups','${g.gid}',this.checked)"> 不发表情</label>
       <label class=chk><input type=checkbox ${g.no_sticker_collect?'checked':''} onchange="onStkList('collect_exclude_groups','${g.gid}',this.checked)"> 不收表情</label>
     </div>
+    <div class=row style="margin-top:6px"><span class=hint style="margin-right:4px">用哪张人格卡：</span>${mapChips(g)}</div>
     <div class=row><label style="margin:0">群备注名（只影响面板显示）</label>
       <input type=text style="max-width:240px" value="${g.note||''}" placeholder="例：闪电群" oninput="onNote('${g.gid}',this.value)"></div>
     <label>资料库域（kb.scope_by_group，留空=不挂）</label>
@@ -970,10 +1017,8 @@ function renderMisc(){
     <div class=row><label class=chk><input type=checkbox ${i.enabled!==false?'checked':''} onchange="onDeep('intro','enabled',this.checked)"> 自我介绍段</label>
       <label class=chk><input type=checkbox ${S.config.admin.enabled!==false?'checked':''} onchange="onDeep('admin','enabled',this.checked)"> 私聊只读后台</label></div>
   </div>
-  <div class=card><h3>群备注名（只影响面板显示）</h3>
-    <p class=hint>形如 {"869622030":"闪电群"}，改完应用。</p><textarea id=gn>${JSON.stringify(S.config.admin.group_notes||{},null,1)}</textarea>
-    <button onclick="saveNotes()">写入改动（还需点应用）</button></div>`;
-}
+  <div class=card><h3>群备注名</h3>
+    <p class=hint>已经挪到「群行为限制」页，每个群下面直接改（只影响面板里怎么显示，不影响她）。</p></div>
 function onDeep(top,k,v){const o=Object.assign({},dirty.config[top]||S.config[top]||{});o[k]=v;dirty.config[top]=o;$('#stat').textContent='有未应用的改动';}
 function saveNotes(){try{const o=JSON.parse($('#gn').value);const ad=Object.assign({},dirty.config.admin||S.config.admin||{});ad.group_notes=o;dirty.config.admin=ad;$('#stat').textContent='有未应用的改动';toast('已记下，点右上角应用');}catch(e){toast('JSON 格式不对：'+e.message);}}
 async function applyAll(){
