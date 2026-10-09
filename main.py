@@ -349,7 +349,7 @@ class QqPeakGate(Star):
                 uid_now = str(event.get_sender_id() or "")
             except Exception:
                 uid_now = ""
-            buf.append((who, t, uid_now))
+            buf.append((who, t, uid_now, time.time()))
 
 
     def _log_chat(self, event: AstrMessageEvent, text: str) -> None:
@@ -712,7 +712,7 @@ class QqPeakGate(Star):
             if buf is None:
                 buf = deque(maxlen=max(2, lines))
                 self.recent[gid] = buf
-            buf.append(("我", t, ""))
+            buf.append(("我", t, "", time.time()))
             self.last_reply_ts[gid] = time.time()
             try:
                 self.last_reply_to[gid] = str(event.get_sender_id() or "")
@@ -1251,6 +1251,36 @@ class QqPeakGate(Star):
             return False
         return False
 
+    def _fmt_recent(self, items, n: int = 20, chars: int = 100,
+                    now: float = None) -> list:
+        """把"最近群聊"渲染成带时间的行：`[18:26] 某人：说了啥`。
+
+        中间隔了很久（≥10 分钟）就插一行提示——旧消息只是背景，别当成现在的话题
+        （2026-10-09：她接了一小时前的抽卡话题，主人看着就是"前言不搭后语"）。
+        """
+        import time as _t
+        _now = float(now or _t.time())
+        out, prev = [], None
+        for it in list(items or [])[-int(n or 20):]:
+            try:
+                who, txt = str(it[0] or "?"), str(it[1] or "")
+                ts = float(it[3]) if len(it) > 3 and it[3] else 0.0
+            except Exception:
+                continue
+            if ts:
+                if prev and (ts - prev) >= 600:
+                    out.append("   —— 上面是 %.0f 分钟前的旧消息，已经过去了，别接着聊 ——"
+                               % ((ts - prev) / 60.0))
+                out.append("[%s] %s：%s" % (_t.strftime("%H:%M", _t.localtime(ts)), who,
+                                            (txt or "")[:chars]))
+                prev = ts
+            else:
+                out.append("%s：%s" % (who, (txt or "")[:chars]))
+        if prev and (_now - prev) >= 600:
+            out.append("   —— 上面最后一条也是 %.0f 分钟前的，同样早翻篇了 ——"
+                       % ((_now - prev) / 60.0))
+        return out
+
     def _memory_block(self, gid: str, uid: str, last_reply_to: str = "", text: str = "") -> str:
         """读记忆产物拼成一段背景（只读文件，不做任何生成，保证对话链路快）。"""
         try:
@@ -1370,7 +1400,7 @@ class QqPeakGate(Star):
             if buf is None:
                 buf = deque(maxlen=max(2, int(self.cfg.get("context_lines", 6))))
                 self.recent[gid] = buf
-            buf.append(("我", text, ""))
+            buf.append(("我", text, "", time.time()))
             try:
                 t_in = self._t_in.pop(event.unified_msg_origin, 0.0)
                 if t_in:
@@ -2352,7 +2382,7 @@ class QqPeakGate(Star):
                     if _buf is None:
                         _buf = deque(maxlen=max(2, int(self.cfg.get("context_lines", 6))))
                         self.recent[_rk] = _buf
-                    _buf.append(("我", str(text)[:60], ""))
+                    _buf.append(("我", str(text)[:60], "", time.time()))
             except Exception:
                 pass
             # 【关键】她刚说过话：冷却 / 对话延续 / 接话窗口都要靠这两个戳
@@ -2551,13 +2581,13 @@ class QqPeakGate(Star):
         schema = agent.loop.spec_to_openai(self._agent_specs_for(gid))
         lines = []
         try:
-            for item in list(self.recent.get(gid) or [])[-8:]:
-                lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:60]))
+            lines = self._fmt_recent(self.recent.get(gid), 8, 60)
         except Exception:
             pass
         user = ""
         if lines:
-            user += "[最近群聊]\n" + "\n".join(lines) + "\n"
+            user += ("[最近群聊]\n" + "\n".join(lines)
+                     + "\n（带 [时间] 的是那条消息说的时间；离现在久的只是背景，别当现在的事）\n")
         try:
             _pt2 = self._pending_text(gid)
             if _pt2:
@@ -2818,8 +2848,7 @@ class QqPeakGate(Star):
         try:
             _rk = "" if key.startswith("p:") else str(event.get_group_id() or "")
             _recent = list(self.recent.get(_rk) or [])
-            for item in _recent[-_n_recent:]:
-                lines.append("%s：%s" % (item[0] or "?", (item[1] or "")[:_l_chars]))
+            lines.extend(self._fmt_recent(_recent, _n_recent, _l_chars))
             for item in _recent[-_n_recent:]:
                 if str(item[0] or "") == "我" and str(item[1] or "").strip():
                     _mine.append(str(item[1])[:_m_chars])
@@ -2827,7 +2856,10 @@ class QqPeakGate(Star):
             pass
         user = ""
         if lines:
-            user += "[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines) + "\n"
+            user += ("[最近群聊（'我'=你自己说的，只作参考）]\n" + "\n".join(lines)
+                     + "\n（带 [时间] 的是那条消息说的时间。**离现在很久的只是背景，别去接**；"
+                       "当前这条如果是「？」「艹」这种语气词，就只顺着它回一句，"
+                       "别翻旧账——2026-10-09 就因为接了 36 分钟前的抽卡话题被主人说前言不搭后语）\n")
         if _mine:
             user += ("[你最近说过的几句（尽量换个说法、别老用同一句；语境确实需要重复时可以重复，"
                      "但别连着重复同一句）]\n"
@@ -3115,7 +3147,7 @@ class QqPeakGate(Star):
                     try:
                         _buf = self.recent.get(str(event.get_group_id() or ""))
                         if _buf is not None:
-                            _buf.append(("<图片>", _desc, ""))
+                            _buf.append(("<图片>", _desc, "", time.time()))
                     except Exception:
                         pass
                     # ② 写进长期记忆：跨轮、跨天都在（每轮注入）
@@ -3225,9 +3257,18 @@ class QqPeakGate(Star):
             if self._search_on():
                 if _scfg2.get("smart_judge", True):
                     _chatj = self._judge_fn(key)
+                _rt = ""
                 try:
-                    _rt = " ".join([x[1] for x in list(
-                        self.recent.get("" if key.startswith("p:") else key) or [])[-3:]])[:200]
+                    # 只有"当前这句就是刚那个人的紧跟话"时，才把上文给判定器；
+                    # 否则旧话题会把判定带偏（2026-10-09：拿 36 分钟前的抽卡去判"这最后一关吗"）
+                    _rc = list(self.recent.get("" if key.startswith("p:") else key) or [])
+                    if _rc and len(_cur_q) <= 20:
+                        _last = _rc[-1]
+                        _lts = float(_last[3]) if len(_last) > 3 and _last[3] else 0.0
+                        _luid = str(_last[2] or "") if len(_last) > 2 else ""
+                        if (_lts and (time.time() - _lts) <= 180 and _luid
+                                and _luid == str(event.get_sender_id() or "")):
+                            _rt = " ".join([str(x[1] or "") for x in _rc[-3:]])[:200]
                 except Exception:
                     _rt = ""
                 _dec = agent.websearch.needs_lookup(_cur_q, _chatj, _rt)
