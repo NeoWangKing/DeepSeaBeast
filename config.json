@@ -401,5 +401,21 @@
       "1105410423": "Denial社区",
       "566000222": "自动建档群"
     }
+  },
+  "group_tuning": {
+    "869622030": {
+      "reply_prob_mult": 0.35,
+      "max_auto_per_hour": 4,
+      "min_interval_sec": 300,
+      "max_cont_per_hour": 3,
+      "min_cont_gap_sec": 45,
+      "cont_window_sec": 240,
+      "max_engaged_streak": 3,
+      "engaged_window_sec": 120,
+      "engaged_interval_sec": 12,
+      "engaged_rest_sec": 150,
+      "burst_suppress_sec": 120,
+      "max_total_per_hour": 4
+    }
   }
 }

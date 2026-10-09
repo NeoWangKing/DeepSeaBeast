@@ -1527,6 +1527,56 @@ class QqPeakGate(Star):
         except Exception:
             pass
 
+    def _hour_cap(self, gid: str, default: int = 6) -> int:
+        """这个群每小时总发言上限。
+
+        `group_tuning.<群>.max_total_per_hour` 是硬上限（抽签通道和"对话延续"通道都受它约束）；
+        没配就退回 max_auto_per_hour —— 行为跟以前完全一样。
+        """
+        _tot = self._tune(gid, "max_total_per_hour", None)
+        try:
+            if _tot is not None:
+                return max(0, int(float(_tot)))
+        except Exception:
+            pass
+        return self._tune_i(gid, "max_auto_per_hour", default)
+
+    def _tune(self, gid: str, name: str, default=None):
+        """按群微调：group_tuning.<群号>.<项> 优先，其次 group_tuning."*"，再退回顶层同名配置。
+
+        用法：self._tune_f(gid, "min_interval_sec", 180) —— 群没配就完全等于原来的行为。
+        """
+        try:
+            _t = self.cfg.get("group_tuning") or {}
+            _d = _t.get(str(gid))
+            if not isinstance(_d, dict):
+                _d = {}
+            _star = _t.get("*") if isinstance(_t.get("*"), dict) else {}
+            for _src in (_d, _star):
+                if name in _src and _src.get(name) is not None:
+                    return _src.get(name)
+        except Exception:
+            pass
+        return self.cfg.get(name, default)
+
+    def _tune_f(self, gid: str, name: str, default=None) -> float:
+        try:
+            return float(self._tune(gid, name, default))
+        except Exception:
+            try:
+                return float(default)
+            except Exception:
+                return 0.0
+
+    def _tune_i(self, gid: str, name: str, default=None) -> int:
+        try:
+            return int(float(self._tune(gid, name, default)))
+        except Exception:
+            try:
+                return int(default)
+            except Exception:
+                return 0
+
     def _is_owner(self, event) -> bool:
         try:
             _ids = [str(x) for x in ((self.cfg.get("activation") or {}).get("owner_ids") or [])]
@@ -4746,10 +4796,14 @@ class QqPeakGate(Star):
                 if scoring.cont_pass(_now_c, _last_c, _uid_c,
                                      str(self.last_reply_to.get(gid) or ""),
                                      self._quotes_me(event), _echo,
-                                     float(cfg.get("min_cont_gap_sec", 8) or 8),
-                                     float(cfg.get("cont_window_sec", 180) or 180)):
+                                     self._tune_f(gid, "min_cont_gap_sec",
+                                                  float(cfg.get("min_cont_gap_sec", 8) or 8)),
+                                     self._tune_f(gid, "cont_window_sec",
+                                                  float(cfg.get("cont_window_sec", 180) or 180))):
                     _h_c, _uc = int(_now_c // 3600), self.hour_count.get((gid, int(_now_c // 3600)), 0)
-                    _cap_c = int(cfg.get("max_cont_per_hour", 12) or 12)
+                    _cap_c = min(self._tune_i(gid, "max_cont_per_hour",
+                                              int(cfg.get("max_cont_per_hour", 12) or 12)),
+                                 cap)          # 总上限是硬的：延续也不能把一小时的总量顶出去
                     if _uc < _cap_c:
                         self.hour_count[(gid, _h_c)] = _uc + 1
                         self.last_auto[gid] = _now_c
@@ -4773,7 +4827,8 @@ class QqPeakGate(Star):
                 uid_p = str(event.get_sender_id() or "")
                 now_p = time.time()
                 last_p = self.last_reply_ts.get(gid, 0.0)
-                win_p = float(cfg.get("cont_window_sec", 180))
+                win_p = self._tune_f(gid, "cont_window_sec",
+                                     float(cfg.get("cont_window_sec", 180)))
                 related = False
                 if last_p and 0 <= now_p - last_p <= win_p:
                     to_p = str(self.last_reply_to.get(gid) or "")
@@ -4795,7 +4850,7 @@ class QqPeakGate(Star):
             uid = str(event.get_sender_id() or "")
             now = time.time()
             hour = int(now // 3600)
-            cap = int(cfg.get("max_auto_per_hour", 6))
+            cap = self._hour_cap(gid, 6)
             used = self.hour_count.get((gid, hour), 0)
             if used >= cap:                              # 硬闸门 1：本小时额度用完
                 self._log("跳过(本小时额度用完 %s/%s) 文本=%r" % (used, cap, text[:24]))
@@ -4804,7 +4859,8 @@ class QqPeakGate(Star):
 
             # 硬闸门 2：冷却。她刚说完话、紧接着有人接话时用短冷却（默认 30s），否则 3 分钟
             last_reply = self.last_reply_ts.get(gid, 0.0)
-            engaged = bool(last_reply) and (now - last_reply) <= float(cfg.get("engaged_window_sec", 90))
+            engaged = bool(last_reply) and (now - last_reply) <= self._tune_f(
+                gid, "engaged_window_sec", float(cfg.get("engaged_window_sec", 90)))
             flood_now = False
             if self.scorer is not None and self.scorer.enabled():
                 try:
@@ -4817,13 +4873,17 @@ class QqPeakGate(Star):
             # 连续接话最多 max_engaged_streak 次，超了就退回普通冷却，免得她连珠炮
             # 对方在刷屏时不算"在跟我聊天"：不给快速通道
             # 冷却只跟"在不在对话里"有关；刷屏只影响"值不值得接"（概率），不再偷偷改冷却
-            engaged_ok = engaged and streak < int(cfg.get("max_engaged_streak", 6))
+            engaged_ok = engaged and streak < self._tune_i(
+                gid, "max_engaged_streak", int(cfg.get("max_engaged_streak", 6)))
             if engaged_ok:
-                cooldown = float(cfg.get("engaged_interval_sec", 6))      # 对话中：可以接得快
+                cooldown = self._tune_f(gid, "engaged_interval_sec",
+                                        float(cfg.get("engaged_interval_sec", 6)))
             elif engaged:
-                cooldown = float(cfg.get("engaged_rest_sec", 60))         # 连击用完：还在聊，但收着
+                cooldown = self._tune_f(gid, "engaged_rest_sec",
+                                        float(cfg.get("engaged_rest_sec", 60)))
             else:
-                cooldown = float(cfg.get("min_interval_sec", 180))        # 没在聊：3 分钟一次
+                cooldown = self._tune_f(gid, "min_interval_sec",
+                                        float(cfg.get("min_interval_sec", 180)))
             last_out = max(self.last_auto.get(gid, 0.0), last_reply)
             if now - last_out < cooldown:
                 self._log("跳过(冷却中 还需%.0fs，engaged=%s 刷屏=%s 连击=%s) 文本=%r"
@@ -4834,7 +4894,8 @@ class QqPeakGate(Star):
 
             # 同一人连发：她已经回过这个人，而这条又紧接着他自己发的 → 不逐条回（只回一条）
             try:
-                bsec = float(cfg.get("burst_suppress_sec", 60))
+                bsec = self._tune_f(gid, "burst_suppress_sec",
+                                    float(cfg.get("burst_suppress_sec", 60)))
             except Exception:
                 bsec = 60.0
             if bsec > 0:
@@ -4867,6 +4928,10 @@ class QqPeakGate(Star):
                 )
             if p is None:                                # 打分器关掉/出错 → 退回固定概率
                 p = float(cfg.get("auto_reply_probability", 0.25))
+            _mult = self._tune_f(gid, "reply_prob_mult", 1.0)   # 按群乘一道（<1 = 更少开口）
+            if _mult != 1.0:
+                p = max(0.0, min(1.0, float(p) * _mult))
+                why.append("群频率x%.2f" % _mult)
             if bool((cfg.get("scoring") or {}).get("log_decisions", True)):
                 self._log("决策 p=%.2f 额度%s/%s engaged=%s 连击=%s 刷屏=%s 文本=%r ← %s"
                           % (p, used, cap, int(engaged), streak, int(flood_now), text[:24],

@@ -1036,3 +1036,42 @@ Neo武神：？
 
 - 验证：`tests/admin_sim.py`（配置 / 命令识别 / 正常聊天不误伤 / 只读 mtime / 长度 /
   真跑：主人私聊接管、别人私聊不接管、群里不接管、关掉开关、owner_ids 缺省回退）
+
+### 闪电群发言频率调低（2026-10-09）
+
+主人要求：闪电群（869622030）里少说点，"不要什么话都接茬"。
+先量了一下：10-09 那天群消息 89 条、她发了 37 条（**42%**，约每 2.4 条群消息她就冒一句；
+前几天 12~23%）。确实太能说了。
+
+新增**按群微调**机制 `group_tuning`（`main._tune / _tune_f / _tune_i / _hour_cap`）：
+`group_tuning.<群号>.<项>` 优先 → `group_tuning."*"` → 顶层同名配置；没配就完全等于原行为。
+可调项：`reply_prob_mult`（概率乘数）、`max_total_per_hour`、`max_auto_per_hour`、
+`min_interval_sec`、`max_cont_per_hour`、`min_cont_gap_sec`、`cont_window_sec`、
+`max_engaged_streak`、`engaged_window_sec`、`engaged_interval_sec`、`engaged_rest_sec`、
+`burst_suppress_sec`。
+
+闪电群当前取值（原值 → 现值）：
+| 项 | 原 | 现 |
+|---|---|---|
+| reply_prob_mult | 1 | **0.35** |
+| max_total_per_hour | — | **4**（硬上限，抽签和"对话延续"都受它约束）|
+| max_auto_per_hour | 10 | 4 |
+| min_interval_sec | 90 | **300** |
+| max_cont_per_hour | 30 | **3** |
+| min_cont_gap_sec | 3 | **45** |
+| cont_window_sec | 600 | 240 |
+| max_engaged_streak | 12 | **3** |
+| engaged_rest_sec | 30 | 150 |
+| burst_suppress_sec | 60 | 120 |
+
+发现并修掉一个真问题：**"对话延续"那条快速通道原来只受 `max_cont_per_hour` 约束，
+可以绕开每小时总量上限**（那天她 42% 的话多半是这么冒出来的）。
+现在 `max_total_per_hour` 是硬闸，延续通道 `_cap_c = min(max_cont_per_hour, 总量上限)`。
+
+人格卡（`prompts/system_prompt_friend.txt`）也补了几句：别什么话都接茬、多数消息不用理、
+一轮说完就收、一小时里冒头次数本来就该很少。
+
+验证：`tests/tuning_sim.py` 用真实 gate() 跑同一批消息对比——调前 6 条（曾有 1 小时冲到 6 条），
+调后 4 条且每小时都不超过 4 条，其它群/私聊取值不受影响。
+
+> 后续观察：`journalctl -u astrbot | grep "群频率x0.35"` 能看到乘数生效的决策日志。

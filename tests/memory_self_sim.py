@@ -52,9 +52,14 @@ from memory import store                    # noqa: E402
 _txt = store.read_profile("869622030")
 ck("不再出现『还有一个叫大肥鱼的AI机器人』",
    "还有一个叫" not in _txt and "AI机器人，群主在调试它" not in _txt)
-ck("说清大肥鱼就是她", "那其实就是你" in _txt)
+ck("没有把她写成第三方机器人",
+   "还有一个叫" not in _txt and "AI机器人，群主在调试它" not in _txt)
+ck("手写区点名『那个机器人/它』也是她自己", "那个机器人" in _txt)
+ck("注入文本仍带自我提醒（自动区被重写也兜得住）", "都是**你自己**" in o._memory_block(
+    "869622030", "3245938285", "", ""))
 _raw_live = open(store.profile_path("869622030"), encoding="utf-8").read()
-ck("手写区有永久提醒", "就是**你自己**" in _raw_live and "## 手写补充" in _raw_live)
+ck("手写区有永久提醒", ("就是**你自己**" in _raw_live or "都是**你自己**" in _raw_live)
+   and "## 手写补充" in _raw_live)
 ck("注入文本里带上了手写提醒", "不是别的机器人" in _txt)
 
 print("== 自动区重建不会丢掉手写提醒 ==")
