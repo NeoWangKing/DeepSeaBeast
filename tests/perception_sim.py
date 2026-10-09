@@ -101,6 +101,71 @@ ck("agent loop 通道注入了感知", "_ptxt = agent.perception.render" in _src
 ck("老通道也注入了", "_ptxt2 = agent.perception.render" in _src)
 ck("用了她自己的发言时间/额度", "hour_cap=(0 if private else self._hour_cap(_pk, 0))" in _src)
 
+
+print("== 日期 / 节假日感知 ==")
+
+
+def _at(day, hm="12:00"):
+    return time.mktime(time.strptime("%s %s" % (day, hm), "%Y-%m-%d %H:%M"))
+
+
+# 用一份自己的节假日文件，测试完全可控（真文件随年份会变）
+_tmp_hol = "/tmp/_hol_test.json"
+json.dump({"offDays": {"2026-10-01": "国庆节", "2026-10-02": "国庆节", "2026-10-03": "国庆节",
+                       "2026-10-20": "测试节"},
+           "workDays": {"2026-10-10": "国庆节"}},
+          open(_tmp_hol, "w", encoding="utf-8"), ensure_ascii=False)
+_hcfg = {"holidays_file": _tmp_hol}
+
+_ds = P.date_sense(_hcfg, now=_at("2026-10-02"))
+print("     " + P.render_date(_ds))
+ck("假期中间：第 2 天 / 共 3 天", _ds["day_no"] == 2 and _ds["day_total"] == 3,
+   "%s/%s" % (_ds["day_no"], _ds["day_total"]))
+ck("渲染里有假期名与第几天", "国庆节" in P.render_date(_ds) and "第 2 天" in P.render_date(_ds))
+ck("假期中间：说明天还放假", "还放假" in _ds["tomorrow"], _ds["tomorrow"])
+
+_ds = P.date_sense(_hcfg, now=_at("2026-10-03"))
+print("     " + P.render_date(_ds))
+ck("假期最后一天能认出来", _ds["last_day"] is True)
+ck("最后一天渲染带『最后一天』", "最后一天" in P.render_date(_ds))
+ck("最后一天：也说清了明天是什么日子（上班/上学/周末）",
+   bool(_ds["tomorrow"]) and any(w in _ds["tomorrow"] for w in ("上班", "上学", "周末")),
+   _ds["tomorrow"])
+
+_ds = P.date_sense(_hcfg, now=_at("2026-10-10"))
+print("     " + P.render_date(_ds))
+ck("调休上班的周六能认出来", _ds["makeup"] == "国庆节" and _ds["weekend"] is True)
+ck("渲染写『调休上班』", "调休上班" in P.render_date(_ds))
+
+_ds = P.date_sense(_hcfg, now=_at("2026-10-04"))
+print("     " + P.render_date(_ds))
+ck("普通周日 = 周末休息日", _ds["weekend"] and not _ds["holiday"]
+   and "周末" in P.render_date(_ds), P.render_date(_ds))
+
+_ds = P.date_sense(_hcfg, now=_at("2026-10-05"))
+print("     " + P.render_date(_ds))
+ck("普通工作日识别", (not _ds["holiday"]) and not _ds["weekend"] and not _ds["makeup"])
+ck("说得出离下个假期还有几天（测试节 15 天）",
+   _ds["next_days"] == 15 and "下一个假期" in P.render_date(_ds), str(_ds["next_days"]))
+ck("日期行不超过 120 字", len(P.render_date(_ds)) <= 120, str(len(P.render_date(_ds))))
+
+_t = P.render(P.sense([], _hcfg, now=_at("2026-10-02")), _hcfg)
+ck("没聊天记录也能报日期", "日期：" in _t and "国庆节" in _t, _t[:60])
+ck("节假日文件缺了不炸", P.render_date(P.date_sense({"holidays_file": "/tmp/nope.json"},
+                                                    now=_at("2026-10-02"))))
+
+print("== 真文件（2026 节假日）也能读 ==")
+_ds = P.date_sense(_cfg, now=_at("2026-10-03"))
+ck("真文件：国庆第 3 天/共 7 天", _ds["day_no"] == 3 and _ds["day_total"] == 7,
+   "%s/%s" % (_ds["day_no"], _ds["day_total"]))
+ck("真文件：10-10 是调休上班日", P.date_sense(_cfg, now=_at("2026-10-10"))["makeup"] == "国庆节")
+_hl = json.load(open(os.path.join(ROOT, "holidays.json"), encoding="utf-8"))
+ck("holidays.json 有 workDays（调休）", len(_hl.get("workDays") or {}) >= 1,
+   str(len(_hl.get("workDays") or {})))
+_m = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+ck("调休的周末不按『周末全天空闲』算", "not in _makeup_days(cfg)" in _m)
+ck("_makeup_days 读 workDays", '"workDays"' in _m)
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

@@ -220,14 +220,35 @@ def _holiday_days(cfg: dict) -> set:
     return days
 
 
+_MAKEUP_CACHE = {"ts": 0.0, "days": set()}
+
+
+def _makeup_days(cfg: dict) -> set:
+    """调休上班日（周末但要上班）：这些天不能按"周末全天空闲"算。"""
+    now = time.time()
+    if _MAKEUP_CACHE["days"] and now - _MAKEUP_CACHE["ts"] < 3600:
+        return _MAKEUP_CACHE["days"]
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        str(cfg.get("holidays_file") or "holidays.json"))
+    days = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            days = set((json.load(f).get("workDays") or {}).keys())
+    except Exception:
+        pass
+    _MAKEUP_CACHE["ts"] = now
+    _MAKEUP_CACHE["days"] = days
+    return days
+
+
 def in_offpeak(cfg: dict) -> bool:
     """DeepSeek 定价：周一至周五（非法定节假日）09:00-12:00、14:00-18:00 为高峰，其余为空闲。"""
     mode = str(cfg.get("force_mode") or "").strip().lower()
     if mode in ("peak", "offpeak"):
         return mode == "offpeak"
     now = datetime.now()
-    if now.weekday() >= 5:
-        return True                                  # 周末全天空闲
+    if now.weekday() >= 5 and now.strftime("%Y-%m-%d") not in _makeup_days(cfg):
+        return True                                  # 周末全天空闲（调休上班日例外）
     if now.strftime("%Y-%m-%d") in _holiday_days(cfg):
         return True                                  # 法定节假日全天空闲
     t = now.time()
@@ -2593,7 +2614,7 @@ class QqPeakGate(Star):
             if (self.cfg.get("perception") or {}).get("enabled", True):
                 _hg2 = int(time.time() // 3600)
                 _sig2 = agent.perception.sense(
-                    self.recent.get(gid),
+                    self.recent.get(gid), self.cfg,
                     my_name="我",
                     last_reply_ts=float(self.last_reply_ts.get(gid, 0) or 0),
                     hour_used=int(self.hour_count.get((gid, _hg2), 0) or 0),
@@ -2926,7 +2947,7 @@ class QqPeakGate(Star):
                 _pk = "" if str(key).startswith("p:") else str(event.get_group_id() or "")
                 _hg = int(time.time() // 3600)
                 _sig = agent.perception.sense(
-                    self.recent.get(_pk),
+                    self.recent.get(_pk), self.cfg,
                     my_name="我",
                     last_reply_ts=float(self.last_reply_ts.get(key, 0) or 0),
                     hour_used=int(self.hour_count.get((_pk, _hg), 0) or 0),

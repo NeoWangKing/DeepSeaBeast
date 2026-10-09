@@ -7,8 +7,12 @@
   是在斗图还是在吵架、自己刚说过还是很久没冒头，别再拿旧话题当现在的事。
 - 注入位置：用户消息末尾（时间锚点旁边），只作参考，不让她念出来。
 """
+import json
+import os
 import re
 import time
+
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _WEEK = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
@@ -59,6 +63,116 @@ def _daypart(hour: int) -> str:
     return "深夜"
 
 
+_HOL_CACHE = {"key": None, "off": {}, "work": {}}
+
+
+def _holidays(cfg: dict = None) -> tuple:
+    """读 holidays.json（按 mtime 缓存）→ ({日期: 假期名}, {日期: 调休名})。"""
+    path = os.path.join(PLUGIN_DIR, str((cfg or {}).get("holidays_file") or "holidays.json"))
+    try:
+        key = os.path.getmtime(path)
+    except Exception:
+        key = None
+    if key is not None and _HOL_CACHE["key"] == key:
+        return _HOL_CACHE["off"], _HOL_CACHE["work"]
+    off, work = {}, {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f) or {}
+        off = {str(k): str(v) for k, v in (d.get("offDays") or {}).items()}
+        work = {str(k): str(v) for k, v in (d.get("workDays") or {}).items()}
+    except Exception:
+        pass
+    _HOL_CACHE.update({"key": key, "off": off, "work": work})
+    return off, work
+
+
+def date_sense(cfg: dict = None, now=None) -> dict:
+    """日期感：今天几号星期几、是不是假期/周末/调休、明天上不上班、离下个假期多久。"""
+    now = float(now or time.time())
+    t = time.localtime(now)
+    today = time.strftime("%Y-%m-%d", t)
+    off, work = _holidays(cfg)
+    sig = {"date": today, "md": time.strftime("%m-%d", t), "weekday": _WEEK[t.tm_wday],
+           "weekend": t.tm_wday >= 5, "holiday": off.get(today, ""),
+           "makeup": work.get(today, ""), "day_no": 0, "day_total": 0,
+           "last_day": False, "tomorrow": "", "next_name": "", "next_days": 0}
+
+    def _is_off(d: str) -> bool:
+        return d in off
+
+    def _is_work_makeup(d: str) -> bool:
+        return d in work
+
+    # 今天在假期里的第几天 / 这个假期一共几天
+    if sig["holiday"]:
+        _d0 = t
+        _n = 0
+        while True:                      # 往前数
+            _n += 1
+            _prev = time.strftime("%Y-%m-%d", time.localtime(now - 86400 * _n))
+            if not _is_off(_prev):
+                break
+        sig["day_no"] = _n
+        _k, _tot = 1, _n                 # 从明天开始往后数
+        while True:
+            _nt = time.strftime("%Y-%m-%d", time.localtime(now + 86400 * _k))
+            if not _is_off(_nt):
+                break
+            _tot += 1
+            _k += 1
+        sig["day_total"] = _tot
+        sig["last_day"] = (_n == _tot)
+    # 明天
+    _tm = time.strftime("%Y-%m-%d", time.localtime(now + 86400))
+    _tm_wd = (t.tm_wday + 1) % 7
+    if _is_off(_tm):
+        sig["tomorrow"] = "明天还放假（%s）" % off.get(_tm, "假")
+    elif _is_work_makeup(_tm):
+        sig["tomorrow"] = "明天是调休上班日（%s）" % work.get(_tm, "调休")
+    elif _tm_wd >= 5:
+        sig["tomorrow"] = "明天是周末"
+    else:
+        sig["tomorrow"] = "明天正常上班/上学"
+    # 下一个假期（往后找 200 天；文件里没有就是还没公布，先不说）
+    for _i in range(1, 201):
+        _d = time.strftime("%Y-%m-%d", time.localtime(now + 86400 * _i))
+        if _is_off(_d) and not _is_off(time.strftime("%Y-%m-%d",
+                                                    time.localtime(now + 86400 * (_i - 1)))):
+            sig["next_name"] = off.get(_d, "假期")
+            sig["next_days"] = _i
+            break
+    return sig
+
+
+def render_date(dsig: dict) -> str:
+    """日期那一行。"""
+    if not dsig:
+        return ""
+    today = str(dsig.get("date") or "")
+    bits = ["%s %s" % (dsig.get("md") or today, dsig.get("weekday") or "")]
+    if dsig.get("holiday"):
+        _d, _t = int(dsig.get("day_no") or 0), int(dsig.get("day_total") or 0)
+        if _t > 1:
+            bits.append("**%s假期第 %d 天（共 %d 天）**%s" % (
+                dsig["holiday"], _d, _t, "，是最后一天" if dsig.get("last_day") else ""))
+        else:
+            bits.append("今天是 %s" % dsig["holiday"])
+    elif dsig.get("makeup"):
+        bits.append("**今天是调休上班日**（%s调休，虽然是%s）" % (dsig["makeup"],
+                                                     dsig.get("weekday") or "周末"))
+    elif dsig.get("weekend"):
+        bits.append("周末休息日")
+    else:
+        bits.append("普通工作日")
+    if dsig.get("tomorrow"):
+        bits.append(str(dsig["tomorrow"]))
+    if not dsig.get("holiday") and dsig.get("next_name"):
+        _n = int(dsig.get("next_days") or 0)
+        bits.append("离下一个假期（%s）还有 %d 天" % (dsig["next_name"], _n))
+    return "日期：" + "；".join([b for b in bits if b])
+
+
 def _words(t: str) -> set:
     """粗分词：中文按 2 字滑窗取片段，用来测"话题有没有换"。"""
     s = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9]+", " ", str(t or ""))
@@ -72,9 +186,9 @@ def _words(t: str) -> set:
     return out
 
 
-def sense(recent, now=None, my_name: str = "我", last_reply_ts: float = 0.0,
-          hour_used: int = 0, hour_cap: int = 0, at_me: bool = False,
-          called: bool = False) -> dict:
+def sense(recent, cfg: dict = None, now=None, my_name: str = "我",
+          last_reply_ts: float = 0.0, hour_used: int = 0, hour_cap: int = 0,
+          at_me: bool = False, called: bool = False) -> dict:
     """算环境信号（纯函数，不碰任何外部状态）。"""
     now = float(now or time.time())
     rows = []
@@ -85,6 +199,7 @@ def sense(recent, now=None, my_name: str = "我", last_reply_ts: float = 0.0,
             continue
     rows = [r for r in rows if r[2]]
     sig = {
+        "date": date_sense(cfg, now),
         "empty": not rows,
         "now": now,
         "at_me": bool(at_me or called),
@@ -129,14 +244,14 @@ def sense(recent, now=None, my_name: str = "我", last_reply_ts: float = 0.0,
 
 def render(sig: dict, cfg: dict = None, private: bool = False) -> str:
     """把信号渲染成一小段提示文本（约 3 行，≤ max_chars）。"""
-    if not sig or sig.get("empty"):
+    if not sig:
         return ""
-    cap = 300
+    cap = 420
     try:
         pcfg = (cfg or {}).get("perception") or {}
         if pcfg.get("enabled", True) is False:
             return ""
-        cap = int(pcfg.get("max_chars", 300) or 300)
+        cap = int(pcfg.get("max_chars", 420) or 420)
     except Exception:
         pass
     now = float(sig.get("now") or time.time())
@@ -156,6 +271,10 @@ def render(sig: dict, cfg: dict = None, private: bool = False) -> str:
     if sig.get("last_age") and sig["last_age"] >= 600:
         _t1 += "；这已经是十几分钟前的消息了"
     lines.append("- " + _t1)
+    # ①b 日期 / 节假日
+    _dl = render_date(sig.get("date") or {})
+    if _dl:
+        lines.append("- " + _dl)
     # ② 气氛
     _n, _s = int(sig.get("n10") or 0), int(sig.get("speakers10") or 0)
     if sig.get("burst"):
@@ -178,6 +297,9 @@ def render(sig: dict, cfg: dict = None, private: bool = False) -> str:
         _t2 += "；**话题刚换过**"
     lines.append("- " + _t2)
     # ③ 她自己
+    if sig.get("empty"):
+        out0 = "\n".join(lines)
+        return out0[:cap] if len(out0) > cap else out0
     _t3 = ""
     if sig.get("my_last_age"):
         _t3 = "你上次说话是 %s前" % _ago(sig["my_last_age"])

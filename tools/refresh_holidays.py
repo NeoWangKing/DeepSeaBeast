@@ -20,15 +20,21 @@ def fetch(year: int) -> dict:
 def main() -> int:
     year = datetime.date.today().year
     off_days: dict[str, str] = {}
+    work_days: dict[str, str] = {}          # 调休上班日（周末但要上班）
     for y in (year, year + 1):
         try:
             data = fetch(y)
         except Exception as e:
             print(f"[warn] {y} 抓取失败: {e!r}", file=sys.stderr)
             continue
-        for item in data.get("days", []):
+        _rows = data.get("days") or []
+        if not _rows:
+            print(f"[warn] {y} 的放假安排还没公布（days 为空），跳过", file=sys.stderr)
+        for item in _rows:
             if item.get("isOffDay"):
                 off_days[item["date"]] = item.get("name", "")
+            else:
+                work_days[item["date"]] = item.get("name", "")
     if not off_days:
         print("没抓到任何节假日数据，保留旧文件", file=sys.stderr)
         return 1
@@ -36,10 +42,12 @@ def main() -> int:
         "updatedAt": datetime.datetime.now().isoformat(timespec="seconds"),
         "years": [year, year + 1],
         "offDays": dict(sorted(off_days.items())),
+        "workDays": dict(sorted(work_days.items())),
     }
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    print(f"已写入 {OUT}: {len(off_days)} 个休息日（{year}/{year+1}）")
+    print(f"已写入 {OUT}: {len(off_days)} 个休息日 / {len(work_days)} 个调休上班日"
+          f"（{year}/{year+1}）")
     return 0
 
 
