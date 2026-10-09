@@ -299,13 +299,49 @@ def _stickers_mod():
         return None
 
 
+_CTYPE = {".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg", ".webp": "image/webp", ".bmp": "image/bmp"}
+
+
+def sticker_animated(it) -> bool:
+    """是不是动图（多帧 gif/webp）。"""
+    try:
+        S = _stickers_mod()
+        p = S.abs_path(it) or ""
+        ext = os.path.splitext(p)[1].lower()
+        if ext not in (".gif", ".webp"):
+            return False
+        from PIL import Image
+        im = Image.open(p)
+        return int(getattr(im, "n_frames", 1) or 1) > 1
+    except Exception:
+        return False
+
+
+def sticker_raw(sid):
+    """原图路径 + content-type（动图直接发原文件，浏览器自己会动）。"""
+    S = _stickers_mod()
+    if not S:
+        return "", ""
+    it = S.find(sid)
+    if not it:
+        return "", ""
+    p = S.abs_path(it) or ""
+    if not p or not os.path.isfile(p):
+        return "", ""
+    return p, _CTYPE.get(os.path.splitext(p)[1].lower(), "application/octet-stream")
+
+
 def sticker_list():
     S = _stickers_mod()
     if not S:
         return []
     out = []
     for it in (S.load() or []):
-        out.append({"id": str(it.get("id")), "desc": str(it.get("desc") or ""),
+        _p = S.abs_path(it) or ""
+        out.append({"animated": sticker_animated(it),
+                    "fsize": (os.path.getsize(_p) if _p and os.path.isfile(_p) else 0),
+                    "id": str(it.get("id")), "desc": str(it.get("desc") or ""),
                     "tags": [str(x) for x in (it.get("tags") or [])],
                     "used": int(it.get("used") or 0),
                     "size": int(it.get("size") or 0),
@@ -668,6 +704,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(full_state())
         if u.path == "/api/sticker":
             sid = (q.get("id") or [""])[0]
+            if (q.get("raw") or [""])[0] in ("1", "true", "yes"):
+                _p2, _ct = sticker_raw(sid)          # 动图原图
+                if not _p2:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                return self._raw(_p2, _ct)
             p = sticker_thumb(sid)
             if not p:
                 self.send_response(404)
@@ -983,10 +1026,16 @@ function renderSticker(){
       <label>库里最多存</label><input type=text value="${S.config.stickers.max_store??''}" oninput="onStk('max_store',Number(this.value))">
       <label>每小时最多发</label><input type=text value="${S.config.stickers.max_per_hour??''}" oninput="onStk('max_per_hour',Number(this.value))"></div>
     <p class=hint>共 ${S.stickers.length} 张。点缩略图上的「形象图」可以把这张设成"优先露脸"（prefer_ids）。</p></div>
+  <div class=row style="margin:-4px 0 8px">
+    <button onclick="playAllAnims(true)">▶ 全部播放动图</button>
+    <button onclick="playAllAnims(false)">⏸ 全部用静态缩略图</button>
+    <span class=hint>动图（${S.stickers.filter(x=>x.animated).length} 张）默认显示第一帧，点图即播放；一进页面全播会拖慢加载。</span>
+  </div>
   <div class="grid st">${S.stickers.map(x=>`<div class=card>
-      <img src="/api/sticker?id=${x.id}" loading=lazy>
+      <img src="/api/sticker?id=${x.id}" loading=lazy title="${x.animated?'点一下播放动图':''}"
+        ${x.animated?`onclick="toggleAnim('${x.id}',this)"`:''}>
       <div class=d${x.desc?'':' style="color:#b45309"'}>${x.desc||'（没有备注 —— 建议写"怎么用"）'}</div>
-      <div class=m>${x.id} · 用过 ${x.used}${x.face_pushed?' · 已推面板':''}</div>
+      <div class=m>${x.id} · 用过 ${x.used}${x.face_pushed?' · 已推面板':''}${x.animated?` · <b style="color:#2a5db0">动图 ${(x.fsize/1048576).toFixed(1)}MB</b>`:''}</div>
       <div>${x.tags.map(t=>`<span class=tag>${t}</span>`).join('')}</div>
       <div class=row style="margin-top:6px">
         <button onclick="editNote('${x.id}')">改备注</button>
@@ -1001,6 +1050,19 @@ function editNote(id){const x=S.stickers.find(s=>s.id===id);const d=prompt('这�
     if(r.ok){toast('已保存，她会立刻用上新备注');reloadState();}else{toast('失败：'+r.msg);}});}
 function delSticker(id){if(!confirm('从本地库删掉 '+id+'？（QQ 面板里的还在，可用 mirror 同步）'))return;
   api('/api/sticker/delete',{id:id}).then(r=>{toast(r.ok?r.msg:'失败：'+r.msg);reloadState();});}
+function toggleAnim(id,img){
+  const raw=img.dataset.raw==='1';
+  img.src='/api/sticker?id='+id+(raw?'':'&raw=1');
+  img.dataset.raw=raw?'0':'1';
+  img.title=raw?'点一下播放动图':'点一下回到静态';
+}
+function playAllAnims(on){
+  document.querySelectorAll('.grid.st img').forEach(img=>{
+    const card=img.closest('.card'); if(!card)return;
+    const m=(card.querySelector('.m')||{}).textContent||'';
+    if(m.indexOf('动图')>=0){ img.src=img.src.replace(/&raw=1$/,'')+(on?'&raw=1':''); }
+  });
+}
 function togglePref(id){const cur=new Set((S.config.stickers&&S.config.stickers.prefer_ids)||[]);cur.has(id)?cur.delete(id):cur.add(id);
   const st=Object.assign({},dirty.config.stickers||S.config.stickers||{});st.prefer_ids=[...cur];dirty.config.stickers=st;$('#stat').textContent='有未应用的改动';renderSticker();}
 function renderMisc(){

@@ -260,6 +260,40 @@ try{
 else:
     print("  （没装 node，跳过）")
 
+
+print("== 动图（gif/webp） ==")
+_lst = W.sticker_list()
+ck("每条都带 animated/fsize", all(("animated" in x and "fsize" in x) for x in _lst))
+_anim = [x for x in _lst if x["animated"]]
+ck("识别出动图（至少 1 张）", len(_anim) >= 1, "动图 %d / 共 %d" % (len(_anim), len(_lst)))
+if _anim:
+    _sid = _anim[0]["id"]
+    _path, _ct = W.sticker_raw(_sid)
+    ck("raw 给出原图 + 正确 content-type",
+       bool(_path) and _ct in ("image/gif", "image/webp") and os.path.isfile(_path), _ct)
+    srv2 = W.ThreadingHTTPServer(("127.0.0.1", 0), W.H)
+    W.H.pw = "test-pw-123"
+    threading.Thread(target=srv2.serve_forever, daemon=True).start()
+    _port2 = srv2.server_address[1]
+    try:
+        import urllib.request as _ur
+        _auth = "Basic " + base64.b64encode(b"x:test-pw-123").decode()
+
+        def _get(url):
+            rq = _ur.Request(url)
+            rq.add_header("Authorization", _auth)
+            with _ur.urlopen(rq, timeout=20) as rs:
+                return rs.headers.get("Content-Type", ""), rs.read(6), rs.read(0)
+
+        _ct2, _head, _ = _get("http://127.0.0.1:%d/api/sticker?id=%s&raw=1" % (_port2, _sid))
+        ck("HTTP raw 端点发原图（GIF/WEBP）",
+           _head[:3] == b"GIF" or _head[:4] == b"RIFF", "%s %r" % (_ct2, _head))
+        _ct3, _head3, _ = _get("http://127.0.0.1:%d/api/sticker?id=%s" % (_port2, _sid))
+        ck("默认端点仍是缩略图（JPEG）", _ct3 == "image/jpeg" and _head3[:2] == b"\xff\xd8",
+           "%s %r" % (_ct3, _head3))
+    finally:
+        srv2.shutdown()
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))
