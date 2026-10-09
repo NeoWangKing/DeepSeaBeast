@@ -366,11 +366,14 @@ def groups_overview():
     stk = cfg.get("stickers") or {}
     send_ex = {str(x) for x in (stk.get("send_exclude_groups") or [])}
     col_ex = {str(x) for x in (stk.get("collect_exclude_groups") or [])}
+    allow = {str(x) for x in (cfg.get("allowed_groups") or [])}
     out = []
     for g in sorted(gids):
         if not str(g).isdigit():
             continue
         out.append({
+            "in_allowlist": (not allow) or (str(g) in allow),
+            "auto_created": str(g) in (reg or {}),
             "gid": str(g), "note": str(notes.get(str(g)) or ""),
             "persona": os.path.basename(gmap.get(str(g), "")) or "",
             "active": bool((act.get(str(g)) or {}).get("on")),
@@ -717,7 +720,8 @@ function renderPersona(){
       .concat(cards.map(c=>chip(g.gid,c.name,`${c.name}${c.legacy?'（旧版）':''}`, cur))).join('');
     const changed=Object.keys(pend).includes(g.gid);
     return `<div class=gitem data-gid="${g.gid}"><div class=gname>${g.note||''} ${g.gid}`
-      +` <span class=hint>${g.active?'激活中':'未激活'}</span>`
+      +` <span class=hint>${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">不在白名单，她不理会这个群</b>'}`
+      +`${g.auto_created?' · 自动建档':''}</span>`
       +`<span class="dtag hint">${changed?' · 已改，待应用':''}</span></div>${chips}</div>`;
   }).join('');
   const listOf=(arr,tag)=>(arr||[]).map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" onclick="pickPersona('${c.name}')">${c.name}${c.legacy?'（旧版）':''} · ${c.chars}字${tag}</span>`).join('');
