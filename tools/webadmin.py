@@ -328,6 +328,10 @@ def groups_overview():
     act = active_state()
     reg = _read_json(os.path.join(PLUGIN_DIR, "data", "group_registry.json"), {}) or {}
     gmap = {str(k): str(v) for k, v in (cfg.get("prompt_by_group") or {}).items()}
+    for _g, _v in (reg or {}).items():          # 自动建档的群也有自己的卡
+        _pf = os.path.basename(str((_v or {}).get("persona") or ""))
+        if _pf and str(_g) not in gmap:
+            gmap[str(_g)] = _pf
     gids = set(gmap) | set(act) | {str(x) for x in (cfg.get("allowed_groups") or [])} | set(reg)
     notes = (cfg.get("admin") or {}).get("group_notes") or {}
     only_at = {str(x) for x in (cfg.get("only_at_groups") or [])}
@@ -591,7 +595,10 @@ nav a.on{background:#fff;border:1px solid var(--bd);color:#000;font-weight:600}
 main{padding:12px 16px 60px}
 .card{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:12px;margin:0 0 12px}
 .card h3{margin:0 0 8px;font-size:15px}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.grid{display:grid;gap:10px 14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-top:6px}
+.fld{min-width:0}
+.fld label{margin:0 0 2px}
+.fld input{font-size:12.5px}
 .grid.st{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
 label{display:block;margin:6px 0 2px;color:#555;font-size:13px}
 input[type=text],input[type=number],textarea,select{width:100%;border:1px solid var(--bd);border-radius:8px;padding:6px 8px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#fff}
@@ -648,7 +655,7 @@ function tuningEditor(gid,t){
     ['cont_window_sec','延续窗口(秒)',t.cont_window_sec??''],
     ['max_engaged_streak','连续接话上限(次)',t.max_engaged_streak??''],
     ['engaged_rest_sec','连击用完后冷却(秒)',t.engaged_rest_sec??'']];
-  return F.map(([k,label])=>`<label>${label} <code>${k}</code></label><input type=text data-g='${gid}' data-k='${k}' value="${t[k]??''}" placeholder='留空=用全局值' oninput="onTune('${gid}','${k}',this.value)">`).join('');
+  return F.map(([k,label])=>`<div class=fld><label>${label} <code>${k}</code></label><input type=text data-g='${gid}' data-k='${k}' value="${t[k]??''}" placeholder='留空=用全局值' oninput="onTune('${gid}','${k}',this.value)"></div>`).join('');
 }
 function onTune(gid,k,v){dirty.config.group_tuning=dirty.config.group_tuning||{};
   const g=dirty.config.group_tuning[gid]=dirty.config.group_tuning[gid]||{};
@@ -710,7 +717,7 @@ function renderSticker(){
     <p class=hint>共 ${S.stickers.length} 张。点缩略图上的「形象图」可以把这张设成"优先露脸"（prefer_ids）。</p></div>
   <div class="grid st">${S.stickers.map(x=>`<div class=card>
       <img src="/api/sticker?id=${x.id}" loading=lazy>
-      <div class=d>${x.desc||'（没有备注）'}</div>
+      <div class=d${x.desc?'':' style="color:#b45309"'}>${x.desc||'（没有备注 —— 建议写"怎么用"）'}</div>
       <div class=m>${x.id} · 用过 ${x.used}${x.face_pushed?' · 已推面板':''}</div>
       <div>${x.tags.map(t=>`<span class=tag>${t}</span>`).join('')}</div>
       <div class=row style="margin-top:6px">
