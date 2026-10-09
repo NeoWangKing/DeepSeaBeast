@@ -202,6 +202,22 @@ ck("人格卡页只列卡片（没有旧的对应表）", "人格卡 → 群 的
 ck("群页里有『用哪张人格卡』", "用哪张人格卡" in _page)
 ck("卡片默认折叠（.pcard 没有默认 open）", ".pcard.open{grid-column" in _page)
 
+
+print("== 面板 JS 语法（node --check） ==")
+import re as _re2, subprocess as _sp, tempfile as _tf, shutil as _sh
+_js2 = _re2.search(r"<script>(.*)</script>", W.HTML, _re2.S).group(1)
+if _sh.which("node"):
+    with _tf.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as _f:
+        _f.write(_js2)
+        _p2 = _f.name
+    _r = _sp.run(["node", "--check", _p2], capture_output=True, text=True)
+    import os as _os2
+    _os2.remove(_p2)
+    ck("JS 语法通过（不是白屏）", _r.returncode == 0, (_r.stderr or "")[-160:])
+else:
+    print("  （没装 node，跳过）")
+ck("页面里没有残留的 saveNotes 引用", "saveNotes" not in W.HTML)
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

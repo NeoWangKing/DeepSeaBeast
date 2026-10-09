@@ -1018,9 +1018,9 @@ function renderMisc(){
       <label class=chk><input type=checkbox ${S.config.admin.enabled!==false?'checked':''} onchange="onDeep('admin','enabled',this.checked)"> 私聊只读后台</label></div>
   </div>
   <div class=card><h3>群备注名</h3>
-    <p class=hint>已经挪到「群行为限制」页，每个群下面直接改（只影响面板里怎么显示，不影响她）。</p></div>
+    <p class=hint>已经挪到「群行为限制」页，每个群下面直接改（只影响面板里怎么显示，不影响她）。</p></div>`;
+}
 function onDeep(top,k,v){const o=Object.assign({},dirty.config[top]||S.config[top]||{});o[k]=v;dirty.config[top]=o;$('#stat').textContent='有未应用的改动';}
-function saveNotes(){try{const o=JSON.parse($('#gn').value);const ad=Object.assign({},dirty.config.admin||S.config.admin||{});ad.group_notes=o;dirty.config.admin=ad;$('#stat').textContent='有未应用的改动';toast('已记下，点右上角应用');}catch(e){toast('JSON 格式不对：'+e.message);}}
 async function applyAll(){
   collectPersona();
   const hasP=Object.keys(dirty.personas).length, hasC=Object.keys(dirty.config).length, hasA=Object.keys(dirty.active).length;
