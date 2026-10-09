@@ -416,5 +416,9 @@
       "engaged_rest_sec": 60,
       "burst_suppress_sec": 60
     }
+  },
+  "perception": {
+    "enabled": true,
+    "max_chars": 300
   }
 }

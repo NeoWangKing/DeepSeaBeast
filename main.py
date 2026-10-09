@@ -2588,6 +2588,23 @@ class QqPeakGate(Star):
         if lines:
             user += ("[最近群聊]\n" + "\n".join(lines)
                      + "\n（带 [时间] 的是那条消息说的时间；离现在久的只是背景，别当现在的事）\n")
+        # 环境感知（零 token）：同上，老通道也要有
+        try:
+            if (self.cfg.get("perception") or {}).get("enabled", True):
+                _hg2 = int(time.time() // 3600)
+                _sig2 = agent.perception.sense(
+                    self.recent.get(gid),
+                    my_name="我",
+                    last_reply_ts=float(self.last_reply_ts.get(gid, 0) or 0),
+                    hour_used=int(self.hour_count.get((gid, _hg2), 0) or 0),
+                    hour_cap=self._hour_cap(gid, 0),
+                    at_me=bool(self._at_me(event)))
+                _ptxt2 = agent.perception.render(_sig2, self.cfg)
+                if _ptxt2:
+                    user += "\n" + _ptxt2
+        except Exception as _ep2:
+            self._log_debug("环境感知失败 %r" % (_ep2,))
+
         try:
             _pt2 = self._pending_text(gid)
             if _pt2:
@@ -2896,12 +2913,30 @@ class QqPeakGate(Star):
         except Exception:
             pass
         # 时间锚点：没有"现在"，她就会把打完的比赛当"下一场"
+        # （开了环境感知就不用再说了，感知里第一行就是"现在是……"，避免重复两遍）
         try:
             _nt = agent.websearch.now_text()
-            if _nt:
+            if _nt and not (self.cfg.get("perception") or {}).get("enabled", True):
                 user += "\n【现在】%s（北京时间）" % _nt
         except Exception:
             pass
+        # 环境感知（零 token）：现在几点、群里什么气氛、她自己多久没说话
+        try:
+            if (self.cfg.get("perception") or {}).get("enabled", True):
+                _pk = "" if str(key).startswith("p:") else str(event.get_group_id() or "")
+                _hg = int(time.time() // 3600)
+                _sig = agent.perception.sense(
+                    self.recent.get(_pk),
+                    my_name="我",
+                    last_reply_ts=float(self.last_reply_ts.get(key, 0) or 0),
+                    hour_used=int(self.hour_count.get((_pk, _hg), 0) or 0),
+                    hour_cap=(0 if private else self._hour_cap(_pk, 0)),
+                    at_me=bool(self._at_me(event)))
+                _ptxt = agent.perception.render(_sig, self.cfg, private=private)
+                if _ptxt:
+                    user += "\n" + _ptxt
+        except Exception as _ep:
+            self._log_debug("环境感知失败 %r" % (_ep,))
         # 可查的事实问题：当轮就把话说明白，别让她张口就是"不知道"
         try:
             if self._search_on() and agent.websearch.is_lookup_question(
