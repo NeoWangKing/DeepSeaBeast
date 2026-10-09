@@ -181,7 +181,6 @@
       "966812151"
     ],
     "at_only": false,
-    "start_needs_at": null,
     "start_keywords": [
       "海龟汤",
       "开局"
@@ -210,9 +209,7 @@
       "api_key_source": "astrbot",
       "temperature": 0.0,
       "max_tokens": 400,
-      "timeout": 60,
-      "thinking": null,
-      "reasoning_effort": null
+      "timeout": 60
     }
   },
   "stickers": {
@@ -305,7 +302,6 @@
       "vision_model": "deepseek-flash"
     },
     "tool_profiles": {
-      "full": null,
       "lean": [
         "send_message",
         "send_face",

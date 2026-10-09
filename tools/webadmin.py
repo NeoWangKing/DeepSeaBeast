@@ -132,6 +132,31 @@ def _walk_check(old, new, path, errs):
                        type(new).__name__))
 
 
+def prune_nulls(d):
+    """把 None 当成"删掉这个键"（面板点「默认卡」就是删 prompt_by_group 的那一项）。"""
+    if not isinstance(d, dict):
+        return d
+    for k in list(d.keys()):
+        if d[k] is None:
+            del d[k]
+        elif isinstance(d[k], dict):
+            prune_nulls(d[k])
+    return d
+
+
+def _del_paths(dst, patch):
+    """按 patch 的路径，把 dst 里对应的项删掉（patch 值为 None 的）。"""
+    if not isinstance(patch, dict):
+        return
+    for k, v in patch.items():
+        if v is None:
+            if isinstance(dst, dict):
+                dst.pop(k, None)
+        elif isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _del_paths(dst[k], v)
+    return dst
+
+
 def validate_patch(patch, cfg=None):
     """白名单 + 类型校验（拿现有 config 当模板），返回错误列表。"""
     errs = []
@@ -187,7 +212,7 @@ def list_personas():
             except Exception:
                 txt, mt = "", 0
             out.append({"name": fn, "legacy": legacy, "chars": len(txt),
-                        "mtime": mt, "path": p})
+                        "mtime": mt, "path": p, "helper": fn.startswith("_")})
     return out
 
 
@@ -371,7 +396,10 @@ def apply_changes(body):
         return {"ok": False, "errors": errs}
     cfg = load_cfg()
     if patch:
+        _del_paths(cfg, patch)          # 先按 null 删键
+        prune_nulls(patch)              # 剩下的 null 不再写入
         deep_merge(cfg, patch)
+        prune_nulls(cfg)
         todo.append(CONFIG)
         logs.append("config.json：改了 %s" % "、".join(sorted(patch.keys())))
 
@@ -677,20 +705,30 @@ function onTune(gid,k,v){dirty.config.group_tuning=dirty.config.group_tuning||{}
   const g=dirty.config.group_tuning[gid]=dirty.config.group_tuning[gid]||{};
   if(v=== ''){delete g[k];} else {g[k]=isNaN(Number(v))?v:Number(v);} $('#stat').textContent='有未应用的改动';}
 function renderPersona(){
-  const cards=S.personas;
+  const all=S.personas||[];
+  const cards=all.filter(c=>!c.helper);           // 挂到群只能选真卡
+  const helpers=all.filter(c=>c.helper);
+  const pend=dirty.config.prompt_by_group||{};
+  const eff=(g)=>{const k=Object.keys(pend); if(k.includes(g.gid)){const v=pend[g.gid];return (v===null||v==='')?'':v;} return g.persona||'';};
+  const chip=(gid,name,label,cur)=>`<span class="chip ${cur===name?'on':''}" onclick="onMap('${gid}','${name}',this)">${label}</span>`;
   const rows=S.groups.map(g=>{
-    const chips=[`<span class="chip ${!g.persona?'on':''}" onclick="onMap('${g.gid}','')">默认卡</span>`]
-      .concat(cards.map(c=>`<span class="chip ${g.persona===c.name?'on':''}" onclick="onMap('${g.gid}','${c.name}')">${c.name}${c.legacy?'（旧版）':''}</span>`)).join('');
-    return `<div class=gitem><div class=gname>${g.note||''} ${g.gid} <span class=hint>${g.active?'激活中':'未激活'}</span></div>${chips}</div>`;
+    const cur=eff(g);
+    const chips=[chip(g.gid,"", "默认卡", cur)]
+      .concat(cards.map(c=>chip(g.gid,c.name,`${c.name}${c.legacy?'（旧版）':''}`, cur))).join('');
+    const changed=Object.keys(pend).includes(g.gid);
+    return `<div class=gitem data-gid="${g.gid}"><div class=gname>${g.note||''} ${g.gid}`
+      +` <span class=hint>${g.active?'激活中':'未激活'}</span>`
+      +`<span class="dtag hint">${changed?' · 已改，待应用':''}</span></div>${chips}</div>`;
   }).join('');
-  const plist=cards.map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" onclick="pickPersona('${c.name}')">${c.name}${c.legacy?'（旧版）':''} · ${c.chars}字</span>`).join('');
+  const listOf=(arr,tag)=>(arr||[]).map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" onclick="pickPersona('${c.name}')">${c.name}${c.legacy?'（旧版）':''} · ${c.chars}字${tag}</span>`).join('');
   $('#t-persona').innerHTML=`
   <div class=card><h3>人格卡 → 群 的对应</h3>
-    <p class=hint>点一下就是选中（写进 <code>prompt_by_group</code>）；「默认卡」= 删掉这个群的配置，走 <code>prompts/system_prompt.txt</code>。改完点右上角「应用到大肥鱼」。</p>
+    <p class=hint>点一下就是选中（<b>立刻高亮</b>，标上「已改，待应用」），然后点右上角「应用到大肥鱼」才会真正生效。「默认卡」= 删掉这个群的配置，走 <code>prompts/system_prompt.txt</code>。</p>
     ${rows}</div>
   <div class=card><h3>编辑人格卡</h3>
-    <p class=hint>下面点一张卡开始编辑（正在编辑的会高亮；有未保存改动的带黄条）。</p>
-    <div class=plist>${plist}</div>
+    <p class=hint>点一张卡开始编辑；正在编辑的高亮，有未保存改动的带黄条。</p>
+    <div class=plist>${listOf(cards,'')}</div>
+    ${helpers.length?`<p class=hint style="margin-top:8px">辅助文件（会自动套在所有卡后面 / 是新建卡的模板，<b>别挂到群上</b>）：</p><div class=plist>${listOf(helpers,' · 辅助')}</div>`:''}
     <div class=row style="margin:6px 0"><button onclick=newPersona()>新建人格卡</button><span class=hint id=pinfo></span></div>
     <textarea id=ptext class=big oninput="touchCard()"></textarea></div>`;
   if(_curCard) loadPersona(_curCard);
@@ -711,8 +749,18 @@ async function pickPersona(name){
   $('#pinfo').textContent=r.name;
 }
 async function loadPersona(name){ return pickPersona(name); }
-function onMap(gid,v){const m=dirty.config.prompt_by_group=dirty.config.prompt_by_group||{};
-  if(v){m[gid]=v;}else{m[gid]=null;} $('#stat').textContent='有未应用的改动';}
+function onMap(gid,v,el){const m=dirty.config.prompt_by_group=dirty.config.prompt_by_group||{};
+  if(v){m[gid]=v;}else{m[gid]=null;}
+  try{
+    const row=el&&el.closest?el.closest('.gitem'):document.querySelector(`.gitem[data-gid="${gid}"]`);
+    if(row){
+      row.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+      if(el) el.classList.add('on');
+      let tag=row.querySelector('.dtag');
+      if(tag) tag.textContent=' · 已改，待应用';
+    }
+  }catch(e){}
+  $('#stat').textContent='有未应用的改动';}
 function newPersona(){const n=prompt('新人格卡文件名（字母数字-_，.txt 结尾，例：csgo_friend.txt）');if(!n)return;
   $('#ptext').value='【你是谁】\n你是「大肥鱼」…\n';$('#ptext').dataset.name=n;$('#pinfo').textContent=n+'（新的，保存后会出现在列表里）';}
 $('#ptext')&&$('#ptext').addEventListener('input',()=>{});

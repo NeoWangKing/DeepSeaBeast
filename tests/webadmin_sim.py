@@ -110,6 +110,15 @@ try:
 finally:
     srv.shutdown()
 
+
+print("== null 表示删键（点「默认卡」） ==")
+_d = {"prompt_by_group": {"111": "a.txt", "222": "b.txt"}}
+W._del_paths(_d, {"prompt_by_group": {"111": None}})
+ck("null 会把那项删掉", _d == {"prompt_by_group": {"222": "b.txt"}}, json.dumps(_d))
+_d2 = {"a": {"b": None, "c": 1}}
+W.prune_nulls(_d2)
+ck("prune_nulls 递归删空", _d2 == {"a": {"c": 1}}, json.dumps(_d2))
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))
