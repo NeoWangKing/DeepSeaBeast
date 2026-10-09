@@ -618,6 +618,15 @@ code{background:#f1f3f5;padding:0 4px;border-radius:4px;font-size:12px}
 .st .d{font-weight:600;margin:4px 0 2px;word-break:break-word;font-size:13px}
 .st .m{color:#888;font-size:12px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chip{display:inline-block;border:1px solid var(--bd);background:#fff;border-radius:999px;
+  padding:2px 10px;margin:3px 5px 3px 0;cursor:pointer;font-size:12.5px;user-select:none}
+.chip:hover{border-color:#9db8f0}
+.chip.on{background:#dbe7ff;border-color:#9db8f0;color:#123;font-weight:600}
+.chip.dirty{box-shadow:inset 0 -2px 0 #f0b429}
+.gitem{padding:8px 0;border-bottom:1px dashed #eee}
+.gitem:last-child{border-bottom:0}
+.gname{font-weight:600;margin-bottom:2px}
+.plist{max-height:190px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:6px;background:#fcfcfd}
 .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:#333;margin:4px 0}
 .toast{position:fixed;right:16px;bottom:16px;background:#111;color:#fff;padding:10px 14px;border-radius:10px;max-width:60vw;white-space:pre-wrap;display:none;z-index:99}
 .hint{color:#6b7280;font-size:12.5px;margin:2px 0 8px}
@@ -668,22 +677,40 @@ function onTune(gid,k,v){dirty.config.group_tuning=dirty.config.group_tuning||{}
   const g=dirty.config.group_tuning[gid]=dirty.config.group_tuning[gid]||{};
   if(v=== ''){delete g[k];} else {g[k]=isNaN(Number(v))?v:Number(v);} $('#stat').textContent='有未应用的改动';}
 function renderPersona(){
-  const cfg=S.config, cards=S.personas;
-  const opts=cards.map(c=>`<option value="${c.name}">${c.name}${c.legacy?'（旧版）':''} · ${c.chars}字</option>`).join('');
-  let rows=S.groups.map(g=>`<tr><td>${g.note||''}${g.gid}</td><td><select data-map='${g.gid}' onchange="onMap('${g.gid}',this.value)"><option value="">（默认卡）</option>${cards.map(c=>`<option value="${c.name}" ${g.persona===c.name?'selected':''}>${c.name}</option>`).join('')}</select></td></tr>`).join('');
+  const cards=S.personas;
+  const rows=S.groups.map(g=>{
+    const chips=[`<span class="chip ${!g.persona?'on':''}" onclick="onMap('${g.gid}','')">默认卡</span>`]
+      .concat(cards.map(c=>`<span class="chip ${g.persona===c.name?'on':''}" onclick="onMap('${g.gid}','${c.name}')">${c.name}${c.legacy?'（旧版）':''}</span>`)).join('');
+    return `<div class=gitem><div class=gname>${g.note||''} ${g.gid} <span class=hint>${g.active?'激活中':'未激活'}</span></div>${chips}</div>`;
+  }).join('');
+  const plist=cards.map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" onclick="pickPersona('${c.name}')">${c.name}${c.legacy?'（旧版）':''} · ${c.chars}字</span>`).join('');
   $('#t-persona').innerHTML=`
   <div class=card><h3>人格卡 → 群 的对应</h3>
-    <p class=hint>选了就写进 <code>prompt_by_group</code>；"（默认卡）"= 删掉这个群的配置，走 prompts/system_prompt.txt。</p>
-    <table class=row><tbody>${rows}</tbody></table></div>
+    <p class=hint>点一下就是选中（写进 <code>prompt_by_group</code>）；「默认卡」= 删掉这个群的配置，走 <code>prompts/system_prompt.txt</code>。改完点右上角「应用到大肥鱼」。</p>
+    ${rows}</div>
   <div class=card><h3>编辑人格卡</h3>
-    <div class=row><select id=pn onchange=loadPersona()>${opts}</select>
-      <button onclick=newPersona()>新建</button><span class=hint id=pinfo></span></div>
-    <p class=hint>人格卡就是她在这个群里的"人设+规矩"。改完点右上角「应用到大肥鱼」。</p>
-    <textarea id=ptext class=big></textarea></div>`;
-  loadPersona();
+    <p class=hint>下面点一张卡开始编辑（正在编辑的会高亮；有未保存改动的带黄条）。</p>
+    <div class=plist>${plist}</div>
+    <div class=row style="margin:6px 0"><button onclick=newPersona()>新建人格卡</button><span class=hint id=pinfo></span></div>
+    <textarea id=ptext class=big oninput="touchCard()"></textarea></div>`;
+  if(_curCard) loadPersona(_curCard);
+  else if(cards.length) pickPersona(cards[0].name);
 }
-async function loadPersona(){const n=$('#pn').value;const r=await api('/api/persona?name='+encodeURIComponent(n));
-  $('#ptext').value=r.text;$('#pinfo').textContent=r.name;$('#ptext').dataset.name=r.name;}
+let _curCard='';
+function touchCard(){const t=$('#ptext');if(!t||!t.dataset.name)return;
+  dirty.personas[t.dataset.name]=t.value;
+  const c=document.querySelector(`.chip[data-card="${t.dataset.name}"]`);
+  if(c)c.classList.add('dirty');
+  $('#stat').textContent='有未应用的改动';}
+async function pickPersona(name){
+  const t=$('#ptext'); if(t&&t.dataset.name) touchCard();      // 先留住上一张的改动
+  const r=await api('/api/persona?name='+encodeURIComponent(name));
+  _curCard=name;
+  document.querySelectorAll('.chip[data-card]').forEach(c=>c.classList.toggle('on',c.dataset.card===name));
+  t.value=r.text; t.dataset.name=r.name;
+  $('#pinfo').textContent=r.name;
+}
+async function loadPersona(name){ return pickPersona(name); }
 function onMap(gid,v){const m=dirty.config.prompt_by_group=dirty.config.prompt_by_group||{};
   if(v){m[gid]=v;}else{m[gid]=null;} $('#stat').textContent='有未应用的改动';}
 function newPersona(){const n=prompt('新人格卡文件名（字母数字-_，.txt 结尾，例：csgo_friend.txt）');if(!n)return;
