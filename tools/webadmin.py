@@ -387,6 +387,67 @@ def set_active(gid, on):
     return True
 
 
+PANEL_URL = "http://127.0.0.1:5099"
+PANEL_PASS_FILES = [os.path.join(PLUGIN_DIR, ".secrets", "panel.pass"),
+                    "/root/.qqbot-panel-pass"]
+KNOWN_GROUPS = os.path.join(PLUGIN_DIR, "data", "known_groups.json")
+_GRP_CACHE = {"ts": 0.0}
+
+
+def _panel_call(action, params=None, timeout=6):
+    """调 SnowLuma 的本地接口（只读）。失败返回 None，不影响面板其它功能。"""
+    import urllib.request
+    pw = ""
+    for f in PANEL_PASS_FILES:
+        try:
+            pw = open(f, encoding="utf-8").read().strip()
+            if pw:
+                break
+        except Exception:
+            continue
+    if not pw:
+        return None
+    try:
+        body = json.dumps({"username": "admin", "password": pw}).encode()
+        req = urllib.request.Request(PANEL_URL + "/api/login", data=body, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        tok = json.loads(urllib.request.urlopen(req, timeout=timeout).read()).get("token") or ""
+        if not tok:
+            return None
+        body = json.dumps({"uin": "3237702352", "action": action,
+                           "params": params or {}}).encode()
+        req = urllib.request.Request(PANEL_URL + "/api/debug/invoke", data=body, method="POST",
+                                     headers={"Authorization": "Bearer " + tok,
+                                              "Content-Type": "application/json"})
+        d = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+        return d.get("data") if d.get("status") == "ok" else None
+    except Exception:
+        return None
+
+
+def known_groups(refresh_sec: int = 600) -> dict:
+    """机器人实际在的群 → {群号: {name, members}}（带缓存，拉不到就用上次的）。"""
+    now = time.time()
+    cache = _read_json(KNOWN_GROUPS, {}) or {}
+    if cache and (now - float(_GRP_CACHE.get("ts") or 0) < refresh_sec):
+        return cache
+    d = _panel_call("get_group_list", {"no_cache": True})
+    _GRP_CACHE["ts"] = now
+    if isinstance(d, list) and d:
+        out = {}
+        for g in d:
+            gid = str((g or {}).get("group_id") or "")
+            if gid:
+                out[gid] = {"name": str((g or {}).get("group_name") or ""),
+                            "members": int((g or {}).get("member_count") or 0)}
+        try:
+            _atomic_write(KNOWN_GROUPS, json.dumps(out, ensure_ascii=False, indent=1))
+        except Exception:
+            pass
+        return out
+    return cache or {}
+
+
 def groups_overview():
     cfg = load_cfg()
     act = active_state()
@@ -396,7 +457,9 @@ def groups_overview():
         _pf = os.path.basename(str((_v or {}).get("persona") or ""))
         if _pf and str(_g) not in gmap:
             gmap[str(_g)] = _pf
-    gids = set(gmap) | set(act) | {str(x) for x in (cfg.get("allowed_groups") or [])} | set(reg)
+    known = known_groups()
+    gids = (set(gmap) | set(act) | {str(x) for x in (cfg.get("allowed_groups") or [])}
+            | set(reg) | set(known))
     notes = (cfg.get("admin") or {}).get("group_notes") or {}
     only_at = {str(x) for x in (cfg.get("only_at_groups") or [])}
     nocontext = {str(x) for x in (cfg.get("no_context_groups") or [])}
@@ -410,9 +473,15 @@ def groups_overview():
     for g in sorted(gids):
         if not str(g).isdigit():
             continue
+        _k = known.get(str(g)) or {}
         out.append({
+            "name": str(_k.get("name") or ""),
+            "members": int(_k.get("members") or 0),
+            "in_bot": bool(_k),
             "in_allowlist": (not allow) or (str(g) in allow),
             "auto_created": str(g) in (reg or {}),
+            "suspect_phantom": (str(g) in (reg or {})) and (not allow or str(g) not in allow)
+                               and not str(gmap.get(str(g)) or ""),
             "gid": str(g), "note": str(notes.get(str(g)) or ""),
             "persona": os.path.basename(gmap.get(str(g), "")) or "",
             "active": bool((act.get(str(g)) or {}).get("on")),
@@ -763,7 +832,7 @@ function renderPersona(){
     const changed=Object.keys(pend).includes(g.gid);
     return `<div class=gitem data-gid="${g.gid}"><div class=gname>${g.note||''} ${g.gid}`
       +` <span class=hint>${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">不在白名单，她不理会这个群</b>'}`
-      +`${g.auto_created?' · 自动建档':''}</span>`
+      +`${g.auto_created?' · 自动建档':''}${g.suspect_phantom?'<b style="color:#b45309"> · 疑似残留（她可能已不在这个群）</b>':''}</span>`
       +`<span class="dtag hint">${changed?' · 已改，待应用':''}</span></div>${chips}</div>`;
   }).join('');
   const listOf=(arr,tag)=>(arr||[]).map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" title="${c.name}" onclick="pickPersona('${c.name}')">${c.title}${c.legacy?'（旧版）':''} · ${c.chars}字${tag}</span>`).join('');
@@ -826,8 +895,12 @@ $('#ptext')&&$('#ptext').addEventListener('input',()=>{});
 function collectPersona(){const t=$('#ptext');if(!t)return;const n=t.dataset.name;if(n&&t.value!==undefined){dirty.personas[n]=t.value;}}
 function renderGroup(){
   $('#t-group').innerHTML=S.groups.map(g=>`<div class=card>
-    <h3>${g.note||''} ${g.gid} <span class=hint>${g.active?'激活中':'未激活'}</span></h3>
+    <h3>${g.name?g.name+' ':'（未知群名）'}<code>${g.gid}</code>`
+      +`${g.note?` <span class=tag>备注：${g.note}</span>`:''}
+      <span class=hint>${g.members?g.members+'人 · ':''}${g.in_bot?'她在群里':'<b style="color:#b45309">她已不在这个群</b>'}
+      · ${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">未加入白名单，她不理会</b>'}</span></h3>
     <div class=row>
+      <label class=chk><input type=checkbox ${g.in_allowlist?'checked':''} onchange="onAllow('${g.gid}',this.checked)"> 服务这个群（加入白名单）</label>
       <label class=chk><input type=checkbox ${g.active?'checked':''} onchange="onActive('${g.gid}',this.checked)"> 激活（她在这个群说话）</label>
       <label class=chk><input type=checkbox ${g.only_at?'checked':''} onchange="onList('only_at_groups','${g.gid}',this.checked)"> 只在被 @ 时回</label>
       <label class=chk><input type=checkbox ${g.no_context?'checked':''} onchange="onList('no_context_groups','${g.gid}',this.checked)"> 不进上下文</label>
@@ -835,12 +908,19 @@ function renderGroup(){
       <label class=chk><input type=checkbox ${g.no_sticker_send?'checked':''} onchange="onStkList('send_exclude_groups','${g.gid}',this.checked)"> 不发表情</label>
       <label class=chk><input type=checkbox ${g.no_sticker_collect?'checked':''} onchange="onStkList('collect_exclude_groups','${g.gid}',this.checked)"> 不收表情</label>
     </div>
+    <div class=row><label style="margin:0">群备注名（只影响面板显示）</label>
+      <input type=text style="max-width:240px" value="${g.note||''}" placeholder="例：闪电群" oninput="onNote('${g.gid}',this.value)"></div>
     <label>资料库域（kb.scope_by_group，留空=不挂）</label>
     <input type=text value="${g.kb_scope||''}" oninput="onScope('${g.gid}',this.value)">
     <div class=grid>${tuningEditor(g.gid,g.tuning||{})}</div>
   </div>`).join('');
 }
 function onActive(gid,v){dirty.active[gid]=v;$('#stat').textContent='有未应用的改动';}
+function onAllow(gid,v){const a=new Set((dirty.config.allowed_groups||S.config.allowed_groups||[]));
+  v?a.add(gid):a.delete(gid);dirty.config.allowed_groups=[...a];$('#stat').textContent='有未应用的改动';}
+function onNote(gid,v){const ad=Object.assign({},dirty.config.admin||S.config.admin||{});
+  const m=Object.assign({},ad.group_notes||{}); if(v.trim()){m[gid]=v.trim();}else{delete m[gid];}
+  ad.group_notes=m;dirty.config.admin=ad;$('#stat').textContent='有未应用的改动';}
 function onList(key,gid,v){const a=new Set(S.config[key]||[]);v?a.add(gid):a.delete(gid);dirty.config[key]=[...a];$('#stat').textContent='有未应用的改动';}
 function onStkList(key,gid,v){const st=Object.assign({},dirty.config.stickers||S.config.stickers||{});
   const a=new Set(st[key]||[]);v?a.add(gid):a.delete(gid);st[key]=[...a];dirty.config.stickers=st;$('#stat').textContent='有未应用的改动';}

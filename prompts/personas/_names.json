@@ -6,7 +6,6 @@
  "system_prompt_private.txt": "私聊·默认",
  "system_prompt.txt": "默认卡（没配的群）",
  "system_prompt_sharp.txt": "旧版·尖锐（未使用）",
- "566000222.txt": "自动建档（群0222·未启用）",
  "_common_patch.txt": "通用补丁（所有卡叠加）",
  "_template.txt": "新建卡模板"
 }

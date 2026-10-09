@@ -146,6 +146,45 @@ finally:
     W._atomic_write(W.NAMES_PATH, json.dumps(_names_bak, ensure_ascii=False, indent=1))
     ck("测试后已还原 _names.json", W.load_names() == _names_bak)
 
+
+print("== 群名/人数：只读拉群列表（打桩，不碰网络） ==")
+_orig_call = W._panel_call
+_calls = {"n": 0}
+
+
+def _fake_call(action, params=None, timeout=6):
+    _calls["n"] += 1
+    if action == "get_group_list":
+        return [{"group_id": 869622030, "group_name": "⚡", "member_count": 16},
+                {"group_id": 111222333, "group_name": "测试小群", "member_count": 3}]
+    return None
+
+
+try:
+    W._panel_call = _fake_call
+    W._GRP_CACHE["ts"] = 0
+    _kg = W.known_groups(refresh_sec=600)
+    ck("拿到群名/人数", _kg.get("869622030", {}).get("name") == "⚡"
+       and _kg.get("869622030", {}).get("members") == 16, str(_kg)[:80])
+    _n1 = _calls["n"]
+    W.known_groups(refresh_sec=600)
+    ck("第二次走缓存（不再请求）", _calls["n"] == _n1, str(_calls))
+    _ov = W.groups_overview()
+    _g = {x["gid"]: x for x in _ov}
+    ck("总览里带 name/members/in_bot",
+       all(k in _g["869622030"] for k in ("name", "members", "in_bot")), str(_g["869622030"])[:80])
+    ck("她实际在、但没配置的群也会列出来", "111222333" in _g, str(sorted(_g))[:80])
+    ck("没配置的群标 in_allowlist=False", _g["111222333"]["in_allowlist"] is False
+       if W.load_cfg().get("allowed_groups") else True)
+finally:
+    W._panel_call = _orig_call
+    W._GRP_CACHE["ts"] = 0
+    try:
+        os.remove(W.KNOWN_GROUPS)
+    except Exception:
+        pass
+    ck("测试后清掉临时 known_groups.json", not os.path.exists(W.KNOWN_GROUPS))
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

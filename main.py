@@ -662,12 +662,19 @@ class QqPeakGate(Star):
             pdir = os.path.join(PLUGIN_DIR, "prompts", "personas")
             os.makedirs(pdir, exist_ok=True)
             card_path = os.path.join(pdir, "%s.txt" % gid)
-            # 群名
+            # 群名（顺便当"这个群真的存在吗"的校验：2026-10-10 清掉过一个幽灵群卡）
             gname = ""
+            _member_cnt = 0
             try:
                 info = await asyncio.wait_for(
                     event.bot.call_action("get_group_info", group_id=int(gid)), timeout=4)
-                gname = str((info or {}).get("group_name") or "")
+                info = info or {}
+                gname = str(info.get("group_name") or "")
+                _member_cnt = int(info.get("member_count") or 0)
+                if not gname and not _member_cnt:
+                    self._log("自动建档：群 %s 查不到信息（名字空、0 人）→ 不建卡（疑似幽灵群）"
+                              % gid)
+                    return
             except Exception:
                 pass
             # 卡片内容：模板（没有就用默认温和版）
