@@ -218,6 +218,48 @@ else:
     print("  （没装 node，跳过）")
 ck("页面里没有残留的 saveNotes 引用", "saveNotes" not in W.HTML)
 
+
+print("== 应用按钮真的能跑（node 桩里执行） ==")
+_js3 = _re2.search(r"<script>(.*)</script>", W.HTML, _re2.S).group(1)
+ck("不再引用已删除的 collectPersona", "collectPersona" not in _js3)
+if _sh.which("node"):
+    _harness = """
+const els={};
+function _el(id){return els[id]||(els[id]={id:id,value:'',textContent:'',innerHTML:'',style:{},
+  dataset:{},classList:{add(){},remove(){},toggle(){}},querySelector(){return null},
+  querySelectorAll(){return [];},appendChild(){},insertAdjacentHTML(){},closest(){return null},
+  addEventListener(){}});}
+global.document={querySelector:(s)=>_el(s),querySelectorAll:()=>[],createElement:()=>({classList:{add(){}},style:{}})};
+global.window={};
+global.localStorage={getItem:()=>null,setItem:()=>{}};
+global.fetch=async()=>({ok:true,json:async()=>({ok:true,logs:['stub'],reload:{ok:true,status:'ok',tail:'stub'}}),text:async()=>''});
+global.setTimeout=(f)=>{try{if(typeof f==='function')f();}catch(e){}};
+const src=require('fs').readFileSync(process.argv[2],'utf8')
+  + "\\n;globalThis.__T={applyAll:applyAll, dirty:dirty};";
+try{
+  eval(src);
+  const _T=globalThis.__T||{}; const _apply=_T.applyAll, _dirty=_T.dirty;
+  if(typeof _apply!=='function'){throw new Error('applyAll 没定义');}
+  _dirty.personas['__t.txt']='x';
+  _apply().then(()=>{ console.log('APPLY_OK'); })
+            .catch(e=>{ console.log('APPLY_ERR '+e); process.exitCode=3; });
+}catch(e){ console.log('LOAD_ERR '+e); process.exitCode=4; }
+"""
+    with _tf.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as _f:
+        _f.write(_harness)
+        _hf = _f.name
+    with _tf.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as _f:
+        _f.write(_js3)
+        _sf = _f.name
+    import shutil as _sh2; _sh2.copyfile(_hf, "/tmp/_dbg_h.js"); _sh2.copyfile(_sf, "/tmp/_dbg_s.js")
+    _r3 = _sp.run(["node", _hf, _sf], capture_output=True, text=True, timeout=60)
+    _out3 = (_r3.stdout or "") + (_r3.stderr or "")
+    import os as _os3
+    _os3.remove(_hf); _os3.remove(_sf)
+    ck("点『应用』不抛错（跑到发请求）", "APPLY_OK" in _out3, _out3.strip()[-700:])
+else:
+    print("  （没装 node，跳过）")
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

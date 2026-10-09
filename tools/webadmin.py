@@ -1022,16 +1022,26 @@ function renderMisc(){
 }
 function onDeep(top,k,v){const o=Object.assign({},dirty.config[top]||S.config[top]||{});o[k]=v;dirty.config[top]=o;$('#stat').textContent='有未应用的改动';}
 async function applyAll(){
-  collectPersona();
-  const hasP=Object.keys(dirty.personas).length, hasC=Object.keys(dirty.config).length, hasA=Object.keys(dirty.active).length;
-  if(!hasP&&!hasC&&!hasA){toast('没有改动');return;}
-  const b=$('#applyBtn');b.disabled=true;b.textContent='应用中…';
+  const b=$('#applyBtn');
   try{
-    const r=await api('/api/apply',{config:dirty.config,personas:dirty.personas,active:dirty.active,reload:true});
-    if(!r.ok){toast('没有应用：\\n'+(r.errors||[r.error]).join('\\n'),7000);}
-    else{toast('已应用：\\n'+(r.logs||[]).join('\\n')+(r.reload?('\\n重载：'+(r.reload.ok?'成功':r.reload.tail)):''),7000);await reloadState();}
-  }catch(e){toast('出错：'+e.message,7000);}
-  b.disabled=false;b.textContent='应用到大肥鱼';
+    const hasP=Object.keys(dirty.personas||{}).length,
+          hasC=Object.keys(dirty.config||{}).length,
+          hasA=Object.keys(dirty.active||{}).length;
+    if(!hasP&&!hasC&&!hasA){toast('没有改动');return;}
+    b.disabled=true;b.textContent='应用中…';
+    const r=await api('/api/apply',{config:dirty.config,personas:dirty.personas,
+                                    active:dirty.active,reload:true});
+    if(!r.ok){toast('没有应用：\n'+((r.errors||[r.error||'未知错误']).join('\n')),7000);}
+    else{
+      const t=(r.logs||[]).join('\n')+(r.reload?('\n重载：'+(r.reload.ok?'成功':(r.reload.tail||''))):'');
+      toast('已应用：\n'+t,7000);
+      await reloadState();
+    }
+  }catch(e){
+    toast('出错：'+(e&&e.message?e.message:e),8000);
+  }finally{
+    b.disabled=false;b.textContent='应用到大肥鱼';
+  }
 }
 $$('nav a').forEach(a=>a.onclick=e=>{e.preventDefault();$$('nav a').forEach(x=>x.classList.remove('on'));a.classList.add('on');
   ['persona','group','sticker','misc'].forEach(t=>$('#t-'+t).style.display=(t===a.dataset.t)?'':'none');});
