@@ -921,12 +921,122 @@ def audit_faces(vision: bool = True, uin: str = "", count: int = 300,
             "panel_only": sum(1 for r in rows if r["face"] and not r["local"])}
 
 
+# ---------------- 审阅页（给主人筛备注用） ----------------
+
+# 备注里出现这些词，说明大概率是"按画面瞎猜的态度"，值得人再核一遍
+_SUSPECT_WORDS = ("敷衍", "尴尬", "无语", "阴阳", "冷漠", "震惊", "可怜", "委屈", "害羞",
+                  "看起来", "像在", "似乎在", "应该是", "估计是", "大概在", "好像在")
+_THUMB_MAX = 180
+_THUMB_QUALITY = 78
+
+
+def _thumb_b64(path: str) -> str:
+    """缩略图 → 内嵌用 base64（失败返回空串）。"""
+    try:
+        import base64
+        import io as _io
+        from PIL import Image as _PIL
+        im = _PIL.open(path)
+        try:
+            im.seek(0)
+        except Exception:
+            pass
+        im = im.convert("RGB")
+        w, h = im.size
+        k = min(_THUMB_MAX / float(max(1, w)), _THUMB_MAX / float(max(1, h)), 1.0)
+        if k < 1.0:
+            im = im.resize((max(1, int(w * k)), max(1, int(h * k))), _PIL.LANCZOS)
+        buf = _io.BytesIO()
+        im.save(buf, format="JPEG", quality=_THUMB_QUALITY)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
+def _suspect(it: dict) -> bool:
+    """这条备注值不值得人再看一眼。"""
+    d = str(it.get("desc") or "").strip()
+    if not d or len(d) <= 8:
+        return True
+    return any(w in d for w in _SUSPECT_WORDS)
+
+
+def review_html(out: str = "") -> dict:
+    """生成审阅页。返回 {path, count, suspect, size}。"""
+    import html as _html
+    import time as _t
+    items = [x for x in load() if x.get("id")]
+    if not out:
+        out = os.path.join(DATA, "review.html")
+        # 改名成带日期的，方便对比（旧文件留着不管）
+    rows, susp = [], []
+    for it in items:
+        p = abs_path(it) or ""
+        b64 = _thumb_b64(p) if p and os.path.isfile(p) else ""
+        d = str(it.get("desc") or "").strip()
+        _tags = [str(x) for x in (it.get("tags") or [])]
+        _cmd = 'qqbot-sticker note %s "%s" %s' % (it.get("id"), d or "新备注",
+                                                  ",".join(_tags) if _tags else "")
+        row = {"id": str(it.get("id")), "desc": d or "（没有备注）", "tags": _tags,
+               "used": int(it.get("used") or 0), "b64": b64, "cmd": _cmd,
+               "added": _t.strftime("%m-%d", _t.localtime(int(it.get("added_at") or 0))),
+               "group": str(it.get("group") or "")}
+        (susp if _suspect(it) else rows).append(row)
+    rows.sort(key=lambda r: -r["used"])
+    susp.sort(key=lambda r: -r["used"])
+    body = []
+    for title, arr, note in (
+            ("① 先看这些（备注像「按画面猜的」，或太短）", susp,
+             "这些最可能是错的：只描述了画面/态度，没写「这图拿来干嘛」。想好用法就复制下面的命令改。"),
+            ("② 其余（备注看着还行，可顺手过一遍）", rows, "")):
+        body.append('<h2>%s <span class=sub>%d 张</span></h2>' % (title, len(arr)))
+        if note:
+            body.append('<p class=hint>%s</p>' % note)
+        body.append('<div class=grid>')
+        for r in arr:
+            img = ('<img src="data:image/jpeg;base64,%s">' % r["b64"]) if r["b64"]                 else '<div class=noimg>没图</div>'
+            body.append(
+                '<div class=card>%s<div class=meta><div class=desc>%s</div>'
+                '<div class=line><code>%s</code> · 用过 %d · %s</div>'
+                '<div class=tags>%s</div>'
+                '<pre>%s</pre></div></div>'
+                % (img, _html.escape(r["desc"]),
+                   _html.escape(r["id"]), r["used"], _html.escape(r["added"]),
+                   "".join('<span class=tag>%s</span>' % _html.escape(t) for t in r["tags"]),
+                   _html.escape(r["cmd"])))
+        body.append('</div>')
+    doc = """<!doctype html><html lang=zh><meta charset=utf-8>
+<title>大肥鱼表情库审阅（%d 张）</title>
+<style>
+body{font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:24px;background:#fafafa;color:#222}
+h1{font-size:20px;margin:0 0 4px} h2{font-size:16px;margin:26px 0 6px}
+.sub{color:#888;font-weight:400;font-size:13px} .hint{color:#a35;margin:2px 0 10px;font-size:13px}
+.grid{display:flex;flex-wrap:wrap;gap:14px}
+.card{width:330px;background:#fff;border:1px solid #e3e3e3;border-radius:10px;padding:10px;display:flex;gap:10px}
+.card img{width:120px;height:120px;object-fit:contain;background:#f0f0f0;border-radius:6px;flex:none}
+.noimg{width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:#f0f0f0;color:#999;border-radius:6px;flex:none;font-size:12px}
+.meta{min-width:0;flex:1} .desc{font-weight:600;margin-bottom:2px;word-break:break-word}
+.line{color:#777;font-size:12px} code{background:#f3f3f3;padding:0 3px;border-radius:3px}
+.tag{display:inline-block;background:#eef4ff;color:#2a5db0;border-radius:4px;padding:0 5px;margin:2px 3px 0 0;font-size:12px}
+pre{margin:6px 0 0;background:#f7f7f7;border:1px solid #eee;border-radius:6px;padding:5px 6px;font-size:11px;white-space:pre-wrap;word-break:break-all}
+</style>
+<h1>大肥鱼表情库审阅 · %d 张</h1>
+<p class=hint>每张卡片下面是可以直接复制到 SSH 里执行的命令（改备注 / 改标签）。改完不用重启，她下次选图就用新备注。</p>
+%s
+</html>""" % (len(items), len(items), "\n".join(body))
+    os.makedirs(DATA, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(doc)
+    return {"path": out, "count": len(items), "suspect": len(susp),
+            "size": os.path.getsize(out)}
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="表情包收藏夹")
     ap.add_argument("cmd", choices=["list", "stats", "add", "del", "tag", "sync", "faces",
                                     "history", "push", "mirror", "audit", "rmface",
-                                    "faceinfo"], nargs="?", default="stats")
+                                    "faceinfo", "review", "note"], nargs="?", default="stats")
     ap.add_argument("arg", nargs="?", default="")
     ap.add_argument("--tags", default="")
     ap.add_argument("--group", default="")
@@ -1023,6 +1133,32 @@ def main() -> int:
                 print("  %-8s fun=%-3s %-18s %s ｜ %s"
                       % (row["kind"], row["fun"], str(row["desc"])[:20], row["why"],
                          row["emoji_id"]))
+        return 0
+    if a.cmd == "review":
+        _out = str(a.group or "").strip()
+        r = review_html(_out)
+        print("审阅页已生成：%s" % r["path"])
+        print("  共 %d 张，其中 %d 张建议先看（备注像「按画面猜的」）。文件 %.1f MB。"
+              % (r["count"], r["suspect"], r["size"] / 1048576.0))
+        print("  在自己电脑上看：")
+        print("    scp root@<服务器>:%s ." % r["path"])
+        print("  或在服务器上临时开个只监听本机的网页服务（别开公网）：")
+        print("    python3 -m http.server 8899 --bind 127.0.0.1 --directory %s"
+              % os.path.dirname(r["path"]))
+        print("    然后 ssh -L 8899:127.0.0.1:8899 root@<服务器>，浏览器开 http://127.0.0.1:8899/review.html")
+        return 0
+    if a.cmd == "note":
+        _sid = str(a.arg or "").strip()
+        _note = str(a.tags or "").strip()
+        _tags = [x for x in str(a.group or "").split(",") if x.strip()]
+        if not _sid:
+            print("用法：qqbot-sticker note <id> <备注文字> [标签1,标签2]")
+            return 1
+        if not set_note(_sid, _note, _tags or None):
+            print("没找到这张：%s" % _sid)
+            return 1
+        _it = find(_sid) or {}
+        print("已改：%s《%s》标签=%s" % (_sid, _it.get("desc"), ",".join(_it.get("tags") or [])))
         return 0
     if a.cmd == "push":
         n = push_to_face(int(a.tags or 50))
