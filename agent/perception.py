@@ -197,7 +197,7 @@ def sense(recent, cfg: dict = None, now=None, my_name: str = "我",
             rows.append((_ts(it), str(it[0] or ""), str(it[1] or "")))
         except Exception:
             continue
-    rows = [r for r in rows if r[2]]
+    rows = [r for r in rows if r[2] or r[1] == "<图片>"]
     sig = {
         "date": date_sense(cfg, now),
         "empty": not rows,
@@ -205,7 +205,7 @@ def sense(recent, cfg: dict = None, now=None, my_name: str = "我",
         "at_me": bool(at_me or called),
         "n10": 0, "speakers10": 0, "last_age": 0.0, "gap": 0.0,
         "my_last_age": 0.0, "since_me": 0, "hour_used": int(hour_used or 0),
-        "hour_cap": int(hour_cap or 0), "hot": 0, "fun": 0, "imgs": 0,
+        "hour_cap": int(hour_cap or 0), "hot": 0, "fun": 0, "imgs": 0, "unseen_imgs": 0,
         "topic_shift": False, "burst": False,
     }
     if not rows:
@@ -217,9 +217,14 @@ def sense(recent, cfg: dict = None, now=None, my_name: str = "我",
         sig["gap"] = max(0.0, t_last - t_prev)
     last10 = [r for r in rows if r[0] and (now - r[0]) <= 600]
     sig["n10"] = len(last10)
-    sig["speakers10"] = len({r[1] for r in last10 if r[1] != my_name})
+    sig["speakers10"] = len({r[1] for r in last10
+                               if r[1] not in (my_name, "<图片>")})
     sig["burst"] = len(last10) >= 15
-    sig["imgs"] = sum(1 for r in last10 if _IMG_RE.match(r[2]))
+    sig["imgs"] = sum(1 for r in last10
+                    if r[1] == "<图片>" or _IMG_RE.match(r[2]))
+    # 图消息占位（who == "<图片>" 且没有描述）= 她没看过内容的那几张
+    sig["unseen_imgs"] = sum(1 for r in last10
+                             if r[1] == "<图片>" and not str(r[2] or "").strip())
     _blob = " ".join(r[2] for r in last10)
     sig["hot"] = sum(1 for w in _HOT if w in _blob)
     sig["fun"] = sum(1 for w in _FUN if w in _blob)
@@ -293,6 +298,9 @@ def render(sig: dict, cfg: dict = None, private: bool = False) -> str:
         _t2 += "；在乐/在开玩笑，可以跟着闹"
     if int(sig.get("imgs") or 0) >= 2:
         _t2 += "；在发图/斗图"
+    if int(sig.get("unseen_imgs") or 0) > 0:
+        _t2 += ("；**最近有 %d 张图你没看到内容**——别猜图里是什么，也别装看过"
+                % int(sig["unseen_imgs"]))
     if sig.get("topic_shift"):
         _t2 += "；**话题刚换过**"
     lines.append("- " + _t2)

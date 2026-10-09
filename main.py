@@ -1288,6 +1288,10 @@ class QqPeakGate(Star):
                 ts = float(it[3]) if len(it) > 3 and it[3] else 0.0
             except Exception:
                 continue
+            if who == "<图片>":
+                _d = (txt or "").strip()
+                txt = ("（一张图：%s）" % _d[:chars]) if _d else "（一张图 —— 你没看到内容，别猜）"
+                who = "图"
             if ts:
                 if prev and (ts - prev) >= 600:
                     out.append("   —— 上面是 %.0f 分钟前的旧消息，已经过去了，别接着聊 ——"
@@ -3121,11 +3125,16 @@ class QqPeakGate(Star):
                     "看清这张图再说话，**先客观描述、再谈意思**：\n"
                     "① 图上有文字就**照抄原文**（一字不改，别意译）；\n"
                     "② 手势/动作只写客观事实：「拇指向上」「手指朝前/朝某人」「握拳」「挥手」「比心」「没有手」；\n"
+                    "②b 如果这是表情包/梗图，补一句它**通常用来表达什么态度**（点赞/敷衍/无语/嘲笑/装死…），"
+                    "以及**看得出在回应哪句话或哪个梗**就写一句；看不出就别写；\n"
                     "③ 严禁把朝向或姿势脑补成剧情（手指朝前 ≠ 冲过来、≠ 攻击你）；看不清就写「看不清手势」，**不要猜**。\n"
                     "（这一轮你不用任何工具，也别提工具、参数、调用；直接说人话。）\n"
                     "然后**只输出三行**（不要别的解释）：\n"
                     "图：<主体 + 图上文字原文 + 客观手势 + 大致情绪，≤40字；这行会被你记住>\n"
-                    "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔>\n"
+                    "回：<你现在要对他说的话，最多 2 条，多条用 ||| 分隔。"
+                    "先说这句/这张图是在回应谁：**如果它是在夸别人刚说的梗，你别对号入座**；"
+                    "**图里的人/被聊到的选手都不是跟你说话的那个人**，别对群友说「你刚才那波」；"
+                    "看不到/看不懂就直说「这啥」或只接半句，别编画面>\n"
                     "收：<是 或 否 —— 这张图以后想不想当表情包用？觉得有意思/用得上就写 是>")})
                 _vmodel = agent.vision.vision_model(self.cfg)
                 try:
@@ -3199,10 +3208,19 @@ class QqPeakGate(Star):
                     else:
                         self._log("agent loop：看图轮只给了协议行 → 不回（不把思考发出去）")
                 if _desc:
-                    # ① 写进"最近群聊"：后面几轮她都看得见
+                    # ① 写进"最近群聊"：后面几轮她都看得见（优先补全刚记的那个"没看"占位）
                     try:
                         _buf = self.recent.get(str(event.get_group_id() or ""))
-                        if _buf is not None:
+                        if _buf:
+                            _last = _buf[-1]
+                            if (len(_last) > 1 and str(_last[0]) == "<图片>"
+                                    and not str(_last[1] or "").strip()):
+                                _ts_l = _last[3] if len(_last) > 3 else time.time()
+                                _buf.pop()
+                                _buf.append(("<图片>", _desc, "", _ts_l))
+                            else:
+                                _buf.append(("<图片>", _desc, "", time.time()))
+                        elif _buf is not None:
                             _buf.append(("<图片>", _desc, "", time.time()))
                     except Exception:
                         pass
@@ -4702,6 +4720,24 @@ class QqPeakGate(Star):
             self._touch(str(event.get_group_id() or ""),
                         getattr(getattr(event, "message_obj", None), "message_id", None))
             self._log_chat(event, text)
+            # 带图的消息在上下文里留个痕：也许这一轮不会跑"看图轮"（比如触发她的是同一人的
+            # 纯文字），以前就完全不留记录 → 她会以为那里什么都没有，然后脑补
+            # （2026-10-10 凌晨："这谁绷得住"+一张图 → 她编了"donk这波直接爆"）。
+            try:
+                _has_img = False
+                for _x in (event.get_messages() or []):
+                    if (isinstance(_x, Image) or type(_x).__name__ in ("Image", "Picture")
+                            or str(getattr(_x, "type", "") or "").lower() == "image"):
+                        _has_img = True
+                        break
+                if _has_img and gid0 and not self._in("no_context_groups", gid0):
+                    _ib = self.recent.get(gid0)
+                    if _ib is None:
+                        _ib = deque(maxlen=max(2, int(self.cfg.get("context_lines", 6))))
+                        self.recent[gid0] = _ib
+                    _ib.append(("<图片>", "", str(uid0), time.time()))
+            except Exception as _ei:
+                self._log_debug("记图片占位失败 %r" % (_ei,))
             # 注意：必须先取"上一条"，再记录本条，否则复读检测会拿自己跟自己比
             gid0 = str(event.get_group_id() or "")
             uid0 = str(event.get_sender_id() or "")

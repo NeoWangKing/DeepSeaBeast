@@ -166,6 +166,32 @@ _m = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
 ck("调休的周末不按『周末全天空闲』算", "not in _makeup_days(cfg)" in _m)
 ck("_makeup_days 读 workDays", '"workDays"' in _m)
 
+
+print("== 没看过的图会被点出来 ==")
+_now2 = time.time()
+_rows_ui = [("Neo武神", "donk超级生气暴怒", "u1", _now2 - 70),
+            ("<图片>", "", "u1", _now2 - 60),
+            ("Neo武神", "这谁绷得住", "u1", _now2 - 55)]
+_si = P.sense(_rows_ui, _cfg, now=_now2)
+_ti = P.render(_si, _cfg)
+ck("数出 1 张没看过的图", _si.get("unseen_imgs") == 1, str(_si.get("unseen_imgs")))
+ck("渲染里提醒『别猜、别装看过』", "没看到内容" in _ti and "别装看过" in _ti, _ti[-90:])
+ck("看过的图不算（有描述）", P.sense([("<图片>", "简笔画人脸，拇指向上", "u1", _now2 - 30)],
+                                     _cfg, now=_now2).get("unseen_imgs") == 0)
+ck("图片行不会把人数算多",
+   P.sense(_rows_ui, _cfg, now=_now2).get("speakers10") == 1,
+   str(P.sense(_rows_ui, _cfg, now=_now2).get("speakers10")))
+
+print("== 新规则接线（看不到的别装 / 人别混） ==")
+_msrc3 = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+_sec3 = open(os.path.join(ROOT, "promptlib", "sections.py"), encoding="utf-8").read()
+ck("能力边界：不许描述『这波/这一枪』", "不许描述" in _sec3 and "这一枪" in _sec3)
+ck("能力边界：看不到就少说、别硬接", "别硬接" in _sec3)
+ck("能力边界：别把选手当成群友", "别把被讨论的人当成跟你说话的人" in _sec3)
+ck("看图轮也提醒『人不是跟你说话的那个人』", "都不是跟你说话的那个人" in _msrc3)
+ck("图片消息会留占位（上下文里看得见）", '_ib.append(("<图片>", "", str(uid0), time.time()))' in _msrc3)
+ck("看图轮把占位补全，而不是又加一条", "_buf.pop()" in _msrc3)
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))
