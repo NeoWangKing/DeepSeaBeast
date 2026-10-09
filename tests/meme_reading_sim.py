@@ -45,6 +45,18 @@ _msrc = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
 ck("看图提示：问『在调侃谁』", "在调侃谁" in _msrc)
 ck("看图提示：认得就写是谁、不认得别猜", "认得图里的人是谁就写名字，不认得别猜" in _msrc)
 
+
+print("== 拇指向上 = 肯定，不是敷衍 ==")
+_ts = S.find("s1790876947821") or {}
+_td = str(_ts.get("desc") or "")
+ck("备注写明『肯定/牛逼』", "肯定" in _td and ("牛逼" in _td or "夸" in _td), _td[:46])
+ck("备注明确『不是敷衍』", "不是敷衍" in _td or "不是" in _td)
+ck("标签里没有『敷衍』这种误读", "敷衍" not in (_ts.get("tags") or []), str(_ts.get("tags")))
+ck("KB 也写了这一条", "拇指向上（简笔画笑脸）" in
+   open(os.path.join(ROOT, "data", "kb", "cs2-memes.md"), encoding="utf-8").read())
+_msrc2 = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+ck("看图提示：态度别按画风猜", "态度别按画风猜" in _msrc2)
+
 print()
 if FAIL:
     print("FAILED: %s" % ", ".join(FAIL))

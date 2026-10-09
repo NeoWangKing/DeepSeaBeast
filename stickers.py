@@ -611,7 +611,7 @@ def set_note(sid: str, note: str, tags=None) -> bool:
     for it in items:
         if str(it.get("id")) == str(sid):
             if str(note or "").strip():
-                it["desc"] = str(note).strip()[:40]
+                it["desc"] = str(note).strip()[:60]
             if tags:
                 it["tags"] = [str(t)[:8] for t in list(tags)[:6]]
             hit = True
