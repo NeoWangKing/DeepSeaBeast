@@ -33,6 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_DIR = os.path.dirname(HERE)
 CONFIG = os.path.join(PLUGIN_DIR, "config.json")
 PERSONAS = os.path.join(PLUGIN_DIR, "prompts", "personas")
+NAMES_PATH = os.path.join(PERSONAS, "_names.json")     # 只给面板看的"显示名"
 PROMPTS = os.path.join(PLUGIN_DIR, "prompts")
 BACKUP_ROOT = "/root/qqbot-backups/webadmin"
 SECRET = os.path.join(PLUGIN_DIR, ".secrets", "webadmin.pass")
@@ -193,6 +194,41 @@ def validate_patch(patch, cfg=None):
 
 
 # ---------------- 人格卡 ----------------
+def load_names():
+    """人格卡显示名：{文件名: 名称}。"""
+    try:
+        with open(NAMES_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return {str(k): str(v) for k, v in (d or {}).items() if str(v).strip()}
+    except Exception:
+        return {}
+
+
+def save_name(fname, title):
+    """写显示名（空 = 删掉，回退用文件名）。"""
+    fname = os.path.basename(str(fname or ""))
+    if not fname.endswith(".txt"):
+        return False, "只给 .txt 卡改名"
+    d = load_names()
+    t = str(title or "").strip()[:40]
+    if t:
+        d[fname] = t
+    else:
+        d.pop(fname, None)
+    backup([NAMES_PATH])
+    _atomic_write(NAMES_PATH, json.dumps(d, ensure_ascii=False, indent=1))
+    return True, t or fname
+
+
+def _auto_title(fname, text):
+    """没设名字时，尽量从卡里挑点有用的当名字（比如 [本群：群0222…]）。"""
+    for ln in (text or "").splitlines()[:3]:
+        ln = ln.strip()
+        if ln.startswith("[") and ln.endswith("]") and len(ln) <= 30:
+            return ln.strip("[]")
+    return ""
+
+
 def list_personas():
     out = []
     for d, legacy in ((PERSONAS, False), (PROMPTS, True)):
@@ -211,8 +247,11 @@ def list_personas():
                 mt = int(os.path.getmtime(p))
             except Exception:
                 txt, mt = "", 0
+            _names = load_names()
             out.append({"name": fn, "legacy": legacy, "chars": len(txt),
-                        "mtime": mt, "path": p, "helper": fn.startswith("_")})
+                        "mtime": mt, "path": p, "helper": fn.startswith("_"),
+                        "title": _names.get(fn) or _auto_title(fn, txt) or fn,
+                        "renamed": bool(_names.get(fn))})
     return out
 
 
@@ -597,6 +636,9 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/sticker/delete":
                     ok, msg = sticker_delete(body.get("id"))
                     return self._json({"ok": ok, "msg": msg})
+                if u.path == "/api/persona/name":
+                    ok, msg = save_name(body.get("name"), body.get("title"))
+                    return self._json({"ok": ok, "title": msg})
                 if u.path == "/api/reload":
                     r = subprocess.run([RELOAD_BIN], capture_output=True, text=True, timeout=180)
                     out = (r.stdout or "") + (r.stderr or "")
@@ -713,18 +755,18 @@ function renderPersona(){
   const helpers=all.filter(c=>c.helper);
   const pend=dirty.config.prompt_by_group||{};
   const eff=(g)=>{const k=Object.keys(pend); if(k.includes(g.gid)){const v=pend[g.gid];return (v===null||v==='')?'':v;} return g.persona||'';};
-  const chip=(gid,name,label,cur)=>`<span class="chip ${cur===name?'on':''}" onclick="onMap('${gid}','${name}',this)">${label}</span>`;
+  const chip=(gid,name,label,cur,tip)=>`<span class="chip ${cur===name?'on':''}" title="${tip||label}" onclick="onMap('${gid}','${name}',this)">${label}</span>`;
   const rows=S.groups.map(g=>{
     const cur=eff(g);
-    const chips=[chip(g.gid,"", "默认卡", cur)]
-      .concat(cards.map(c=>chip(g.gid,c.name,`${c.name}${c.legacy?'（旧版）':''}`, cur))).join('');
+    const chips=[chip(g.gid,"", "默认卡", cur, "走 prompts/system_prompt.txt（默认卡）")]
+      .concat(cards.map(c=>chip(g.gid,c.name,`${c.title}${c.legacy?'（旧版）':''}`, cur, c.name))).join('');
     const changed=Object.keys(pend).includes(g.gid);
     return `<div class=gitem data-gid="${g.gid}"><div class=gname>${g.note||''} ${g.gid}`
       +` <span class=hint>${g.in_allowlist?(g.active?'激活中':'未激活'):'<b style="color:#b45309">不在白名单，她不理会这个群</b>'}`
       +`${g.auto_created?' · 自动建档':''}</span>`
       +`<span class="dtag hint">${changed?' · 已改，待应用':''}</span></div>${chips}</div>`;
   }).join('');
-  const listOf=(arr,tag)=>(arr||[]).map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" onclick="pickPersona('${c.name}')">${c.name}${c.legacy?'（旧版）':''} · ${c.chars}字${tag}</span>`).join('');
+  const listOf=(arr,tag)=>(arr||[]).map(c=>`<span class="chip ${c.name===_curCard?'on':''}" data-card="${c.name}" title="${c.name}" onclick="pickPersona('${c.name}')">${c.title}${c.legacy?'（旧版）':''} · ${c.chars}字${tag}</span>`).join('');
   $('#t-persona').innerHTML=`
   <div class=card><h3>人格卡 → 群 的对应</h3>
     <p class=hint>点一下就是选中（<b>立刻高亮</b>，标上「已改，待应用」），然后点右上角「应用到大肥鱼」才会真正生效。「默认卡」= 删掉这个群的配置，走 <code>prompts/system_prompt.txt</code>。</p>
@@ -733,7 +775,14 @@ function renderPersona(){
     <p class=hint>点一张卡开始编辑；正在编辑的高亮，有未保存改动的带黄条。</p>
     <div class=plist>${listOf(cards,'')}</div>
     ${helpers.length?`<p class=hint style="margin-top:8px">辅助文件（会自动套在所有卡后面 / 是新建卡的模板，<b>别挂到群上</b>）：</p><div class=plist>${listOf(helpers,' · 辅助')}</div>`:''}
-    <div class=row style="margin:6px 0"><button onclick=newPersona()>新建人格卡</button><span class=hint id=pinfo></span></div>
+    <div class=row style="margin:6px 0">
+      <button onclick=newPersona()>新建人格卡</button>
+      <span class=hint id=pinfo></span></div>
+    <div class=row style="margin:2px 0 6px">
+      <label style="margin:0">这张卡的显示名</label>
+      <input type=text id=pname style="max-width:260px" placeholder="例：技术助手（Denial 社区）">
+      <button onclick=saveName()>改名称</button>
+      <span class=hint>只是面板里好认，不会写进人格卡内容</span></div>
     <textarea id=ptext class=big oninput="touchCard()"></textarea></div>`;
   if(_curCard) loadPersona(_curCard);
   else if(cards.length) pickPersona(cards[0].name);
@@ -751,8 +800,14 @@ async function pickPersona(name){
   document.querySelectorAll('.chip[data-card]').forEach(c=>c.classList.toggle('on',c.dataset.card===name));
   t.value=r.text; t.dataset.name=r.name;
   $('#pinfo').textContent=r.name;
+  try{const c=(S.personas||[]).find(x=>x.name===r.name);
+      $('#pname').value=(c&&c.renamed)?c.title:'';}catch(e){}
 }
 async function loadPersona(name){ return pickPersona(name); }
+async function saveName(){const t=$('#ptext');if(!t||!t.dataset.name){toast('先选一张卡');return;}
+  const v=$('#pname').value;
+  const r=await api('/api/persona/name',{name:t.dataset.name,title:v});
+  if(r.ok){toast('名称已改：'+r.title);await reloadState();}else{toast('改失败：'+(r.error||r.title));}}
 function onMap(gid,v,el){const m=dirty.config.prompt_by_group=dirty.config.prompt_by_group||{};
   if(v){m[gid]=v;}else{m[gid]=null;}
   try{

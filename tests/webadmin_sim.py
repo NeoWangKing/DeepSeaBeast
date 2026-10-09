@@ -103,6 +103,11 @@ try:
        all(k in _d for k in ("personas", "groups", "stickers")), str(list(_d))[:80])
     ck("state 不含 api_key 之类敏感字段", "api_key" not in json.dumps(_d)[:5000].lower()
        or "api_key_source" not in json.dumps(_d))
+    _c, _d = _req("/api/persona/name", {"name": "system_prompt_tool.txt", "title": "接口改名"})
+    ck("HTTP 改名接口可用", _d.get("ok") is True and
+       W.load_names().get("system_prompt_tool.txt") == "接口改名", str(_d)[:60])
+    _req("/api/persona/name", {"name": "system_prompt_tool.txt",
+                               "title": "工具模式（豹群·只回@）"})
     _c, _d = _req("/api/apply", {"config": {"hack_me": 1}, "reload": False})
     ck("apply 非法键被拒（且没写文件）", _d.get("ok") is False, str(_d)[:80])
     _c, _d = _req("/api/apply", {"config": {"perception": {"max_chars": "abc"}}, "reload": False})
@@ -118,6 +123,28 @@ ck("null 会把那项删掉", _d == {"prompt_by_group": {"222": "b.txt"}}, json.
 _d2 = {"a": {"b": None, "c": 1}}
 W.prune_nulls(_d2)
 ck("prune_nulls 递归删空", _d2 == {"a": {"c": 1}}, json.dumps(_d2))
+
+
+print("== 人格卡显示名 ==")
+_names_bak = W.load_names()
+try:
+    ck("每张卡都带 title（面板用）",
+       all(c.get("title") for c in W.list_personas()))
+    ck("有卡已经起了名字（不是文件名）",
+       any(c.get("title") != c.get("name") for c in W.list_personas()),
+       str([c["title"] for c in W.list_personas()][:3]))
+    _ok, _t = W.save_name("system_prompt_tool.txt", "改个名试试")
+    ck("改名写入 _names.json", _ok and W.load_names().get("system_prompt_tool.txt") == "改个名试试")
+    _c = [c for c in W.list_personas() if c["name"] == "system_prompt_tool.txt"][0]
+    ck("列表里的 title 跟着变", _c["title"] == "改个名试试" and _c["renamed"] is True)
+    W.save_name("system_prompt_tool.txt", "工具模式（豹群·只回@）")
+    _ok2, _t2 = W.save_name("system_prompt_tool.txt", "  ")
+    ck("清空名称 = 删掉（回退用文件名）",
+       _ok2 and "system_prompt_tool.txt" not in W.load_names(), _t2)
+    ck("非 .txt 不给改名", W.save_name("_names.json", "x")[0] is False)
+finally:
+    W._atomic_write(W.NAMES_PATH, json.dumps(_names_bak, ensure_ascii=False, indent=1))
+    ck("测试后已还原 _names.json", W.load_names() == _names_bak)
 
 print()
 if FAIL:
