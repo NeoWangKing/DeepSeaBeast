@@ -1,0 +1,423 @@
+{
+  "offpeak": "00:30-08:30",
+  "auto_reply_probability": 0.2,
+  "keywords": [
+    "小鲸鱼",
+    "大肥鱼",
+    "肥鱼",
+    "鲸鱼",
+    "小鲸"
+  ],
+  "min_interval_sec": 90,
+  "max_auto_per_hour": 10,
+  "force_mode": "",
+  "inject_memes": true,
+  "memes_file": "memes.md",
+  "image_fastpath": false,
+  "smart_quote": true,
+  "engaged_interval_sec": 2,
+  "engaged_window_sec": 180,
+  "engaged_rest_sec": 30,
+  "max_engaged_streak": 12,
+  "quote_when_stale": true,
+  "quote_when_replied": false,
+  "compact_context": true,
+  "context_lines": 6,
+  "override_system_prompt": true,
+  "drop_tools": true,
+  "peak_windows": [
+    "09:00-12:00",
+    "14:00-18:00"
+  ],
+  "holidays_file": "holidays.json",
+  "log_chat": true,
+  "log_dir": "chatlog",
+  "memes_group": "869622030",
+  "scoring": {
+    "enabled": true,
+    "base": 0.08,
+    "p_max": 0.4,
+    "cont_after_bot": 0.25,
+    "log_decisions": true,
+    "p_quote_me": 0.95,
+    "p_continue": 0.9,
+    "p_window": 0.4,
+    "echo_strong": 0.34,
+    "flood_fast_count": 5,
+    "flood_slow_count": 10
+  },
+  "prompt_by_group": {
+    "869622030": "system_prompt_friend.txt",
+    "966812151": "system_prompt_tool.txt",
+    "private": "system_prompt_private.txt",
+    "p:287383512": "private_warm.txt",
+    "1105410423": "project_assistant.txt"
+  },
+  "system_prompt_file": "system_prompt.txt",
+  "only_at_groups": [
+    "966812151",
+    "1105410423"
+  ],
+  "no_memes_groups": [
+    "966812151"
+  ],
+  "no_context_groups": [
+    "966812151"
+  ],
+  "no_log_groups": [
+    "966812151"
+  ],
+  "cont_window_sec": 600,
+  "dump_prompt": false,
+  "memory": {
+    "enabled": true,
+    "groups": [
+      "869622030"
+    ],
+    "provider": {
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "model": "glm-5.3-flashx",
+      "api_key_source": "file:/opt/astrbot/data/plugins/qq_peak_gate/.secrets/glm.key",
+      "json_mode": true,
+      "thinking": {
+        "type": "enabled"
+      },
+      "reasoning_effort": "low",
+      "temperature": 0.6,
+      "max_tokens": 1500
+    },
+    "inject": {
+      "group_profile": true,
+      "members": true,
+      "max_members": 3,
+      "full_groups": [
+        "869622030"
+      ],
+      "full_max_chars": 1200
+    },
+    "group_profile": {
+      "enabled": true,
+      "window": 200,
+      "max_chars": 500,
+      "min_new_msgs": 50,
+      "min_interval_hours": 4
+    },
+    "members": {
+      "enabled": true,
+      "window": 400,
+      "max_chars": 100,
+      "min_msgs_to_create": 5,
+      "min_new_msgs_to_update": 20,
+      "min_interval_hours": 12
+    },
+    "self_aliases": [
+      "大肥鱼",
+      "肥鱼",
+      "小鲸鱼",
+      "小鲸",
+      "鲸鱼",
+      "DeepSeaBeast",
+      "蓝色邪恶大肥鱼"
+    ]
+  },
+  "burst_suppress_sec": 0,
+  "split_reply": {
+    "enabled": true,
+    "min_chars": 12,
+    "max_parts": 5,
+    "delay_ms": 700,
+    "exclude_groups": [
+      "966812151"
+    ],
+    "char_mode": {
+      "enabled": true,
+      "max_parts": 24,
+      "delay_ms": 800,
+      "triggers": [
+        "一个字一个字",
+        "一个个字",
+        "逐字",
+        "一个字一发",
+        "一个字一条",
+        "拆开回",
+        "拆开发",
+        "一个字一个字发"
+      ],
+      "jitter": 0.3,
+      "max_per_hour": 60
+    },
+    "marker": "|||",
+    "hint": true,
+    "silence": true,
+    "heuristic_fallback": true
+  },
+  "human_delay": {
+    "enabled": true,
+    "base_sec": 1.2,
+    "chars_per_sec": 12,
+    "min_sec": 0.8,
+    "max_sec": 8.0,
+    "jitter": 0.2,
+    "short_chars": 3,
+    "short_wait_sec": 2.5,
+    "burst_wait_sec": 3.5
+  },
+  "allowed_groups": [
+    "1"
+  ],
+  "allowed_self_id": "3237702352",
+  "auto_persona": {
+    "enabled": true,
+    "template": "personas/_template.txt",
+    "add_allowed": false,
+    "add_memory": true
+  },
+  "turtle": {
+    "enabled": true,
+    "groups": [
+      "869622030",
+      "966812151"
+    ],
+    "at_only": false,
+    "start_needs_at": null,
+    "start_keywords": [
+      "海龟汤",
+      "开局"
+    ],
+    "exit_keywords": [
+      "揭晓",
+      "结束",
+      "不玩了",
+      "退出",
+      "收工"
+    ],
+    "opening": "🐢 海龟汤开局！\n\n【汤面】{surface}\n\n开始问吧——我只回「是 / 不是 / 不重要」。想结束就说「揭晓」。",
+    "reveal": "【汤底】{bottom}\n\n—— 这局到此为止，想再来一局就说「海龟汤」。",
+    "fact_every": 10,
+    "question_filter": "llm",
+    "quote": true,
+    "per_group": {
+      "966812151": {
+        "question_filter": "at",
+        "no_disk": true
+      }
+    },
+    "judge": {
+      "base_url": "https://api.deepseek.com",
+      "model": "deepseek-chat",
+      "api_key_source": "astrbot",
+      "temperature": 0.0,
+      "max_tokens": 400,
+      "timeout": 60,
+      "thinking": null,
+      "reasoning_effort": null
+    }
+  },
+  "stickers": {
+    "enabled": true,
+    "collect_exclude_groups": [
+      "966812151"
+    ],
+    "send_exclude_groups": [
+      "966812151",
+      "1105410423"
+    ],
+    "max_store": 300,
+    "max_per_hour": 3,
+    "collect_max_per_hour": 10,
+    "collect_private": true,
+    "private_max_per_hour": 50,
+    "send_private": true,
+    "vision_model": "glm-4v-flash",
+    "collect_say_prob": 0.18,
+    "collect_say_max_per_hour": 2,
+    "prompt_max": 20,
+    "encourage": 3,
+    "nudge_prob": 0.35,
+    "max_file_mb": 4,
+    "prefer_ids": [
+      "s1791462696207",
+      "s1791462846379",
+      "s1791463274545",
+      "s1791463275943",
+      "s1791463279025",
+      "s1791463279754",
+      "s1791463279837"
+    ],
+    "prefer_boost": 3,
+    "collect_say_enabled": false
+  },
+  "followup": {
+    "enabled": true,
+    "chance": 0.15,
+    "max_per_hour": 2,
+    "delay_ms": 2600,
+    "exclude_groups": [
+      "966812151",
+      "1105410423"
+    ]
+  },
+  "prompt": {
+    "layered": true,
+    "bot_name": "小鲸鱼",
+    "participation": "normal",
+    "persona_patch": "personas/_common_patch.txt",
+    "persona_patch_by_group": {},
+    "disable_sections": [],
+    "extra": "",
+    "disable_sections_by_persona": {
+      "project_assistant.txt": [
+        "sticker_rules",
+        "subjectivity",
+        "not_moderator"
+      ]
+    },
+    "prompt_by_group": {}
+  },
+  "agent": {
+    "enabled": true,
+    "send_tools": true,
+    "session_ttl": 600,
+    "tools": {
+      "recent": true,
+      "members": true,
+      "memory": true,
+      "stickers_list": true,
+      "finish": true,
+      "send": true,
+      "sticker": true,
+      "collect": true,
+      "vision": true,
+      "poke": true,
+      "memory_write": true,
+      "search": true,
+      "skills": true
+    },
+    "max_calls": 6,
+    "send_tools_groups": [],
+    "rescue_text": false,
+    "loop_mode": true,
+    "loop_groups": [],
+    "max_rounds": 5,
+    "llm": {
+      "vision_model": "deepseek-flash"
+    },
+    "tool_profiles": {
+      "full": null,
+      "lean": [
+        "send_message",
+        "send_face",
+        "finish",
+        "get_recent_messages",
+        "lookup_memory",
+        "view_image",
+        "memory_append"
+      ]
+    },
+    "tool_profile_by_group": {
+      "966812151": "lean"
+    },
+    "max_sends_per_turn": 8
+  },
+  "kb": {
+    "enabled": true,
+    "top_k": 4,
+    "min_score": 0.06,
+    "max_chars": 1500,
+    "scope_by_group": {
+      "1105410423": "denial"
+    },
+    "scope_by_persona": {}
+  },
+  "poke_reply": {
+    "enabled": true,
+    "max_per_hour": 4,
+    "min_interval_sec": 20
+  },
+  "search": {
+    "enabled": true,
+    "provider": "auto",
+    "count": 6,
+    "max_per_hour": 20,
+    "read_max_chars": 6000,
+    "cache_ttl": 600,
+    "read_cache_ttl": 3600,
+    "timeout": 20,
+    "smart_judge": true,
+    "judge_model": "",
+    "judge_max_per_hour": 30,
+    "skip_if_evidence": 0.34,
+    "remember": true,
+    "remember_max_per_hour": 4,
+    "max_per_turn": 4,
+    "ack_first": true,
+    "ack_only_directed": true
+  },
+  "min_cont_gap_sec": 3,
+  "max_cont_per_hour": 30,
+  "context": {
+    "recent_lines": 20,
+    "line_chars": 100,
+    "mine_lines": 10,
+    "mine_chars": 60,
+    "memory_notes": 20
+  },
+  "record_at_only_groups": [
+    "1105410423"
+  ],
+  "activation": {
+    "enabled": true,
+    "owner_ids": [
+      "3245938285"
+    ],
+    "off_lines": [
+      "DeepSeaBeast 已关机"
+    ],
+    "on_lines": [
+      "DeepSeaBeast 已激活"
+    ],
+    "farewell": true,
+    "farewell_max_tokens": 40
+  },
+  "intro": {
+    "enabled": true,
+    "owner_qq": "3245938285",
+    "owner_name": "灵其啊",
+    "max_total_chars": 120,
+    "max_parts": 2,
+    "other_bots": {
+      "1105410423": "这个群（Denial 社区）的群主就是 Denial 项目的作者，群里还有他做的机器人 **Synthia**——大家平时有问题可以直接 @Synthia 问。**Synthia 才是这里的正主**：自我介绍时要主动说「有问题先找 Synthia 呀，我这边只能搭点小忙」，可以提一句「Denial 的文档和代码我能帮着翻」，但别承诺解决复杂问题；绝不能显得自己比 Synthia 强，也不要评价、比较任何机器人。"
+    }
+  },
+  "admin": {
+    "enabled": true,
+    "owner_ids": [
+      "3245938285"
+    ],
+    "group_notes": {
+      "869622030": "闪电群",
+      "966812151": "豹群",
+      "1105410423": "Denial社区",
+      "566000222": "自动建档群"
+    }
+  },
+  "group_tuning": {
+    "869622030": {
+      "reply_prob_mult": 0.35,
+      "max_auto_per_hour": 4,
+      "min_interval_sec": 300,
+      "max_cont_per_hour": 10,
+      "min_cont_gap_sec": 8,
+      "cont_window_sec": 600,
+      "max_engaged_streak": 6,
+      "engaged_window_sec": 120,
+      "engaged_interval_sec": 8,
+      "engaged_rest_sec": 60,
+      "burst_suppress_sec": 60
+    }
+  },
+  "perception": {
+    "enabled": true,
+    "max_chars": 420
+  }
+}

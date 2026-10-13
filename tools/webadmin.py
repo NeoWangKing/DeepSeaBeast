@@ -35,7 +35,8 @@ CONFIG = os.path.join(PLUGIN_DIR, "config.json")
 PERSONAS = os.path.join(PLUGIN_DIR, "prompts", "personas")
 NAMES_PATH = os.path.join(PERSONAS, "_names.json")     # 只给面板看的"显示名"
 PROMPTS = os.path.join(PLUGIN_DIR, "prompts")
-BACKUP_ROOT = "/root/qqbot-backups/webadmin"
+BACKUP_ROOT = (os.environ.get("QQBOT_WEBADMIN_BACKUP")
+               or os.path.join(PLUGIN_DIR, "data", "_backups", "webadmin"))
 SECRET = os.path.join(PLUGIN_DIR, ".secrets", "webadmin.pass")
 RELOAD_BIN = "/usr/local/bin/qqbot-reload"
 THUMB_DIR = os.path.join(PLUGIN_DIR, "data", "stickers", "_thumbs")

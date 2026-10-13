@@ -4574,6 +4574,9 @@ class QqPeakGate(Star):
                             # 顺手加进那个 QQ 号自己的表情收藏（手机上就能看到）
                             try:
                                 if await asyncio.to_thread(stickers.add_face, path):
+                                    # 注意：add_file 已经存过档了，这里必须再落一次盘，
+                                    # 否则 face_pushed 只在内存里（重启后又被当成"没推过"重推）
+                                    await asyncio.to_thread(stickers.mark_pushed, it["id"])
                                     it["face_pushed"] = True
                                     self._log("表情包：已加进 QQ 表情收藏 %s" % it["id"])
                             except Exception as _e3:

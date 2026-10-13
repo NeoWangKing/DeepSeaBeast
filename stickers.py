@@ -451,10 +451,10 @@ def ensure_local(it: dict) -> str:
 def push_to_face(limit: int = 50) -> int:
     """把库里（本地收藏的）图推到那个 QQ 号自己的表情收藏里。返回推了几张。"""
     items = load()
+    # 已经推过的就别重复推（面板限频，重复推纯浪费）；优先补没推过的
+    pend = [x for x in items if not x.get("face_pushed")] or items
     n = 0
-    for it in items[: int(limit or 50)]:
-        if it.get("src") == "account" and it.get("face_pushed"):
-            continue
+    for it in pend[: int(limit or 50)]:
         p = ensure_local(it)
         if not p or not os.path.isfile(p):
             continue
@@ -467,13 +467,58 @@ def push_to_face(limit: int = 50) -> int:
     return n
 
 
+
+def mark_pushed(sid: str) -> bool:
+    """把"已推上面板"这个标志落盘（收图那条路原来只在内存里改了，重启/重读就丢）。"""
+    items = load()
+    hit = False
+    for it in items:
+        if str(it.get("id")) == str(sid):
+            it["face_pushed"] = True
+            hit = True
+            break
+    if hit:
+        save(items)
+    return hit
+
+
+def reconcile_pushed(uin: str = "", count: int = 400) -> dict:
+    """以面板为准回填：面板里已经有的（md5 相同）→ 直接标成已推，别重复推、也别浪费限频。"""
+    import hashlib
+    faces = fetch_face_detail(uin, count)
+    md5s = {str(f.get("md5") or "").lower() for f in faces if f.get("md5")}
+    if not md5s:
+        return {"error": "面板没取到表情，跳过"}
+    items = load()
+    n = 0
+    for it in items:
+        if it.get("face_pushed") or it.get("src") == "account":
+            continue
+        p = abs_path(it)
+        if not p or not os.path.isfile(p):
+            continue
+        try:
+            h = hashlib.md5(open(p, "rb").read()).hexdigest().lower()
+        except Exception:
+            continue
+        if h in md5s:
+            it["face_pushed"] = True
+            n += 1
+    if n:
+        save(items)
+    return {"marked": n, "panel": len(md5s), "left": sum(1 for x in items
+                                                         if not x.get("face_pushed")
+                                                         and x.get("src") != "account")}
+
 def push_pending(limit: int = 80) -> int:
     """只补推"还没进面板"的那些（面板偶发失败自愈；不碰已推过的、也不回推账号同步来的）。"""
     items = load()
+    # 注意：先筛"没推过的"再取 limit —— 未推的往往是新加的（在列表末尾），
+    # 以前只看 items[:limit] 会永远轮不到它们（2026-10-13 修）
+    pend = [x for x in items
+            if not x.get("face_pushed") and x.get("src") != "account"][: int(limit or 80)]
     n = 0
-    for it in items[: int(limit or 80)]:
-        if it.get("face_pushed") or it.get("src") == "account":
-            continue
+    for it in pend:
         p = ensure_local(it)
         if not p or not os.path.isfile(p):
             continue
@@ -481,6 +526,9 @@ def push_pending(limit: int = 80) -> int:
             n += 1
             it["face_pushed"] = True
             print("  ↑ 补推进面板:", it.get("id"), it.get("desc") or "")
+            time.sleep(1.2)          # 连着推会被面板/QQ 限频（2026-10-13：一次收几张就会失败）
+        else:
+            time.sleep(2.0)
     if n:
         save(items)
     return n
@@ -1077,6 +1125,10 @@ def main() -> int:
         r = reconcile_deletions(dry=_dry, limit=120)
         print("反向同步（以 QQ 面板为准）：", r)
         if not _dry:                     # 顺手把"上次没推上去"的补推（偶发失败自愈）
+            try:
+                print("回填已推标志：", reconcile_pushed())
+            except Exception as _e0:
+                print("回填失败:", _e0)
             try:
                 _n = push_pending()
                 if _n:

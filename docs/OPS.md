@@ -1434,3 +1434,36 @@ Neo武神：？
 
 验证：`tests/quote_busy_sim.py`（2 条/2 人 → 引用；同人连发 2 条 → 引用；1 条 1 人 → 不引；
 关掉开关 → 不引；agent 路径一轮只引第一条）；36 个测试全过。
+
+### 高压时段体检 + 三个真问题（2026-10-13 晚）
+
+主人问"她现在状态怎么样"（Denial 群问题很密集）。体检结果与修掉的问题：
+
+**体量**：近 2 小时 Denial 群 486 条群消息、她发了 62 条（约 13%）；闪电群 8 条、她 0 条。
+故障计数只有 1 次 `meta_text_blocked`（工具描述被拦，正常）；无待办、无排队唤醒。
+
+**问题 1：`PermissionError` 写不进图片记忆**（我的锅）
+`data/agent_memory/1105410423.jsonl` 是 **root** 拥有的（我上次手工用 root 发消息时建的），
+插件以 astrbot 身份运行 → `图片记忆写入失败: PermissionError(13)`。
+→ `chown -R astrbot:astrbot` 整个插件目录（原来有 **896 个 root 文件**，都是我用 root 打补丁留下的）。
+
+**问题 2：84 张表情"没推上面板"**
+两个原因叠起来：
+- 收图时 `add_face` 成功后只在内存里置 `face_pushed`，**没有再落盘**（`add_file` 早就存过档了）
+  → 重启/重读就丢；修：新增 `stickers.mark_pushed()` 并在收集路径里调用；
+- `push_pending()` 只看 `items[:limit]`，而未推的恰恰是**新加的**（在列表末尾）→ 永远轮不到；
+  修：改成"先筛出未推的再取 limit"（`push_to_face` 同样修）。
+- 另外补推太密会被面板/QQ 限频（一次收几张就会 `add_custom_face 失败: None`）→ `push_pending`
+  每次成功后睡 1.2s；新增 `reconcile_pushed()`：以面板为准（md5 命中）回填 `face_pushed`，
+  mirror 定时任务里先回填再补推，避免重复推。
+- 结果：**83 张全部补推成功，未推 0**；面板 167 张 / 本地 164 张。
+
+**问题 3：面板用 root 跑（会把文件写成 root）**
+`qqbot-webadmin.service` 改成 `User=astrbot`（备份目录也从 `/root/qqbot-backups/webadmin`
+挪到插件内 `data/_backups/webadmin`，169 个历史备份已搬过去）。
+> 注意：**不要用 astrbot 身份跑 `qqbot-reload`** —— 实测撞上已知的"未通过 Star 注册"竞态后
+> 插件会**保持掉线**（当时立刻用 `qqbot-reload`（root）恢复了）。面板的"应用"按钮原来直接
+> 调这个脚本，现在要留意：失败时脚本会提示改用 `qqbot-reload --force` / `qqbot-restart`。
+
+验证：新增 `tests/sticker_push_sim.py`（mark_pushed 落盘 / push_pending 只挑未推 /
+reconcile_pushed 回填 / 接线检查）；37 个测试全过。
