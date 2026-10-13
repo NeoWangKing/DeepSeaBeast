@@ -1456,8 +1456,15 @@ class QqPeakGate(Star):
             self._log("remember_reply ERROR: %r" % (e,))
 
     # ---------------- agent 工具层（模型输出=思考，动作靠调用工具） ----------------
-    def _agent_cfg(self) -> dict:
+    def _agent_cfg(self, gid: str = "") -> dict:
         c = dict(self.cfg.get("agent") or {})
+        try:                       # 按群可调：group_tuning.<群>.max_text_chars / max_parts
+            if gid:
+                c["max_text_chars"] = self._tune_i(gid, "max_text_chars",
+                                                   int(c.get("max_text_chars") or 400))
+                c["max_parts"] = self._tune_i(gid, "max_parts", int(c.get("max_parts") or 4))
+        except Exception:
+            pass
         c.setdefault("enabled", False)
         c.setdefault("send_tools", False)
         c.setdefault("send_tools_groups", [])
@@ -2304,7 +2311,7 @@ class QqPeakGate(Star):
             if len(self._agent_sessions) > 200:
                 self._agent_sessions.clear()
             t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(self._agent_target(event)),
-                                  self._agent_cfg())
+                                  self._agent_cfg(self._chat_key(event)))
             self._agent_sessions[key] = t
         return t
 
@@ -2621,7 +2628,7 @@ class QqPeakGate(Star):
         _fmenu = self._face_menu_text()
         if _fmenu:
             _txt += "\n\n" + _fmenu
-        t = agent.tools.Tools(gid, self._agent_callbacks(target), self._agent_cfg())
+        t = agent.tools.Tools(gid, self._agent_callbacks(target), self._agent_cfg(gid))
         schema = agent.loop.spec_to_openai(self._agent_specs_for(gid))
         lines = []
         try:
@@ -2884,7 +2891,7 @@ class QqPeakGate(Star):
         # 既让日志出现"说了 5 条"，还会让陈旧 spoke 把这一轮的多轮工具调用掐掉
         _akey = str(getattr(event, "unified_msg_origin", "") or self._chat_key(event))
         t = agent.tools.Tools(self._chat_key(event), self._agent_callbacks(self._agent_target(event)),
-                              self._agent_cfg())
+                              self._agent_cfg(self._chat_key(event)))
         try:
             if len(self._agent_sessions) > 200:
                 self._agent_sessions.clear()

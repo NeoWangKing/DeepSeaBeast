@@ -7,6 +7,7 @@
 
 每个工具返回一句**简短的中文结果**给模型看（成功说做了什么，失败说为什么没做）。
 """
+import re
 import time
 
 MAX_TEXT_CHARS = 400          # 单次发言总字数上限（防小作文刷屏）
@@ -21,6 +22,12 @@ class Tools:
         self.chat_key = chat_key
         self.cb = callbacks or {}
         self.cfg = cfg or {}
+        try:                       # 按群可调：默认 400 字 / 最多 4 条
+            self.max_chars = max(80, int((self.cfg or {}).get("max_text_chars")
+                                         or MAX_TEXT_CHARS))
+            self.max_parts = max(1, int((self.cfg or {}).get("max_parts") or MAX_PARTS))
+        except Exception:
+            self.max_chars, self.max_parts = MAX_TEXT_CHARS, MAX_PARTS
         self.sent = []             # 本轮已发出的东西（审计 + 抑制正文）
         self.finished = False
         self.finish_reason = ""
@@ -32,12 +39,35 @@ class Tools:
 
     # ---------- 发送类 ----------
     def _split(self, text: str) -> list:
+        """拆条：||| 是显式分隔符，换行也当分段。
+
+        注意：段落多于上限时**打包合并**，不能直接截断——长答案被切掉半截更糟
+        （2026-10-13：群友的问题确实需要大段回答，所以改成"默认短、需要时能长"）。
+        """
         raw = str(text or "")
-        parts = [x.strip() for x in raw.replace("｜", "|").split("|||")]
-        parts = [x for x in parts if x]
-        if not parts and raw.strip():
-            parts = [raw.strip()]
-        return parts[:MAX_PARTS]
+        units = []
+        for _chunk in raw.replace("｜", "|").split("|||"):
+            for _line in re.split(r"[\r\n]+", _chunk):
+                _line = _line.strip()
+                if _line:
+                    units.append(_line)
+        if not units:
+            return [raw.strip()] if raw.strip() else []
+        _cap = max(1, int(getattr(self, "max_parts", MAX_PARTS) or MAX_PARTS))
+        _lim = max(80, int(getattr(self, "max_chars", MAX_TEXT_CHARS) or MAX_TEXT_CHARS))
+        if len(units) <= _cap:
+            return units[:_cap]
+        _per = max(60, _lim // _cap)              # 每条大致配额
+        out, cur = [], ""
+        for u in units:
+            if cur and (len(cur) + len(u) + 1) > _per and len(out) < _cap - 1:
+                out.append(cur)
+                cur = u
+            else:
+                cur = (cur + "\n" + u) if cur else u
+        if cur:
+            out.append(cur)
+        return out[:_cap]
 
     def send_message(self, text="", reply_to_id="", at_user_id="", face="") -> str:
         parts = self._split(text)
@@ -52,8 +82,10 @@ class Tools:
             return ("没发：这一轮已经发了 %d 条（硬上限 %d），先收手——把想说的并进下一条，"
                     "或者直接 finish 收工" % (_said, _cap))
         total = sum(len(p) for p in parts)
-        if total > MAX_TEXT_CHARS:
-            return "没发：这条太长（%d 字），拆短一点再发" % total
+        if total > int(getattr(self, "max_chars", MAX_TEXT_CHARS) or MAX_TEXT_CHARS):
+            return ("没发：这条太长（%d 字，上限 %d）。把结论先发出来，"
+                    "细节分成几条或者问对方要不要展开"
+                    % (total, int(getattr(self, "max_chars", MAX_TEXT_CHARS))))
         fn = self.cb.get("send_text")
         if not fn:
             return "没发：发送通道不可用"

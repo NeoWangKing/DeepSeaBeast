@@ -441,6 +441,10 @@
       "engaged_interval_sec": 8,
       "engaged_rest_sec": 60,
       "burst_suppress_sec": 60
+    },
+    "1105410423": {
+      "max_text_chars": 1500,
+      "max_parts": 4
     }
   },
   "perception": {

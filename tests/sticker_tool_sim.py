@@ -56,6 +56,20 @@ try:
 except Exception as e:
     print("  pick 检查跳过：%r" % (e,))
 
+
+print("== 工具发言按换行拆条 ==")
+_got2 = []
+_t2 = T.Tools("869622030", {"send_text": lambda t, **k: _got2.append(t)}, {"max_calls": 5})
+_r = _t2.send_message("第一句\n\n第二句\n第三句")
+ck("空行/换行都拆成多条", len(_got2) == 3, str(_got2))
+ck("每条是干净的一行", all("\n" not in x for x in _got2), str(_got2))
+_got3 = []
+_t3 = T.Tools("869622030", {"send_text": lambda t, **k: _got3.append(t)}, {"max_calls": 5})
+_t3.send_message("\n".join("第%d句" % i for i in range(6)))
+_flat3 = "".join(_got3).replace("\n", "")
+ck("拆完条数 ≤4", len(_got3) <= 4, str(len(_got3)))
+ck("多行内容一条都不丢", all(("第%d句" % i) in _flat3 for i in range(6)), str(_flat3)[:60])
+
 print()
 if FAIL:
     print("有问题：%s" % "、".join(FAIL))
