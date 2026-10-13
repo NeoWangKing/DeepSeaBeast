@@ -49,6 +49,13 @@ except Exception:                              # 兜底：直接当脚本/被 py
     from games.turtle_soup import judge as turtle_judge, puzzles as turtle_puzzles, session as turtle_session
     from games.turtle_soup import gen as turtle_gen
 
+class _UrlImage:            # 只为把 URL 交给 _save_tmp_image 用
+    def __init__(self, url=""):
+        self.url = str(url or "")
+        self.file = ""
+        self.path = ""
+
+
 _TURTLE_REACT = __import__("re").compile(
     r"^(?:[哈呵嘿嘻]{2,}|233+|草+|6+|乐+|典+|笑死|绷不住了?|难绷|啊+|哦+|嗯+|额+|好+|牛[逼批]|nice|"
     r"\.{2,}|[?？!！。，,、~～\s]+)$", __import__("re").I)
@@ -2630,7 +2637,7 @@ class QqPeakGate(Star):
                     last_reply_ts=float(self.last_reply_ts.get(gid, 0) or 0),
                     hour_used=int(self.hour_count.get((gid, _hg2), 0) or 0),
                     hour_cap=self._hour_cap(gid, 0),
-                    at_me=bool(self._at_me(event)))
+                    at_me=False)
                 _ptxt2 = agent.perception.render(_sig2, self.cfg)
                 if _ptxt2:
                     user += "\n" + _ptxt2
@@ -3076,6 +3083,36 @@ class QqPeakGate(Star):
                     _img_paths.append(_p)
                 else:
                     self._log("agent loop：有图但取不下来（组件=%s）" % _names)
+            # 引用消息：QQ 不会把被引用内容一起送过来 → 主动 get_msg 取一次
+            # （2026-10-13 事故：他引用一张报错截图问"能看到吗"，她连图都拿不到，还因为不是真 @ 被忽略）
+            try:
+                _rid0 = self._reply_id(event)
+                if _rid0:
+                    _qm = await event.bot.call_action("get_msg", message_id=int(_rid0))
+                    _qtxt, _qurls = "", []
+                    for _el in ((_qm or {}).get("message") or []):
+                        _et = str((_el or {}).get("type") or "")
+                        _ed = (_el or {}).get("data") or {}
+                        if _et == "text":
+                            _qtxt += str(_ed.get("text") or "")
+                        elif _et == "image":
+                            _u = str(_ed.get("url") or _ed.get("file") or "")
+                            if _u:
+                                _qurls.append(_u)
+                    if _qurls:
+                        _got = 0
+                        for _u in _qurls[:2]:
+                            _p2 = self._save_tmp_image(_UrlImage(_u))
+                            if _p2:
+                                _img_paths.append(_p2)
+                                _got += 1
+                        self._log("agent loop：引用消息里有 %d 张图 → 取回来给你看（成功 %d）"
+                                  % (len(_qurls), _got))
+                    if _qtxt.strip():
+                        user += "\n【他引用的那条消息】" + _qtxt.strip()[:200]
+                        self._log_debug("引用消息：带上被引用文字 %r" % _qtxt.strip()[:40])
+            except Exception as _eq:
+                self._log_debug("取引用消息失败（不影响回复）%r" % (_eq,))
             if _face_hint:
                 _face_note = ("[对方发来的是 QQ 自带表情 %s（这是官方表情名，按这个名字的含义自然接话；"
                               "你看不到它的图案，不要猜图案、不要编画面）]" % _face_hint)
@@ -4644,6 +4681,32 @@ class QqPeakGate(Star):
                 self._log("agent loop 出错，回退原流程: %r" % (e,))
                 self._fault("loop_fallback", repr(e))
 
+    @staticmethod
+    def _reply_id(event) -> str:
+        """这条消息引用的是哪条消息（拿不到返回空串）。"""
+        try:
+            for _m in (event.get_messages() or []):
+                _cn = type(_m).__name__
+                if _cn in ("Reply", "ReplyMessage") or \
+                        str(getattr(_m, "type", "") or "").lower() == "reply":
+                    _i = str(getattr(_m, "id", "") or "")
+                    if _i:
+                        return _i
+        except Exception:
+            pass
+        try:
+            _raw = getattr(event, "raw_message", None)
+            if _raw is None:
+                _mo = getattr(event, "message_obj", None)
+                _raw = getattr(_mo, "raw_message", None)
+            if isinstance(_raw, dict):
+                for el in (_raw.get("message") or []):
+                    if isinstance(el, dict) and str(el.get("type") or "") == "reply":
+                        return str((el.get("data") or {}).get("id") or "")
+        except Exception:
+            pass
+        return ""
+
     def _at_me(self, event: AstrMessageEvent) -> bool:
         me = str(event.get_self_id())
         try:
@@ -4909,8 +4972,27 @@ class QqPeakGate(Star):
 
             # 「只认 @」的群：工具模式。除了被 @，什么都不回（不叫名字、不接话、不看概率）
             if gid and gid in [str(x) for x in (cfg.get("only_at_groups") or [])]:
-                if self._at_me(event):
-                    self._log("工具模式：被 @ → 回复")
+                # 默认**只认真 @**（At 组件）。有些客户端手打的 "@名字" 不会变成 At，
+                # 想要那种也算，就把 only_at_allow_text_at 设成 true —— 而且必须**句首就是 @**，
+                # 免得"大肥鱼回我了"这种提到名字的话被误当成叫她（2026-10-13 踩过）。
+                _called_txt = False
+                try:
+                    if self._is_owner(event) and bool(cfg.get("only_at_allow_text_at", False)):
+                        _t0 = str(text or "").strip()
+                        if _t0.startswith(("@", "＠")):
+                            _names = [str(x) for x in (cfg.get("keywords") or [])]
+                            if getattr(self, "_nick", ""):
+                                _names.append(str(self._nick))
+                            _body0 = _t0.lstrip("@＠ ").strip()
+                            for _n in _names:
+                                if _n and _body0.startswith(_n):
+                                    _called_txt = True
+                                    break
+                except Exception:
+                    _called_txt = False
+                if self._at_me(event) or _called_txt:
+                    self._log("工具模式：被 @ → 回复%s" % ("（主人手打的 @名字）" if _called_txt
+                                                       and not self._at_me(event) else ""))
                     await self._allow(event)
                 else:
                     self._log_debug("工具模式：非 @ → 不回")

@@ -271,7 +271,10 @@
         "not_moderator"
       ]
     },
-    "prompt_by_group": {}
+    "prompt_by_group": {},
+    "ai_honest_personas": [
+      "project_assistant.txt"
+    ]
   },
   "agent": {
     "enabled": true,

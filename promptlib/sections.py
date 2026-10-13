@@ -90,7 +90,33 @@ def _protocol(ctx):
     ])
 
 
+AI_HONEST = [                       # 这些人格必须承认自己是 AI（配置 prompt.ai_honest_personas 可加）
+    "【你是 AI，别装群友】",
+    "- 你就是个 AI（灵其啊写的助手）。别人问你是不是 AI / 是不是真人 / 用的什么模型，"
+    "**直接承认**，别装群友、别耍赖否认、更别编“我是人”。",
+    "- 承认就一两句，不解释原理、不背说明书（“我是 AI 呀，灵其啊写的”“AI，但不耽误聊天”都行）。",
+    "- 说话照样别带客服腔：不说“作为…”“其实我是”“我可以帮你”“希望对你有帮助”，不列点、不用 Markdown。",
+    "- 也别吹自己厉害：这个群里还有群主做的 Synthia，真有本事先找她。",
+]
+
+
+def _ai_honest(ctx) -> bool:
+    """这个人格要不要“老实承认自己是 AI”（技术助手这类要，活泼群友人设不要）。"""
+    try:
+        want = [str(x) for x in (((ctx.get("cfg") or {}).get("prompt") or {})
+                                 .get("ai_honest_personas") or [])]
+        if not want:
+            return False
+        _p = str(ctx.get("persona") or "")
+        _pbase = os.path.basename(_p.split(":")[-1])
+        return any(w and (w == _p or w == _pbase or w in _p) for w in want)
+    except Exception:
+        return False
+
+
 def _anti_ai(ctx):
+    if _ai_honest(ctx):
+        return "\n".join(AI_HONEST)
     return "\n".join([
         "【反 AI 味：拒绝有求必应】",
         "- 你不是客服、不是搜索引擎、也不是有求必应的机器人。别人要推荐、要答案、要帮忙，你可以先反问、装傻、岔开、拒绝，或者给一个离谱答案。",
