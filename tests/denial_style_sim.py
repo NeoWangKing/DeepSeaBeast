@@ -35,11 +35,12 @@ ck("情绪要具体（不要空泛客套）", "情绪要**具体**" in card or "
 ck("不夹英文句子（区别于 Synthia）", "不用夹英文句子" in card)
 
 print("== 但明确不许长篇 ==")
-ck("不再限死：明确『这个群允许长回答』", "这个群允许长回答" in card)
+ck("篇幅上限写清（≤600 字 / ≤3 条）", "≤600 字" in card and "最多 3 条" in card)
+ck("明确禁止在群里贴长代码/刷屏", "绝不在群里贴长代码" in card)
 ck("不管长短都不许加粗/小标题/清单", "加粗/小标题/清单" in card)
 ck("不给『首先/其次/总结一下』", "首先/其次/总结一下" in card)
 ck("默认短（≤40 字）", "≤40 字" in card)
-ck("允许『真需要展开时就展开』", "真需要展开时就展开" in card)
+ck("允许『真需要展开时就展开』（但有上限）", "真需要展开时就展开" in card)
 ck("长的写法：先结论 + 2~4 条要点", "先一句结论" in card and "2~4 条" in card)
 ck("还是要问『要我细说吗』（不确定时）", "要我细说吗" in card)
 ck("不要用换行分段（想分就发两条）", "不要用换行分段" in card)
@@ -65,16 +66,16 @@ ck("换行与 ||| 都拆成独立消息", sent == ["第一段", "第二段", "�
 print("== 工具层：长回答不丢内容 / 短群仍有限制 ==")
 from agent import tools as T            # noqa: E402
 
-_long = "\n".join("第%d段：这里是一段排查说明，写得长一点。" % i for i in range(1, 13))
-_den_cfg = {"max_text_chars": 1500, "max_parts": 4}
+_long = "\n".join("第%d段：这里是一段排查说明。" % i for i in range(1, 5))
+_den_cfg = {"max_text_chars": 600, "max_parts": 3}
 sent2 = []
 _t4 = T.Tools("1105410423", {"send_text": lambda x, **k: sent2.append(x)}, _den_cfg)
 _r4 = _t4.send_message(_long)
 ck("Denial 群：长文能发出去", sent2 and "已发" in _r4, _r4[:40])
-ck("…拆成不超过 4 条", len(sent2) <= 4, str(len(sent2)))
+ck("…拆成不超过 3 条", len(sent2) <= 3, str(len(sent2)))
 _flat = "".join(sent2).replace("\n", "")
-ck("…内容没有被截断（12 段全在）",
-   all(("第%d段" % i) in _flat for i in range(1, 13)), str(_flat[:60]))
+ck("…内容没有被截断（4 段全在）",
+   all(("第%d段" % i) in _flat for i in range(1, 5)), str(_flat[:60]))
 sent3 = []
 _t5 = T.Tools("869622030", {"send_text": lambda x, **k: sent3.append(x)}, {})   # 默认 400 字
 _r5 = _t5.send_message("长" * 900)

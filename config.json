@@ -165,7 +165,8 @@
   "allowed_groups": [
     "869622030",
     "966812151",
-    "1105410423"
+    "1105410423",
+    "866103773"
   ],
   "allowed_self_id": "3237702352",
   "auto_persona": {
@@ -443,8 +444,8 @@
       "burst_suppress_sec": 60
     },
     "1105410423": {
-      "max_text_chars": 1500,
-      "max_parts": 4
+      "max_text_chars": 600,
+      "max_parts": 3
     }
   },
   "perception": {
