@@ -1870,28 +1870,32 @@ class QqPeakGate(Star):
         def _send_sticker(sid, mood="", reply_to_id=""):
             """发一张表情：给了 id 就发那张；没给或 id 不存在就按 mood 自己挑一张。"""
             sid, mood = str(sid or "").strip(), str(mood or "").strip()
+            # 按群限风格：允许的那批（Denial 群只有可爱系/她形象那几张）
+            try:
+                _pool = [x for x in (stickers.load() or []) if self._sticker_ok(_gid, x)]
+            except Exception:
+                _pool = []
             it = None
             if sid:
                 try:
                     it = stickers.find(sid)
                 except Exception:
                     it = None
-            if it and not self._sticker_ok(str(event.get_group_id() or "") or "", it):
+            if it and not self._sticker_ok(_gid, it):
                 self._log("表情包：%s 不适合这个群（按群限定了风格），换一张" % sid)
                 it = None
             if not it:
                 cand = []
                 try:
                     if mood or sid:
-                        cand = [x for x in stickers.pick(mood or sid, limit=12)
-                                if self._sticker_ok(str(event.get_group_id() or "") or "", x)][:6]
+                        # 注意：只在允许的那批里挑，否则 mood「可爱」会挑到被禁的图然后落空
+                        cand = stickers.pick(mood or sid, limit=6, pool=_pool or None)
                 except Exception:
                     cand = []
-                if not cand:                     # 兜底：最久没用过的几张里挑（同样要过风格限制）
+                if not cand:                     # 兜底：允许的那批里挑最久没用过的
                     try:
-                        cand = [x for x in sorted([y for y in (stickers.load() or []) if y.get("id")],
-                                                  key=lambda y: int(y.get("last_used") or 0))
-                                if self._sticker_ok(str(event.get_group_id() or "") or "", x)][:8]
+                        cand = sorted([x for x in (_pool or stickers.load() or []) if x.get("id")],
+                                      key=lambda x: int(x.get("last_used") or 0))[:8]
                     except Exception:
                         cand = []
                 if cand:

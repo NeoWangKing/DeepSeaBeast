@@ -543,13 +543,13 @@ _MOOD_SYN = {
 
 
 def pick(text: str, tags_hint: list = None, exclude_ids=(), limit: int = 6,
-         prefer=None, prefer_boost=None) -> list:
+         prefer=None, prefer_boost=None, pool=None) -> list:
     """按文本里出现的关键词/标签挑候选（返回若干条，交给模型再选）。
 
     prefer：优先露面的 id（默认读 stickers.prefer_ids，即「她自己的形象」那组），
     命中这些 id 的候选加 prefer_boost 分，但最近用过的扣分照旧（换着发、别刷屏）。
     """
-    items = load()
+    items = list(pool) if pool is not None else load()   # pool：只在给定的这批里挑（按群限风格用）
     ex = set(str(x) for x in (exclude_ids or []))
     _pf = prefer_cfg()
     pset = set(_pf["ids"] if prefer is None else [str(x) for x in prefer])
