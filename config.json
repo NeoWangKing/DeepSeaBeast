@@ -450,5 +450,6 @@
   "perception": {
     "enabled": true,
     "max_chars": 420
-  }
+  },
+  "quote_when_busy": true
 }

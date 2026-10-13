@@ -1864,7 +1864,17 @@ class QqPeakGate(Star):
             else:
                 asyncio.create_task(coro)
 
+        _quoted_turn = {"done": False}      # 一轮里只有第一条带引用（真人也是这样）
+
+        def _maybe_autquote(reply_to_id=""):
+            """按需给这一轮的**第一条**补引用。"""
+            if reply_to_id or _quoted_turn["done"] or ev is None:
+                return reply_to_id
+            return self._quote_id(ev) or reply_to_id
+
         def _send_text(text, reply_to_id="", at_user_id="", face=""):
+            reply_to_id = _maybe_autquote(reply_to_id)
+            _quoted_turn["done"] = True
             _spawn(self._agent_send(target, text, reply_to_id, at_user_id, face))
 
         def _send_sticker(sid, mood="", reply_to_id=""):
@@ -1906,6 +1916,8 @@ class QqPeakGate(Star):
                                  str(it.get("desc") or "")[:20]))
             if not it:
                 return False
+            reply_to_id = _maybe_autquote(reply_to_id)
+            _quoted_turn["done"] = True
             _spawn(self._agent_send_sticker(target, it, reply_to_id))
             return True
 
@@ -2936,7 +2948,12 @@ class QqPeakGate(Star):
             user += ("[你最近说过的几句（尽量换个说法、别老用同一句；语境确实需要重复时可以重复，"
                      "但别连着重复同一句）]\n"
                      + "\n".join("- " + m for m in _mine[-_n_mine:]) + "\n")
-        user += "[当前消息] " + str(getattr(event, "message_str", "") or "")
+        try:                     # 把当前消息 id 也露出来（她想主动引用时用得上）
+            _mid_now = str(getattr(getattr(event, "message_obj", None), "message_id", "") or "")
+        except Exception:
+            _mid_now = ""
+        user += ("[当前消息%s] " % ((" #%s" % _mid_now) if _mid_now else "")
+                 + str(getattr(event, "message_str", "") or ""))
         try:
             if _face_note:
                 user += " " + _face_note
@@ -3893,7 +3910,39 @@ class QqPeakGate(Star):
                         return "thread"              # 对方本来就是引用着某条消息说的
             except Exception:
                 pass
+        # 多人在跟她说话 / 她说完之后群里又来了消息 → 引用当前这条。
+        # 否则她的回答会被自己的消息挤上去，别人看不出在回谁（2026-10-13 主人提的）
+        try:
+            if self.cfg.get("quote_when_busy", True):
+                _ts = float(self.last_reply_ts.get(gid, 0) or 0)
+                if _ts:
+                    _n, _who = 0, set()
+                    for _it in (self.recent.get(gid) or []):
+                        _t = float(_it[3]) if len(_it) > 3 and _it[3] else 0.0
+                        if _t and _t > _ts:
+                            _n += 1
+                            if str(_it[0] or "") != "我":
+                                _who.add(str(_it[0] or ""))
+                    if _n >= 2 or len(_who) >= 2:
+                        return "busy"
+        except Exception:
+            pass
         return ""
+
+    def _quote_id(self, event) -> str:
+        """需要引用时返回要引用的消息 id（不需要/拿不到就空串）。agent 工具路径用它。"""
+        try:
+            if not self.cfg.get("smart_quote", True):
+                return ""
+            _why = self._quote_reason(event)
+            if not _why:
+                return ""
+            _mid = str(getattr(getattr(event, "message_obj", None), "message_id", "") or "")
+            if _mid:
+                self._log_debug("引用：%s → quote id=%s" % (_why, _mid))
+            return _mid
+        except Exception:
+            return ""
 
     def _note_promise(self, event) -> None:
         """发出的最后一条若是「我这就去看看/等我一下」这类承诺 → 记进未完成事项 + 排唤醒。"""
@@ -4243,7 +4292,12 @@ class QqPeakGate(Star):
                             + lines + "\n")
                 else:
                     head = ""
-                req.prompt = head + "[当前消息] " + (cur or (req.prompt or ""))
+                try:
+                    _mid_now2 = str(getattr(_mo, "message_id", "") or "")
+                except Exception:
+                    _mid_now2 = ""
+                req.prompt = (head + "[当前消息%s] " % ((" #%s" % _mid_now2) if _mid_now2 else "")
+                              + (cur or (req.prompt or "")))
             if self.cfg.get("dump_prompt"):
                 try:
                     import json as _json
