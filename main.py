@@ -1869,17 +1869,22 @@ class QqPeakGate(Star):
                     it = stickers.find(sid)
                 except Exception:
                     it = None
+            if it and not self._sticker_ok(str(event.get_group_id() or "") or "", it):
+                self._log("表情包：%s 不适合这个群（按群限定了风格），换一张" % sid)
+                it = None
             if not it:
                 cand = []
                 try:
                     if mood or sid:
-                        cand = stickers.pick(mood or sid, limit=6)
+                        cand = [x for x in stickers.pick(mood or sid, limit=12)
+                                if self._sticker_ok(str(event.get_group_id() or "") or "", x)][:6]
                 except Exception:
                     cand = []
-                if not cand:                     # 兜底：最久没用过的几张里挑
+                if not cand:                     # 兜底：最久没用过的几张里挑（同样要过风格限制）
                     try:
-                        cand = sorted([x for x in (stickers.load() or []) if x.get("id")],
-                                      key=lambda x: int(x.get("last_used") or 0))[:8]
+                        cand = [x for x in sorted([y for y in (stickers.load() or []) if y.get("id")],
+                                                  key=lambda y: int(y.get("last_used") or 0))
+                                if self._sticker_ok(str(event.get_group_id() or "") or "", x)][:8]
                     except Exception:
                         cand = []
                 if cand:
@@ -3680,6 +3685,39 @@ class QqPeakGate(Star):
         except Exception:
             return ""
 
+    def _sticker_ok(self, gid: str, it: dict) -> bool:
+        """这个群能不能发这张表情。
+
+        给某个群配了 `stickers.allow_ids_by_group` / `allow_tags_by_group` 之后，
+        那个群就**只能**发命中的（白名单）——比如 Denial 群只发"大肥鱼形象 + 可爱萌系"。
+        """
+        try:
+            sc = self.cfg.get("stickers") or {}
+            _ids = {str(x) for x in ((sc.get("allow_ids_by_group") or {}).get(str(gid)) or [])}
+            _tags = [str(x) for x in ((sc.get("allow_tags_by_group") or {}).get(str(gid)) or [])]
+            if not _ids and not _tags:
+                return True                       # 没配 = 不限制
+            if str((it or {}).get("id")) in _ids:
+                return True
+            _blob = (str((it or {}).get("desc") or "") + " "
+                     + " ".join((it or {}).get("tags") or []))
+            return any(t and t in _blob for t in _tags)
+        except Exception:
+            return True
+
+    def _sticker_scope_note(self, gid: str) -> str:
+        """给提示词的一句话：这个群只允许发哪类表情（没限制就返回空）。"""
+        try:
+            sc = self.cfg.get("stickers") or {}
+            _ids = ((sc.get("allow_ids_by_group") or {}).get(str(gid)) or [])
+            _tags = [str(x) for x in ((sc.get("allow_tags_by_group") or {}).get(str(gid)) or [])]
+            if not _ids and not _tags:
+                return ""
+            return ("（这个群只发**可爱/萌系**的表情：以你自己形象做的那几张、萌系小动物都可以；"
+                    "别的风格别发。）")
+        except Exception:
+            return ""
+
     def _sticker_menu_text(self, gid: str = "") -> str:
         """【可用表情包】清单：让模型用 [表情:id] 指名发图。
 
@@ -3699,6 +3737,7 @@ class QqPeakGate(Star):
             if n <= 0:
                 return ""
             items = [x for x in (stickers.load() or []) if str(x.get("id") or "")]
+            items = [x for x in items if self._sticker_ok(gid, x)]     # 按群限定风格
             if not items:
                 return ""
             items.sort(key=lambda x: (-int(x.get("used") or 0), str(x.get("id"))))
@@ -3730,7 +3769,10 @@ class QqPeakGate(Star):
                 tags = "/".join([str(t) for t in (it.get("tags") or [])][:4])
                 lines.append("- %s ｜ %s%s" % (it.get("id"), desc,
                                                ("［%s］" % tags) if tags else ""))
-            return ("【可用表情包】她的收藏里共 %d 张，下面是常用的和她这小时轮到的 %d 张：\n%s\n"
+            _scope = self._sticker_scope_note(gid)
+            _head = "【可用表情包】" + ((_scope + " ") if _scope else "")
+            return (_head + "她的收藏里共 %d 张（这个群可发的都在下面），"
+                    "下面是常用的和她这小时轮到的 %d 张：\n%s\n"
                     "要发就调 send_sticker：指名哪张 → send_sticker(sticker_id=「上面的 id」)；"
                     "只想配个情绪/场景 → send_sticker(mood=「无语」或「笑死」或「点赞」或「晚安」)，"
                     "她自己从收藏里挑一张贴切的。表情单独一条消息发，别和文字挤一起。"
@@ -4574,7 +4616,9 @@ class QqPeakGate(Star):
                     cands = [_by_id]
                     self._log_debug("表情包：指名 %s" % hint)
             if not cands:
-                cands = stickers.pick((alltext + " " + hint + " " + recent), [hint] if hint else [])
+                cands = [x for x in stickers.pick((alltext + " " + hint + " " + recent),
+                                                  [hint] if hint else [])
+                         if self._sticker_ok(gid, x)]        # 自动配图也按群风格过滤
             if not cands:
                 self._log_debug("表情包：没有合适的（hint=%r）" % hint)
                 _strip()

@@ -1025,7 +1025,8 @@ function renderSticker(){
     <div class=row><label>单文件上限(MB)</label><input type=text value="${S.config.stickers.max_file_mb??''}" oninput="onStk('max_file_mb',Number(this.value))">
       <label>库里最多存</label><input type=text value="${S.config.stickers.max_store??''}" oninput="onStk('max_store',Number(this.value))">
       <label>每小时最多发</label><input type=text value="${S.config.stickers.max_per_hour??''}" oninput="onStk('max_per_hour',Number(this.value))"></div>
-    <p class=hint>共 ${S.stickers.length} 张。点缩略图上的「形象图」可以把这张设成"优先露脸"（prefer_ids）。</p></div>
+    <p class=hint>共 ${S.stickers.length} 张。点缩略图上的「形象图」可以把这张设成"优先露脸"（prefer_ids）。</p>
+    ${scopeHtml()}</div>
   <div class=row style="margin:-4px 0 8px">
     <button onclick="playAllAnims(true)">▶ 全部播放动图</button>
     <button onclick="playAllAnims(false)">⏸ 全部用静态缩略图</button>
@@ -1042,6 +1043,17 @@ function renderSticker(){
         <button onclick="togglePref('${x.id}')">${pref.has(x.id)?'取消形象图':'设为形象图'}</button>
         <button class=d onclick="delSticker('${x.id}')">删除</button>
       </div></div>`).join('')}</div>`;
+}
+function scopeHtml(){
+  const st=S.config.stickers||{};
+  const ids=st.allow_ids_by_group||{}, tags=st.allow_tags_by_group||{};
+  const gs=[...new Set([...Object.keys(ids),...Object.keys(tags)])];
+  if(!gs.length)return '';
+  const note=S.config.admin&&S.config.admin.group_notes||{};
+  return '<p class=hint style="color:#b45309">按群限定风格：'+gs.map(g=>{
+    const n=(ids[g]||[]).length, t=(tags[g]||[]).length;
+    return (note[g]||'')+g+' → 只发指定的 '+(n?n+' 张 id':'')+(n&&t?' + ':'')+(t?t+' 类标签':'');
+  }).join('；')+'（想改就跟我说，或改 config 里的 stickers.allow_ids_by_group / allow_tags_by_group）</p>';
 }
 function onStk(k,v){const st=Object.assign({},dirty.config.stickers||S.config.stickers||{});st[k]=v;dirty.config.stickers=st;$('#stat').textContent='有未应用的改动';}
 function editNote(id){const x=S.stickers.find(s=>s.id===id);const d=prompt('这张图的备注（写"怎么用"，不是"长什么样"）',x.desc||'');if(d===null)return;
