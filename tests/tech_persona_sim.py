@@ -133,8 +133,12 @@ else:
     o2.cfg = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
     o2._log_debug = lambda *a, **k: None
     names = [x[0] for x in o2._agent_specs_for("1105410423")]
-    ck("该群没有 send_sticker（不发图）", "send_sticker" not in names, names)
+    # 2026-10-13 主人放开：Denial 群也可以发表情了（但按 stickers.allow_* 限定成可爱/形象那一批）
+    ck("该群有 send_sticker（已放开，限可爱系）", "send_sticker" in names, names)
     ck("该群仍有 collect_sticker（能收藏）", "collect_sticker" in names, names)
+    _sc = (cfg.get("stickers") or {})
+    ck("该群配了风格白名单", bool((_sc.get("allow_ids_by_group") or {}).get("1105410423")
+                            or (_sc.get("allow_tags_by_group") or {}).get("1105410423")))
     names2 = [x[0] for x in o2._agent_specs_for("869622030")]
     ck("普通群照旧两个都有", "send_sticker" in names2 and "collect_sticker" in names2, names2)
 
