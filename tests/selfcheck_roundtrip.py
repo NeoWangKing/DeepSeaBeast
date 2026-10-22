@@ -41,8 +41,11 @@ async def main() -> int:
     gate = GateConfig.from_dict({"force_mode": "off", "allowed_groups": [1109525246],
                                  "at_only_groups": [1109525246],
                                  "min_interval_sec": 0, "burst_suppress_sec": 0})
-    runtime = Runtime(channel, gate, [OWNER],
-                      reply_fn=lambda m: _async("测试回复：%s" % m.text))
+    async def _fake_reply(m):
+        await runtime.say(m.chat, "测试回复：%s" % m.text, quote_id=m.message_id)
+        return "测试回复：%s" % m.text
+
+    runtime = Runtime(channel, gate, [OWNER], reply_fn=_fake_reply)
     ch_task = asyncio.create_task(channel.start(runtime.on_message))
     await asyncio.sleep(0.5)
     step("核心已启动，端口 %d" % PORT)

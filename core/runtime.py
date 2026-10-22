@@ -11,9 +11,11 @@ import logging
 import time
 
 from .channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult
-from .llm import LLMConfig, chat
+from .agent import run_turn
+from .llm import LLMConfig
 from .pipeline import GateConfig, Pipeline
 from .prompt import build_messages
+from .tools import Turn
 
 log = logging.getLogger("runtime")
 
@@ -42,13 +44,11 @@ class Runtime:
             return
         if out.kind != "reply":
             return
-        text = await self._reply(msg)
-        if not text:
-            return
-        res = await self.say(msg.chat, text, quote_id=msg.message_id)
-        if res.ok:
+        # 发言在工具循环里完成（turn.sent），这里只更新状态
+        said = await self._reply(msg)
+        if said:
             self.pipeline.note_replied(msg, time.time())
-            log.info("已回复 [%s] %r", msg.chat.key, text[:40])
+            log.info("已回复 [%s] %r", msg.chat.key, said[:40])
 
     # ── 回复：默认走真模型，失败就静默（不编话）──
     async def _reply(self, msg: InboundMessage) -> str:
@@ -59,18 +59,22 @@ class Runtime:
             return ""
 
     async def _llm_reply(self, msg: InboundMessage) -> str:
+        """走工具循环：她自己决定说什么、说几条。返回空串表示"这条没说"。"""
         state = self.pipeline.state_for(msg.chat.key)
         messages = build_messages(msg, list(state.recent),
                                   channel_name=getattr(self.channel, "name", ""),
                                   persona=self.persona)
-        text = await asyncio.to_thread(chat, messages, self.llm, 300)
-        text = " ".join(str(text or "").split())
-        if not text:
-            return ""
-        state.recent.append(("我", text[:120], 0, time.time()))
-        state.recent.append((msg.sender.name or "对方", msg.text[:120],
-                             msg.sender.id, time.time()))
-        return text[:400]
+        turn = Turn(self.channel, msg, self.llm, persona=self.persona)
+        await run_turn(turn, messages, max_rounds=6)
+        said = [s for s in turn.sent]
+        if said:
+            for t in said:
+                state.recent.append(("我", t[:120], 0, time.time()))
+            state.recent.append((msg.sender.name or "对方", msg.text[:120],
+                                 msg.sender.id, time.time()))
+        if turn.decision:
+            log.info("她的决定：%s（%s）", turn.decision.get("action"), turn.decision.get("intent") or "")
+        return "\n".join(said)
 
     # ── 连发合并的延后重放 ──
     def _schedule_replay(self, msg: InboundMessage, merged: str, now: float) -> None:
@@ -95,9 +99,8 @@ class Runtime:
                 log.info("重放合并 [%s] %r → %s（%s%s）",
                          key, replay.text[:30], out.kind, out.stage or "-", tag)
                 if out.kind == "reply":
-                    text = await self._reply(replay)
-                    res = await self.say(replay.chat, text, quote_id=replay.message_id)
-                    if res.ok:
+                    said = await self._reply(replay)
+                    if said:
                         self.pipeline.note_replied(replay, time.time())
             except asyncio.CancelledError:
                 pass
