@@ -24,6 +24,20 @@ VOICE = "voice"
 
 ALL_VERBS = (TEXT, AT, QUOTE, IMAGE, FILE, FACE, POKE, VOICE)
 
+# 给模型看的人话（英文动词它未必能对上"发文件"这种说法）
+VERB_NAMES = {
+    TEXT: "发文字", AT: "@人", QUOTE: "引用回复", IMAGE: "发图片",
+    FILE: "发文件", FACE: "发表情", POKE: "戳一戳", VOICE: "发语音",
+}
+
+
+def describe_abilities(abilities: Iterable[str]) -> tuple[list[str], list[str]]:
+    """返回（能做的, 做不到的），都是人话。"""
+    have = set(abilities)
+    can = [VERB_NAMES[v] for v in ALL_VERBS if v in have]
+    cannot = [VERB_NAMES[v] for v in ALL_VERBS if v not in have and v != TEXT]
+    return can, cannot
+
 # 动作 → 需要的能力
 KIND_TO_VERB = {
     "text": TEXT,

@@ -119,7 +119,13 @@ class Runtime:
                           scope_kind=scope.kind, scope_id=scope.id,
                           sender_id=msg.sender.id,
                           sender_name=msg.sender.name or "")
+        b.abilities = sorted(self.abilities_for(msg.chat))
+        from .capability import describe_abilities
+        _can, _cannot = describe_abilities(b.abilities)
         b.rules = list(self.rules)
+        if _cannot:
+            b.rules.append("当前会话做不到：%s。做不到就直接说做不到，不许答应、不许假装做了。"
+                           % "、".join(_cannot))
         parts = self.memory.self_parts()
         b.self_knowledge = [parts[k] for k in ("identity", "owner", "lessons") if k in parts]
         for text in self.memory.scope_parts(scope).values():
@@ -127,6 +133,7 @@ class Runtime:
         where = self.channel.describe(msg.chat) if hasattr(self.channel, "describe") else ""
         b.scene = build_scene(msg, where=where,
                               self_account=str(getattr(self.channel, "self_account", "") or ""))
+        b.abilities = sorted(self.abilities_for(msg.chat))
         b.recent = self.recent.get(scope.key)
         await self.registry.collect(b)
         b.trim()

@@ -37,7 +37,16 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
         out.append({"role": "system",
                     "content": "【这里的记忆】\n" + "\n".join(scope_texts)})
     if bundle.scene:
-        out.append({"role": "system", "content": bundle.scene})
+        scene = bundle.scene
+        if bundle.abilities:
+            from .capability import describe_abilities
+            can, cannot = describe_abilities(bundle.abilities)
+            scene += "\n这个会话能做的动作：%s。" % "、".join(can)
+            if cannot:
+                scene += "做不到的：%s。" % "、".join(cannot)
+            scene += "\n被问「你能不能做某件事」时，只能按上面这份清单回答；清单里没有的，一律说做不了。"
+        out.append({"role": "system", "content": scene})
+
 
     for who, text, _uid, _ts in bundle.recent:
         out.append({"role": "assistant" if who == "我" else "user", "content": text})

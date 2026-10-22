@@ -51,6 +51,7 @@ class ContextBundle:
     scene: str = ""
     recent: list[tuple[str, str, int, float]] = field(default_factory=list)
     current: InboundMessage | None = None
+    abilities: list[str] = field(default_factory=list)   # 这个通道能做什么
     budget_tokens: int = 6000
 
     def add_knowledge(self, text: str, priority: int = 50) -> None:
