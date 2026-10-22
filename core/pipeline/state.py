@@ -23,6 +23,7 @@ class ChatState:
     # 连发合并：同一个人的连续短消息先攒着
     merge_buf: str = ""
     merge_ts: float = 0.0
+    merge_first_ts: float = 0.0     # 这一串连发是从什么时候开始的
     merge_sender: int = 0
     recent: deque[tuple[str, str, int, float]] = field(
         default_factory=lambda: deque(maxlen=20))   # (谁, 文本, uid, ts)

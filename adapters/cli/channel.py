@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from adapters import spawn
 from core.channel import (ChatRef, InboundMessage, Message, OnMessage, OutboundMessage,
                           SendResult, Sender)
 
@@ -29,6 +30,7 @@ class CliChannel:
     async def start(self, on_message: OnMessage) -> None:
         self._on_message = on_message
         log.info("CLI 模式：直接输入文字聊天（Ctrl-D 或 /quit 退出）")
+        pending: list[asyncio.Task] = []      # 后台回合：退出前等它们说完
         loop = asyncio.get_running_loop()
         while not self._stop.is_set():
             try:
@@ -48,7 +50,12 @@ class CliChannel:
                 at_me=True,          # 命令行里说话就是冲她说的
             )
             if self._on_message is not None:
-                await self._on_message(msg)
+                pending.append(spawn(self._on_message(msg)))
+        if pending:
+            try:
+                await asyncio.wait(pending, timeout=120)
+            except Exception:
+                pass
         self._stop.set()
 
     async def send(self, out: OutboundMessage) -> SendResult:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 
-from ..channel import InboundMessage
+from ..typing import looks_unfinished
 from .config import GateConfig
 from .state import ChatState
 from .types import Decision, MessageCtx, StageResult
@@ -29,24 +29,39 @@ def stage_allowlist(ctx: MessageCtx, cfg: GateConfig) -> StageResult:
 
 
 def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:
-    """连发合并：同一个人连着说，先攒着；攒够窗口再由调用方放行一次。
+    """连发合并 / 等她说完整。
 
-    返回 defer 时，`text` 是合并后的文本，调用方负责过一会儿重放。
+    三种情况：
+      ① 话没说完（"我跟你"）      → defer 等着，超时再正常回
+      ② 上一串还没回，她又补一句   → 和前文合并；补完整了就立刻回合并后的内容
+      ③ 说完整了                  → 直接放行
     """
     msg = ctx.msg
     if msg.chat.kind == "local":
         return StageResult("pass", "本地模式不合并")
+
+    text = ctx.text
     same = state.merge_sender == msg.sender.id
-    fresh = (ctx.now - state.merge_ts) <= cfg.merge_window_sec if state.merge_ts else False
-    if state.merge_buf and same and fresh:
-        state.merge_buf = (state.merge_buf + " " + ctx.text).strip()[:400]
+    fresh = bool(state.merge_buf) and same and \
+        (ctx.now - state.merge_ts) <= cfg.typing_wait_sec
+
+    if fresh:
+        state.merge_buf = (state.merge_buf + " " + text).strip()[:400]
         state.merge_ts = ctx.now
-        return StageResult("defer", "连发合并（攒着一起回）", state.merge_buf)
-    # 换人或超窗：旧缓冲作废，开新缓冲
-    state.merge_buf = ctx.text
+        merged = state.merge_buf
+        waited = ctx.now - state.merge_first_ts
+        if looks_unfinished(text) and waited < cfg.typing_wait_sec:
+            return StageResult("defer", "她还在说，先等着", merged)
+        return StageResult("pass", "合并后一起回", merged)
+
+    # 新的一串
+    state.merge_buf = text
     state.merge_ts = ctx.now
+    state.merge_first_ts = ctx.now
     state.merge_sender = msg.sender.id
-    return StageResult("pass", "新的一段话")
+    if looks_unfinished(text):
+        return StageResult("defer", "像是没说完，等一下", text)
+    return StageResult("pass", "说完了")
 
 
 def stage_rate_limit(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:

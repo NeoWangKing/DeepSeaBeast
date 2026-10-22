@@ -13,6 +13,7 @@ from adapters import build_channels      # 装配层：唯一知道有哪些通�
 from .channel_manager import ChannelManager
 from .llm import LLMConfig
 from .pacing import PacingConfig
+from .turn import TurnConfig
 from .pipeline import GateConfig
 from .plugin import PluginManager
 from .runtime import Runtime
@@ -57,7 +58,8 @@ async def run(config_path: str, channel_name: str) -> None:
     memory_cfg = getattr(cfg, "memory", {}) or {}
     runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins,
                       data_dir=cfg.data_dir,
-                      budget_tokens=int(memory_cfg.get("budget_tokens", 6000)))
+                      budget_tokens=int(memory_cfg.get("budget_tokens", 6000)),
+                      turn_cfg=TurnConfig.from_dict(getattr(cfg, "turn", {}) or {}))
     _p = cfg.persona or {}
     if _p.get("file"):
         try:

@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from .agent import run_turn
@@ -22,6 +24,7 @@ from .prompt import build_scene, render
 from .scope import Scope
 from .store import RecentStore
 from .tools import Turn
+from .turn import TurnConfig, TurnContext, new_turn_id
 
 log = logging.getLogger("runtime")
 
@@ -30,12 +33,16 @@ class Runtime:
     def __init__(self, channel, gate: GateConfig | None = None,
                  owner_ids: list[int] | None = None, llm: LLMConfig | None = None,
                  reply_fn=None, plugins=None, data_dir: str = "data",
-                 budget_tokens: int = 6000) -> None:
+                 budget_tokens: int = 6000, turn_cfg: TurnConfig | None = None) -> None:
         self.channel = channel
         self.owner_ids = set(owner_ids or [])
         self.pipeline = Pipeline(gate or GateConfig())
         self.llm = llm or LLMConfig()
         self.reply_fn = reply_fn or self._llm_reply
+        self._reply_takes_ctx = _accepts_ctx(self.reply_fn)
+        self.turn_cfg = turn_cfg or TurnConfig()
+        self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
+        self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
         self.plugins = plugins
         self.persona = ""
         self.rules = ["一次最多说 4 条消息，别刷屏", "别把代码整段贴进聊天"]
@@ -60,20 +67,38 @@ class Runtime:
             "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": msg.chat.key},
             "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
             "text": msg.text, "at_me": bool(msg.at_me), "ts": now})
-        out = self.pipeline.run(msg, now)
-        log.info("判断 [%s] %r → %s（%s%s）", msg.chat.key, msg.text[:30], out.kind,
-                 out.stage or "-", ("：" + out.reason) if out.reason else "")
-        if out.kind == "defer":
-            self._schedule_replay(msg, out.text, now)
-            return
-        if out.kind != "reply":
-            return
-        await self._notify("on_message", msg)
-        said = await self._reply(msg)
-        self._record_turn(msg, said)          # 记上下文与回复实现无关
-        if said:
-            self.pipeline.note_replied(msg, time.time())
-            log.info("已回复 [%s] %r", msg.chat.key, said[:40])
+        key = msg.chat.key
+        prev = self._active.get(key)
+        if prev is not None and not prev.finished:
+            prev.cancel("新消息打断")
+            log.info("[%s] 回合 %s 被打断（她正在说，群里又来了话）", key, prev.id)
+
+        ctx = TurnContext(id=new_turn_id(), scope_key=key, cfg=self.turn_cfg, chat=msg.chat)
+        self._active[key] = ctx
+        try:
+            out = self.pipeline.run(msg, now)
+            log.info("[%s] 回合 %s 判断 %r → %s（%s%s）", key, ctx.id, msg.text[:24],
+                     out.kind, out.stage or "-", ("：" + out.reason) if out.reason else "")
+            if out.kind == "defer":
+                self._schedule_replay(msg, out.text, now)
+                return
+            if out.kind != "reply":
+                return
+            if out.text and out.text.strip() != msg.text.strip():
+                msg = replace(msg, message=Message.from_text(out.text))   # 用合并后的整体
+            await self._notify("on_message", msg)
+            said = await self._call_reply(msg, ctx)
+            self._record_turn(msg, said)
+            if said:
+                self.pipeline.note_replied(msg, time.time())
+                log.info("[%s] 回合 %s 完成：%r", key, ctx.id, said[:40])
+            elif self._said_wait() and not _is_recheck(msg):
+                self._schedule_recheck(msg)      # 她说"先等等" → 过几秒再决定一次
+        finally:
+            ctx.finished = True
+            if self._active.get(key) is ctx:
+                self._active.pop(key, None)
+            log.info("[%s] %s", key, ctx.describe())
 
     # ── 上下文组装 ──
     async def build_context(self, msg: InboundMessage) -> ContextBundle:
@@ -97,27 +122,58 @@ class Runtime:
         return b
 
     # ── 回复 ──
-    async def _reply(self, msg: InboundMessage) -> str:
+    async def _call_reply(self, msg: InboundMessage, ctx: TurnContext) -> str:
         try:
+            if self._reply_takes_ctx:
+                return await self.reply_fn(msg, ctx)
             return await self.reply_fn(msg)
         except Exception:
-            log.exception("生成回复失败，这条不回")
+            log.exception("[%s] 生成回复失败，这条不回", ctx.id)
             return ""
 
-    async def _llm_reply(self, msg: InboundMessage) -> str:
+    async def _llm_reply(self, msg: InboundMessage, ctx: TurnContext | None = None) -> str:
         scope = Scope.from_chat(msg.chat)
         bundle = await self.build_context(msg)
         messages = render(bundle)
         if hasattr(self.channel, "reset_pacing"):
             self.channel.reset_pacing(msg.chat)      # 新一轮第一条不等待
         turn = Turn(self.channel, msg, self.llm, persona=bundle.persona,
-                    plugins=self.plugins,
+                    plugins=self.plugins, ctx=ctx,
                     abilities=self.abilities_for(msg.chat))
-        await run_turn(turn, messages, max_rounds=6)
+        await run_turn(turn, messages)
+        self._last_decision = dict(turn.decision) if turn.decision else None
         if turn.decision:
             log.info("她的决定：%s（%s）", turn.decision.get("action"),
                      turn.decision.get("intent") or "")
         return "\n".join(turn.sent)
+
+    def _said_wait(self) -> bool:
+        d = self._last_decision or {}
+        return str(d.get("action") or "") == "wait"
+
+    def _schedule_recheck(self, msg: InboundMessage) -> None:
+        """decide 说了 wait（先等等）→ 过 wait_recheck_sec 秒再决定一次。
+
+        只重判一次：第二次还是 wait 就当成"不说话"，避免无限等下去。
+        """
+        delay = float(getattr(self.turn_cfg, "wait_recheck_sec", 5.0))
+        key = msg.chat.key
+        log.info("[%s] 她说先等等，%.0fs 后再决定一次", key, delay)
+
+        async def _later() -> None:
+            try:
+                await asyncio.sleep(delay)
+                cur = self._active.get(key)
+                if cur is not None and not cur.finished:
+                    return                    # 已经有新回合在跑了，不打断
+                again = replace(msg, raw={"_deepsea_recheck": True})
+                await self.on_message(again)
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                log.exception("重判失败")
+
+        asyncio.create_task(_later())
 
     def _record_turn(self, msg: InboundMessage, said: str) -> None:
         """把这一轮写进上下文：**用户先说，她再说**。
@@ -171,10 +227,20 @@ class Runtime:
                 log.info("重放合并 [%s] %r → %s（%s）", key, replay.text[:30],
                          out.kind, out.stage or "-")
                 if out.kind == "reply":
-                    said = await self._reply(replay)
-                    self._record_turn(replay, said)
-                    if said:
-                        self.pipeline.note_replied(replay, time.time())
+                    rctx = TurnContext(id=new_turn_id(), scope_key=key,
+                                       cfg=self.turn_cfg, chat=replay.chat)
+                    self._active[key] = rctx
+                    try:
+                        if out.text and out.text.strip() != replay.text.strip():
+                            replay = replace(replay, message=Message.from_text(out.text))
+                        said = await self._call_reply(replay, rctx)
+                        self._record_turn(replay, said)
+                        if said:
+                            self.pipeline.note_replied(replay, time.time())
+                    finally:
+                        rctx.finished = True
+                        if self._active.get(key) is rctx:
+                            self._active.pop(key, None)
             except asyncio.CancelledError:
                 pass
             except Exception:
@@ -195,3 +261,17 @@ class Runtime:
         if not res.ok:
             log.warning("发送失败：%s", res.error)
         return res
+
+
+def _accepts_ctx(fn) -> bool:
+    """注入的 reply_fn 若声明了第二个参数，就把 TurnContext 传给它。"""
+    try:
+        params = list(inspect.signature(fn).parameters.values())
+    except (TypeError, ValueError):
+        return False
+    pos = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    return len(pos) >= 2 or any(p.kind == p.VAR_POSITIONAL for p in params)
+
+
+def _is_recheck(msg: InboundMessage) -> bool:
+    return bool((msg.raw or {}).get("_deepsea_recheck")) if isinstance(msg.raw, dict) else False

@@ -6,7 +6,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
+
+log = logging.getLogger("adapters")
+
+
+def spawn(coro) -> asyncio.Task:
+    """把一次消息处理丢到后台跑：这样她说话时用户还能再发（打断）。"""
+    task = asyncio.create_task(coro)
+    task.add_done_callback(lambda t: t.exception() and
+                           log.error("消息处理异常：%r", t.exception()))
+    return task
 
 __all__ = ["build_channels", "AVAILABLE"]
 

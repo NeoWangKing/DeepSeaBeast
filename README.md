@@ -22,6 +22,8 @@ core/               内核（协议无关）
   agent.py + tools.py  工具调用循环（decide / send_message / finish）
   context.py        ContextBundle：人格/规则/self 记忆/scope 记忆/场景/最近
   pacing.py         发言节奏（多条气泡之间的人味间隔，全通道统一）
+  turn.py           回合模型（turn id / 预算 / 超时 / 协作式取消）
+  typing.py         "话说完没有"的启发式判断
   memory.py         分层记忆（self / scope / recent）
   prompt.py         渲染（顺序固定，利于前缀缓存）
   llm/              OpenAI 兼容客户端（chat / chat_tools）
@@ -64,7 +66,7 @@ make bot         # OneBot 模式（等 SnowLuma 连上来）
 | **M5 真机上线**（SnowLuma 保留，AstrBot 停用） | ✅ 2026-10-22 |
 | M6 多通道（CLI + QQ 同时在线） | ✅ |
 | M7-① 插件协议 v1（事件订阅/健康检查/数据目录/熔断） | ✅ |
-| M7-② 回合模型（队列/取消/预算/追踪） | ⬜ |
+| M7-② 回合模型（打断/预算/超时/追踪 + 话没说完的等待） | ✅ |
 | M7-③ 工具契约（结构化/权限/审计） | ⬜ |
 
 ## 已知未做

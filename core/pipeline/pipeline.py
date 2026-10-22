@@ -63,6 +63,9 @@ class Pipeline:
             if m.kind == "defer":
                 log.debug("defer@merge: %s", m.reason)
                 return Outcome(kind="defer", reason=m.reason, text=m.text, stage="merge")
+            if m.text and m.text.strip() != ctx.text.strip():
+                return Outcome(kind="reply", reason=m.reason, text=m.text,
+                               decision=d, stage="merge")   # 用合并后的整体文本
 
         return Outcome(kind="reply", reason=d.reason, decision=d, stage="decide")
 

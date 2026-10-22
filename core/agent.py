@@ -34,8 +34,17 @@ def _assistant_msg(resp) -> dict[str, Any]:
 
 async def run_turn(turn: Turn, messages: list[dict[str, Any]],
                    max_rounds: int = 6, force_first: str = "decide") -> Turn:
-    """跑一轮：模型 → 工具 → 模型 → … 直到 finish / 说完了 / 轮数用完。"""
-    for r in range(1, max(1, int(max_rounds)) + 1):
+    """跑一轮：模型 → 工具 → 模型 → … 直到 finish / 说完 / 被打断 / 超预算。"""
+    ctx = getattr(turn, "ctx", None)
+    limit = int(getattr(ctx.cfg, "max_rounds", max_rounds)) if ctx is not None else max_rounds
+    for r in range(1, max(1, limit) + 1):
+        if ctx is not None:
+            stop = ctx.should_stop()
+            if stop:
+                ctx.stop_reason = stop
+                log.info("%s 提前结束：%s", ctx.id, stop)
+                break
+            ctx.rounds = r
         # 每轮都要求调工具：正文不算发言，只有 send_message 才发出去。
         # （2026-10-22 踩到：第二轮模型直接输出文本、没调工具 → 她"决定回"却一个字没说）
         choice = "required" if not turn.finished else "auto"
@@ -45,6 +54,8 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
         except Exception as e:
             log.warning("模型调用失败（第 %d 轮）：%r", r, e)
             break
+        if ctx is not None:
+            ctx.add_usage(resp.usage)
         _u = resp.usage or {}
         if _u.get("prompt_tokens"):
             _hit = int(_u.get("prompt_cache_hit_tokens") or 0)
@@ -57,11 +68,15 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
             break
         messages.append(_assistant_msg(resp))
         for call in resp.tool_calls:
+            if ctx is not None and ctx.should_stop():
+                ctx.stop_reason = ctx.should_stop()
+                break
             if call.parse_error:
                 out = "参数 JSON 解析失败（可能被输出上限截断），重来一次，内容写短点"
             else:
                 out = await turn.dispatch(call.name, call.arguments)
-                log.info("工具 %s(%s) → %s", call.name,
+                log.info("%s 工具 %s(%s) → %s",
+                         getattr(ctx, "id", "-"), call.name,
                          json.dumps(call.arguments, ensure_ascii=False)[:60], str(out)[:60])
             messages.append({"role": "tool", "tool_call_id": call.id or "", "content": out})
         if turn.finished:

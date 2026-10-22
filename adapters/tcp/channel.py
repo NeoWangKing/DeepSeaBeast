@@ -18,6 +18,7 @@ import asyncio
 import logging
 import time
 
+from adapters import spawn
 from core.channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult, Sender
 
 log = logging.getLogger("tcp")
@@ -68,6 +69,7 @@ class TcpChannel:
                       on_message) -> None:
         key = ChatRef.local().key
         self._writers[key] = writer              # 多个终端同时连时，回复给最后说话的那个
+        pending: list[asyncio.Task] = []         # 后台回合：断开前等它们跑完
         peer = writer.get_extra_info("peername") or ("?", 0)
         log.info("终端接入：%s", peer)
         try:
@@ -92,12 +94,18 @@ class TcpChannel:
                     break
                 msg = InboundMessage(chat=ChatRef.local(), sender=Sender(0, "终端"),
                                      message=Message.from_text(text), message_id="", at_me=True)
-                await on_message(msg)
+                pending.append(spawn(on_message(msg)))
         except asyncio.CancelledError:
             pass
         except Exception:
             log.debug("终端连接异常（正常断开可忽略）")
         finally:
+            if pending:
+                # 输入可能已经 EOF（printf | nc），但她的回合还在跑：等它说完再断
+                try:
+                    await asyncio.wait(pending, timeout=120)
+                except Exception:
+                    pass
             if self._writers.get(key) is writer:
                 self._writers.pop(key, None)
             try:

@@ -15,6 +15,7 @@ import json
 import logging
 import os
 
+from adapters import spawn
 from core.channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult, Sender
 
 log = logging.getLogger("socket")
@@ -76,6 +77,7 @@ class SocketChannel:
                       on_message) -> None:
         key = ChatRef.local().key
         self._writers[key] = writer
+        pending: list[asyncio.Task] = []         # 后台回合：断开前等它们跑完
         log.info("终端已接入")
         try:
             while True:
@@ -91,7 +93,7 @@ class SocketChannel:
                     continue
                 msg = InboundMessage(chat=ChatRef.local(), sender=Sender(0, "终端"),
                                      message=Message.from_text(text), message_id="", at_me=True)
-                await on_message(msg)
+                pending.append(spawn(on_message(msg)))
         except asyncio.CancelledError:
             pass
         except Exception:

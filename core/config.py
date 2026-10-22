@@ -24,6 +24,7 @@ class CoreConfig:
     memory: dict = field(default_factory=dict)   # [memory] budget_tokens 等
     adapters: dict = field(default_factory=dict)  # [adapters.cli] / [adapters.onebot]
     pacing: dict = field(default_factory=dict)    # [pacing] 发言节奏
+    turn: dict = field(default_factory=dict)      # [turn] 回合预算
 
 
 def load(path: str | Path = "core.toml") -> CoreConfig:
@@ -43,4 +44,5 @@ def load(path: str | Path = "core.toml") -> CoreConfig:
         memory=dict(raw.get("memory") or {}),
         adapters=dict(raw.get("adapters") or {}),
         pacing=dict(raw.get("pacing") or {}),
+        turn=dict(raw.get("turn") or {}),
     )

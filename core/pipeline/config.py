@@ -18,6 +18,8 @@ class GateConfig:
 
     # 连发合并窗口（秒）
     merge_window_sec: float = 10.0
+    # "话没说完"时最多等多久（秒）：等她说下去，超时就正常回
+    typing_wait_sec: float = 8.0
     # 同一人连发抑制（秒）
     burst_suppress_sec: float = 30.0
     # 两次发言最小间隔（秒）
@@ -49,6 +51,7 @@ class GateConfig:
             at_only_groups=[int(x) for x in (d.get("at_only_groups") or [])],
             private_owner_only=bool(d.get("private_owner_only", True)),
             merge_window_sec=_f("merge_window_sec", 10.0),
+            typing_wait_sec=_f("typing_wait_sec", 8.0),
             burst_suppress_sec=_f("burst_suppress_sec", 30.0),
             min_interval_sec=_f("min_interval_sec", 8.0),
             max_auto_per_hour=_i("max_auto_per_hour", 30),

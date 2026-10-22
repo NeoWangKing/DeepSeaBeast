@@ -76,13 +76,15 @@ class Turn:
 
     def __init__(self, channel, msg: InboundMessage, llm, persona: str = "",
                  specs: list[ToolSpec] | None = None, max_sends: int = 4,
-                 plugins=None, abilities: set[str] | None = None) -> None:
+                 plugins=None, abilities: set[str] | None = None,
+                 ctx=None) -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
         self.persona = persona
         self.specs = list(specs or DEFAULT_SPECS)
-        self.max_sends = max_sends
+        self.ctx = ctx                          # TurnContext（预算/取消/追踪）
+        self.max_sends = int(getattr(ctx, "cfg").max_sends) if ctx is not None else max_sends
         self.plugins = plugins            # PluginManager（可选）
         # 由调用方按"这条消息走哪个通道"决定；缺省用 channel 自己的
         self.abilities = set(abilities) if abilities is not None \
@@ -147,6 +149,10 @@ class Turn:
         return "行，按这个回：%s" % (self.decision["intent"] or "顺着上下文接一句")
 
     async def _do_send(self, args: dict[str, Any]) -> str:
+        if self.ctx is not None:
+            stop = self.ctx.should_stop()
+            if stop:
+                return "这一轮已经结束了（%s），不要再发" % stop
         if not self.decision or self.decision.get("action") != "reply":
             return "先调 decide(action=reply) 再说话：这条到底要不要接？"
         if len(self.sent) >= self.max_sends:
@@ -166,4 +172,6 @@ class Turn:
         if not res.ok:
             return "发送失败：%s" % res.error
         self.sent.append(text)
+        if self.ctx is not None:
+            self.ctx.sends += 1
         return "已发出（%d/%d）" % (len(self.sent), self.max_sends)
