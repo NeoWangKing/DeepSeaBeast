@@ -11,6 +11,7 @@ from . import __version__
 from . import config as cfg_mod
 from .llm import LLMConfig
 from .pipeline import GateConfig
+from .plugin import PluginManager
 from .runtime import Runtime
 
 log = logging.getLogger("core")
@@ -45,7 +46,11 @@ async def run(config_path: str, channel_name: str) -> None:
     gate = GateConfig.from_dict(cfg.gate or {})
     llm_cfg = LLMConfig.from_dict(getattr(cfg, "llm", {}) or {})
     channel = build_channel(channel_name, cfg, owner_ids, 0)
-    runtime = Runtime(channel, gate, owner_ids, llm_cfg)
+
+    plugins = PluginManager()
+    await plugins.load_all(getattr(cfg, "plugins", []) or [], base_dir=".")
+
+    runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins)
     _p = cfg.persona or {}
     if _p.get("file"):
         try:
@@ -76,6 +81,7 @@ async def run(config_path: str, channel_name: str) -> None:
     for t in pending:
         t.cancel()
     await channel.stop()
+    await plugins.close()
     if start_task in done and start_task.exception():
         log.error("channel 异常退出：%r", start_task.exception())
     log.info("已退出")

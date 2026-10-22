@@ -23,7 +23,7 @@ log = logging.getLogger("runtime")
 class Runtime:
     def __init__(self, channel, gate: GateConfig | None = None,
                  owner_ids: list[int] | None = None, llm: LLMConfig | None = None,
-                 reply_fn=None) -> None:
+                 reply_fn=None, plugins=None) -> None:
         self.channel = channel
         self.owner_ids = set(owner_ids or [])
         self.pipeline = Pipeline(gate or GateConfig())
@@ -31,6 +31,7 @@ class Runtime:
         self.persona = ""            # [persona] 覆盖默认人格；人格插件以后也往这里塞
         # 测试可以注入假回复；不注入就走真模型
         self.reply_fn = reply_fn or self._llm_reply
+        self.plugins = plugins
         self._flush: dict[str, asyncio.Task] = {}
 
     # ── 收 ──
@@ -64,7 +65,8 @@ class Runtime:
         messages = build_messages(msg, list(state.recent),
                                   channel_name=getattr(self.channel, "name", ""),
                                   persona=self.persona)
-        turn = Turn(self.channel, msg, self.llm, persona=self.persona)
+        turn = Turn(self.channel, msg, self.llm, persona=self.persona,
+                    plugins=self.plugins)
         await run_turn(turn, messages, max_rounds=6)
         said = [s for s in turn.sent]
         if said:

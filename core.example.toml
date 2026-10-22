@@ -28,7 +28,13 @@ offpeak_probability = 0.25
 base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 # key 放文件里（不进 git）；也可用 api_key_env 指定环境变量
-api_key_file = ""   # 或 api_key_env = "DEEPSEEK_API_KEY"
+api_key_file = "/home/neowang/Documents/Deepseek_APIs/qq_key1"
 temperature = 0.9
 max_tokens = 900
 timeout = 60
+
+# 插件：每个是一个独立进程（stdio + JSON 行协议）
+[[plugins]]
+name = "echo_plugin"
+command = ["python3", "plugins/echo_plugin/main.py"]
+timeout = 10

@@ -75,13 +75,15 @@ class Turn:
     """一轮对话的上下文：她能调用的工具 + 已经发出去的话。"""
 
     def __init__(self, channel, msg: InboundMessage, llm, persona: str = "",
-                 specs: list[ToolSpec] | None = None, max_sends: int = 4) -> None:
+                 specs: list[ToolSpec] | None = None, max_sends: int = 4,
+                 plugins=None) -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
         self.persona = persona
         self.specs = list(specs or DEFAULT_SPECS)
         self.max_sends = max_sends
+        self.plugins = plugins            # PluginManager（可选）
         self.decision: dict[str, Any] | None = None
         self.sent: list[str] = []
         self.finished = False
@@ -91,11 +93,22 @@ class Turn:
 
     @property
     def schemas(self) -> list[dict[str, Any]]:
-        return schema(self.specs, getattr(self.channel, "abilities", set()))
+        ab = getattr(self.channel, "abilities", set())
+        out = schema(self.specs, ab)
+        if self.plugins is not None:
+            out.extend(self.plugins.schemas(ab))
+        return out
 
     # ── 工具分发 ──
     async def dispatch(self, name: str, args: dict[str, Any]) -> str:
         if name not in self._spec_by_name:
+            if self.plugins is not None and self.plugins.has(name):
+                try:
+                    res = await self.plugins.call(name, args)
+                    return res if isinstance(res, str) else json.dumps(res, ensure_ascii=False)
+                except Exception as e:
+                    log.warning("插件工具 %s 失败：%r", name, e)
+                    return "插件工具出错：%r" % (e,)
             return "没有这个工具：%s" % name
         try:
             if name == "decide":

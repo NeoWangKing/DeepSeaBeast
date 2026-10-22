@@ -1,0 +1,4 @@
+# 插件声明（核心读这个来拉起进程）
+name = "echo_plugin"
+command = [".venv/bin/python", "plugins/echo_plugin/main.py"]
+timeout = 10
