@@ -36,6 +36,22 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
     if scope_texts:
         out.append({"role": "system",
                     "content": "【这里的记忆】\n" + "\n".join(scope_texts)})
+    if bundle.style or bundle.faces_top:
+        lines = ["【你在这个媒介上说话】"]
+        if bundle.style:
+            lines.append(bundle.style)
+        inline = []
+        if bundle.faces_top:
+            inline.append("表情（写法 [表情:名字]，这条会话常用的 %d 个：%s）"
+                          % (len(bundle.faces_top), "、".join(bundle.faces_top)))
+        if bundle.mention:
+            inline.append("@人")
+        inline.append("Unicode 表情和颜文字（直接写就行）")
+        lines.append("能混在文字里发的：" + "；".join(inline))
+        lines.append("要单独发的：图片、文件、语音、戳一戳（有对应工具才发得出去）")
+        if bundle.max_chars:
+            lines.append("一条最多 %d 字，超了要拆开" % bundle.max_chars)
+        out.append({"role": "system", "content": "\n".join(lines)})
     if bundle.scene:
         scene = bundle.scene
         if bundle.abilities:

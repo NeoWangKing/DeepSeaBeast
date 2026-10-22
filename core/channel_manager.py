@@ -75,6 +75,16 @@ class ChannelManager:
         if fn:
             fn(chat)
 
+    def profile(self, chat: ChatRef) -> dict:
+        """这个媒介的说话习惯 + 行内可用物（由通道自己声明，核心不猜）。"""
+        c = self.route(chat)
+        fn = getattr(c, "profile", None) if c is not None else None
+        try:
+            return dict(fn()) if fn else {}
+        except Exception:
+            log.exception("读取通道 profile 失败")
+            return {}
+
     def abilities_for(self, chat: ChatRef) -> set[str]:
         """这个会话能用哪些能力（决定哪些工具出现）。"""
         c = self.route(chat)

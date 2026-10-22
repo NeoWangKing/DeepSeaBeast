@@ -208,6 +208,26 @@ for line in sys.stdin:
     sys.stdout.flush()
 ```
 
+## 9. 通道 profile（给 adapter 作者看的）
+
+adapter 除了 `abilities`，还要声明**这个媒介的说话习惯**和**行内可用物**：
+
+```python
+def profile(self) -> dict:
+    return {
+        "style": "这是 QQ。短句为主，一句话一条；不要用 markdown。",
+        "inline": {"faces": ["微笑", "呲牙", ...],   # 平台全部表情名（不注入提示词，给工具查）
+                   "mention": True, "markdown": False},
+        "limits": {"max_chars": 4500},
+    }
+```
+
+- **行内**（能混在文字里发的）才需要列清单：表情、@人
+- **附件/动作**（图片/文件/语音/戳一戳）走独立工具，各自声明 `requires`
+- **Unicode 表情和颜文字是纯文本**，不需要声明，原样收发
+
+核心会把 top-N（按这个群的使用频率统计）写进提示词，其余靠 `list_faces` 工具查。
+
 ## 8. 参考实现
 
 | 插件 | 位置 | 演示了什么 |

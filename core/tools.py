@@ -90,7 +90,24 @@ SEND_IMAGE = ToolSpec(
     requires={"image"},
 )
 
-DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FILE, SEND_IMAGE, FINISH]
+SEND_FACE = ToolSpec(
+    name="send_face",
+    description="发一个平台自带的表情（不是 Unicode 表情）。名字必须是这个平台真有的，不确定就先 list_faces 查。",
+    parameters={"type": "object", "properties": {
+        "name": {"type": "string", "description": "表情名字，如「坏笑」「托腮」"}},
+        "required": ["name"]},
+    requires={"face"},
+)
+
+LIST_FACES = ToolSpec(
+    name="list_faces",
+    description="查这个平台有哪些表情可用（可按关键词过滤）。名字不记得时先查再发。",
+    parameters={"type": "object", "properties": {
+        "keyword": {"type": "string", "description": "可选：按关键词过滤，如「狗」「笑哭」"}}},
+    requires={"face"},
+)
+
+DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, SEND_FILE, SEND_IMAGE, FINISH]
 
 
 class Turn:
@@ -99,7 +116,7 @@ class Turn:
     def __init__(self, channel, msg: InboundMessage, llm, persona: str = "",
                  specs: list[ToolSpec] | None = None, max_sends: int = 4,
                  plugins=None, abilities: set[str] | None = None,
-                 ctx=None) -> None:
+                 ctx=None, faces_catalog: list[str] | None = None) -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
@@ -109,6 +126,7 @@ class Turn:
         self.max_sends = int(getattr(ctx, "cfg").max_sends) if ctx is not None else max_sends
         self.plugins = plugins            # PluginManager（可选）
         # 由调用方按"这条消息走哪个通道"决定；缺省用 channel 自己的
+        self.faces_catalog: list[str] = list(faces_catalog or [])   # 平台全部表情名
         self.abilities = set(abilities) if abilities is not None \
             else set(getattr(channel, "abilities", set()))
         self.decision: dict[str, Any] | None = None
@@ -152,6 +170,10 @@ class Turn:
                 return self._do_decide(args)
             if name == "send_message":
                 return await self._do_send(args)
+            if name == "send_face":
+                return await self._do_send_face(args)
+            if name == "list_faces":
+                return self._do_list_faces(args)
             if name == "send_file":
                 return await self._do_send_file(args)
             if name == "send_image":
@@ -224,6 +246,25 @@ class Turn:
             except Unsupported as e:
                 return str(e)
         return "已执行：%s" % "、".join(done) if done else ""
+
+    async def _do_send_face(self, args: dict[str, Any]) -> str:
+        if self.ctx is not None and self.ctx.should_stop():
+            return "这一轮已经结束了，不要再发"
+        name = str(args.get("name") or "").strip()
+        if not name:
+            return "name 不能为空"
+        # 行内写法交给通道去替换成原生表情；这里单独发一条
+        await self._do_send({"text": "[表情:%s]" % name})
+        return "表情已发出"
+
+    def _do_list_faces(self, args: dict[str, Any]) -> str:
+        names = self.faces_catalog or []
+        kw = str(args.get("keyword") or "").strip()
+        if kw:
+            names = [n for n in names if kw in n]
+        if not names:
+            return "这个平台没有可用的表情" if not kw else "没找到匹配「%s」的表情" % kw
+        return "可用表情（%d 个）：%s" % (len(names), "、".join(names[:60]))
 
     async def _do_send_file(self, args: dict[str, Any]) -> str:
         if self.ctx is not None and self.ctx.should_stop():

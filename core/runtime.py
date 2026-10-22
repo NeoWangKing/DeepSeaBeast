@@ -22,6 +22,7 @@ from .memory import MemoryStore
 from .pipeline import GateConfig, Pipeline
 from .prompt import build_scene, render
 from .scope import Scope
+from .face_stats import FaceStats
 from .store import RecentStore
 from .tools import Turn
 from .turn import TurnConfig, TurnContext, new_turn_id
@@ -49,6 +50,7 @@ class Runtime:
         self.budget_tokens = int(budget_tokens)
         self.memory = MemoryStore(Path(data_dir) / "memory")
         self.recent = RecentStore(Path(data_dir) / "recent")
+        self.faces = FaceStats(Path(data_dir) / "memory")
         self.registry = ContextRegistry()
         if plugins is not None:
             try:
@@ -63,6 +65,7 @@ class Runtime:
     # ── 收 ──
     async def on_message(self, msg: InboundMessage) -> None:
         now = time.time()
+        self._learn_faces(msg)
         await self._emit("message.received", {
             "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": msg.chat.key},
             "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
@@ -120,6 +123,14 @@ class Runtime:
                           sender_id=msg.sender.id,
                           sender_name=msg.sender.name or "")
         b.abilities = sorted(self.abilities_for(msg.chat))
+        prof = self._channel_profile(msg.chat)
+        b.style = str(prof.get("style") or "")
+        inline = prof.get("inline") or {}
+        b.mention = bool(inline.get("mention"))
+        b.markdown = bool(inline.get("markdown"))
+        b.max_chars = int((prof.get("limits") or {}).get("max_chars", 4500) or 4500)
+        if "face" in b.abilities:
+            b.faces_top = self.faces.top(scope.key, fallback=list(inline.get("faces") or [])[:12])
         from .capability import describe_abilities
         _can, _cannot = describe_abilities(b.abilities)
         b.rules = list(self.rules)
@@ -134,6 +145,14 @@ class Runtime:
         b.scene = build_scene(msg, where=where,
                               self_account=str(getattr(self.channel, "self_account", "") or ""))
         b.abilities = sorted(self.abilities_for(msg.chat))
+        prof = self._channel_profile(msg.chat)
+        b.style = str(prof.get("style") or "")
+        inline = prof.get("inline") or {}
+        b.mention = bool(inline.get("mention"))
+        b.markdown = bool(inline.get("markdown"))
+        b.max_chars = int((prof.get("limits") or {}).get("max_chars", 4500) or 4500)
+        if "face" in b.abilities:
+            b.faces_top = self.faces.top(scope.key, fallback=list(inline.get("faces") or [])[:12])
         b.recent = self.recent.get(scope.key)
         await self.registry.collect(b)
         b.trim()
@@ -157,7 +176,8 @@ class Runtime:
             self.channel.reset_pacing(msg.chat)      # 新一轮第一条不等待
         turn = Turn(self.channel, msg, self.llm, persona=bundle.persona,
                     plugins=self.plugins, ctx=ctx,
-                    abilities=self.abilities_for(msg.chat))
+                    abilities=self.abilities_for(msg.chat),
+                    faces_catalog=self._face_catalog(msg.chat))
         await run_turn(turn, messages)
         self._last_decision = dict(turn.decision) if turn.decision else None
         if turn.decision:
@@ -204,6 +224,30 @@ class Runtime:
                 log.exception("重判失败")
 
         asyncio.create_task(_later())
+
+    def _channel_profile(self, chat) -> dict:
+        """取通道的 profile；manager 收 chat 参数，单个 adapter 可能不收。"""
+        fn = getattr(self.channel, "profile", None)
+        if fn is None:
+            return {}
+        try:
+            return dict(fn(chat) or {})
+        except TypeError:
+            return dict(fn() or {})
+
+    def _face_catalog(self, chat) -> list[str]:
+        return list((self._channel_profile(chat).get("inline") or {}).get("faces") or [])
+
+    def _learn_faces(self, msg: InboundMessage) -> None:
+        """统计群友用了哪些表情（只记别人发的，不记她自己发的）。"""
+        try:
+            names = [str(s.data.get("name") or "") for s in msg.message.segments
+                     if getattr(s, "kind", "") == "face"]
+            names = [n for n in names if n]
+            if names:
+                self.faces.count(msg.chat.key, names)
+        except Exception:
+            log.debug("表情统计失败", exc_info=True)
 
     def _record_turn(self, msg: InboundMessage, said: str) -> None:
         """把这一轮写进上下文：**用户先说，她再说**。

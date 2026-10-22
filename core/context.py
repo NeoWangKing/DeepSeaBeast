@@ -52,6 +52,11 @@ class ContextBundle:
     recent: list[tuple[str, str, int, float]] = field(default_factory=list)
     current: InboundMessage | None = None
     abilities: list[str] = field(default_factory=list)   # 这个通道能做什么
+    style: str = ""                                      # 这个媒介的说话习惯
+    faces_top: list[str] = field(default_factory=list)   # 本群常用表情（top 12）
+    mention: bool = False
+    markdown: bool = False
+    max_chars: int = 4500
     budget_tokens: int = 6000
 
     def add_knowledge(self, text: str, priority: int = 50) -> None:

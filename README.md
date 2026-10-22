@@ -25,6 +25,7 @@ core/               内核（协议无关）
   turn.py           回合模型（turn id / 预算 / 超时 / 协作式取消）
   scheduler.py      后台任务（插件声明 jobs，核心定时/防并发/超时/熔断）
   capability.py     能力词汇表 + 诚实失败（通道做不了就报错，不静默降级）
+  face_stats.py     按群统计常用表情（提示词里只带 top-12，其余靠工具查）
   typing.py         "话说完没有"的启发式判断
   memory.py         分层记忆（self / scope / recent）
   prompt.py         渲染（顺序固定，利于前缀缓存）
@@ -71,6 +72,7 @@ make bot         # OneBot 模式（等 SnowLuma 连上来）
 | M7-② 回合模型（打断/预算/超时/追踪 + 话没说完的等待） | ✅ |
 | M7-③ 后台任务（插件 jobs + 调度/防并发/超时/熔断） | ✅ |
 | M7-④ 能力模型（能力矩阵/意图执行/诚实失败/文件与图片） | ✅ |
+| M7-⑤ 通道 profile + 原生表情（行内 token/按群 top-12/list_faces） | ✅ |
 | M7-③ 工具契约（结构化/权限/审计） | ⬜ |
 
 ## 已知未做

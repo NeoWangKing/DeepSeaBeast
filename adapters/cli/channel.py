@@ -27,6 +27,14 @@ class CliChannel:
         self._on_message: OnMessage | None = None
         self._stop = asyncio.Event()
 
+    def profile(self) -> dict:
+        return {"style": "这是命令行。纯文本，别用表情符号和 markdown，可以把话说完整。",
+                "inline": {"faces": [], "mention": False, "markdown": False},
+                "limits": {"max_chars": 8000}}
+
+    def describe(self, chat) -> str:
+        return "命令行对话（一对一）"
+
     async def start(self, on_message: OnMessage) -> None:
         self._on_message = on_message
         log.info("CLI 模式：直接输入文字聊天（Ctrl-D 或 /quit 退出）")

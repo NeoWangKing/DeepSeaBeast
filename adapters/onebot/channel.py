@@ -9,6 +9,7 @@ from core.channel import (ChatRef, InboundMessage, Message, OnMessage, OutboundM
                           Segment, SendResult, Sender)
 
 from .event import Event
+from . import faces as qq_faces
 from .server import OneBotServer
 
 log = logging.getLogger("onebot")
@@ -33,6 +34,15 @@ class OneBotChannel:
     @property
     def self_account(self) -> str:
         return str(getattr(self, "bot_id", "") or "")
+
+    def profile(self) -> dict:
+        """QQ 的说话习惯 + 行内可用物（表情清单由核心按群统计后挑选）。"""
+        return {
+            "style": "这是 QQ。群聊里短句为主、一句话一条，别写长段落；"
+                     "不要用 markdown（**粗体**、# 标题、`代码块` 都不渲染）。",
+            "inline": {"faces": qq_faces.all_names(), "mention": True, "markdown": False},
+            "limits": {"max_chars": 4500},
+        }
 
     def describe(self, chat) -> str:
         if chat.kind == "group":
@@ -67,8 +77,15 @@ class OneBotChannel:
         else:
             chat = ChatRef.private(ev.user_id)
         # adapter 负责把 OneBot 段"归一化"：核心只读 kind + text，data 留作通道私有
-        segs = [Segment(kind=x.type, text=x.text, data=dict(x.data))
-                for x in ev.get_messages()]
+        segs = []
+        for x in ev.get_messages():
+            data = dict(x.data)
+            if x.type == "face":
+                fid = str(data.get("id") or "")
+                data["name"] = qq_faces.name_of(fid)
+                segs.append(Segment(kind="face", text=qq_faces.to_token(fid), data=data))
+            else:
+                segs.append(Segment(kind=x.type, text=x.text, data=data))
         at_me = bool(self.bot_id) and ev.is_at(self.bot_id)
         msg = InboundMessage(
             chat=chat,
@@ -97,7 +114,16 @@ class OneBotChannel:
             # 核心给的段只保证 kind/text；发出去时按 OneBot 格式还原
             data = dict(s.data) if s.data else {}
             if s.kind == "text":
-                data = {"text": s.text}
+                for kind, d in qq_faces.split_text(s.text):
+                    raw.append({"type": kind, "data": d})
+                continue
+            if s.kind == "face":
+                fid = str(data.get("id") or "") or qq_faces.id_of(str(data.get("name") or ""))
+                if fid:
+                    raw.append({"type": "face", "data": {"id": fid}})
+                else:
+                    raw.append({"type": "text", "data": {"text": s.text}})
+                continue
             elif s.kind == "image":
                 # QQ 收本地路径要 file:// 前缀；有 url 就直接用
                 if data.get("url"):
