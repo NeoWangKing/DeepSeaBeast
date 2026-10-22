@@ -83,3 +83,10 @@ enabled = true
 host = "127.0.0.1"
 port = 6199
 allow_self_ids = [3237702352]
+
+[[plugins]]
+name = "memory"
+command = [".venv/bin/python", "plugins/memory/main.py"]
+timeout = 30
+priority = 10
+max_concurrency = 2

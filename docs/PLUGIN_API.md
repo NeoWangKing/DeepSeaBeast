@@ -245,3 +245,4 @@ def profile(self) -> dict:
 |---|---|---|
 | `echo_plugin` | `plugins/echo_plugin/` | 工具、事件订阅、**后台任务**、数据目录、shutdown |
 | `personas` | `plugins/personas/` | `context` 能力、按作用域选人格卡 |
+| `memory` | `plugins/memory/` | `context` + `events` + `jobs`：记忆空间（全局 + 每会话） |

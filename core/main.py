@@ -54,7 +54,11 @@ async def run(config_path: str, channel_name: str) -> None:
     for c in channels:
         channel.add(c)
 
-    plugins = PluginManager()
+    plugins = PluginManager(llm={
+        "base_url": llm_cfg.base_url, "model": llm_cfg.model,
+        "api_key_file": llm_cfg.api_key_file, "api_key_env": llm_cfg.api_key_env,
+        "timeout": llm_cfg.timeout,
+    })
     await plugins.load_all(getattr(cfg, "plugins", []) or [], base_dir=".")
 
     memory_cfg = getattr(cfg, "memory", {}) or {}

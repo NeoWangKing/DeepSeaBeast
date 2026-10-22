@@ -31,7 +31,8 @@ class PluginTool:
 
 
 class PluginManager:
-    def __init__(self) -> None:
+    def __init__(self, llm: dict[str, Any] | None = None) -> None:
+        self.llm = dict(llm or {})
         self._procs: dict[str, PluginProcess] = {}
         self.tools: dict[str, PluginTool] = {}
         self.capabilities: dict[str, set[str]] = {}     # 插件名 → 能力集合
@@ -51,7 +52,8 @@ class PluginManager:
                        or (os.path.join(base_dir, "data", "plugins", name)))
         proc = PluginProcess(name, argv, cwd=cwd, timeout=float(spec.get("timeout", 20)),
                              data_dir=data_dir,
-                             max_concurrency=int(spec.get("max_concurrency", 4)))
+                             max_concurrency=int(spec.get("max_concurrency", 4)),
+                             llm=self.llm)
         info = await proc.start()
         self._procs[name] = proc
         self._specs[name] = dict(spec)
@@ -189,6 +191,7 @@ class PluginContextProvider:
                       "name": bundle.scope_name},
             "sender": {"id": bundle.sender_id, "name": bundle.sender_name},
             "channel": {"name": bundle.channel_name},
+            "message": (bundle.current.text if bundle.current is not None else ""),
         }
         try:
             res = await self.manager._procs[self.plugin].call("get_context", params, self.timeout)

@@ -21,9 +21,12 @@
 
 ## 记忆
 
-- **memory 插件（记忆写入）** —— 最大缺口。现在只读迁移快照，群印象永不更新。
-  最小闭环：订阅 `message.received` 攒素材（滚动保留）→ 每小时 job 让模型重写
-  `impression.md`（≤300 字）→ 更新 `members.json`。
+- **memory 插件与 core/memory.py 的旧印象并行**：插件已有自己的空间（`spaces/`），
+  但核心仍在读 `impression.md` / `members.json`。以后要么让插件写这些文件，
+  要么让核心改读插件空间——现在两套并存，别再加第三套。
+- **global 空间的可见性**：已经在提示词里禁止"关于具体人的事实写 global"，
+  但这是软约束。要么加标签（`visibility: private`）在注入时按 scope 过滤，
+  要么让 global 只由人工维护。
 - **self 层分公开/私密**（阻塞上面那条）
   `self/owner_public.md`（群里可用）与 `self/owner_private.md`（仅 CLI/私聊），
   否则私聊内容会漏到群里。

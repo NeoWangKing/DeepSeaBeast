@@ -84,3 +84,10 @@ command = [".venv/bin/python", "plugins/personas/main.py"]
 timeout = 10
 priority = 5
 can_persona = true
+
+[[plugins]]
+name = "memory"
+command = [".venv/bin/python", "plugins/memory/main.py"]
+timeout = 30
+priority = 10
+max_concurrency = 2

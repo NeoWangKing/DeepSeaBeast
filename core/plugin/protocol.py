@@ -27,13 +27,15 @@ class PluginProcess:
 
     def __init__(self, name: str, argv: list[str], cwd: str = "",
                  timeout: float = 20.0, env: dict[str, str] | None = None,
-                 data_dir: str = "", max_concurrency: int = 4) -> None:
+                 data_dir: str = "", max_concurrency: int = 4,
+                 llm: dict[str, Any] | None = None) -> None:
         self.name = name
         self.argv = list(argv)
         self.cwd = cwd or None
         self.timeout = float(timeout)
         self.env = env or None
         self.data_dir = data_dir
+        self.llm = dict(llm or {})       # 给插件用模型的配置（地址/模型/key 文件路径）
         self.info: dict[str, Any] = {}
         self.events: set[str] = set()
         self._sem = asyncio.Semaphore(max(1, int(max_concurrency)))
@@ -65,7 +67,8 @@ class PluginProcess:
         self._reader_task = asyncio.create_task(self._read_loop())
         info = await self.call("hello", {"protocol": PROTOCOL_VERSION,
                                          "core_version": _core_version(),
-                                         "data_dir": self.data_dir},
+                                         "data_dir": self.data_dir,
+                                         "llm": self.llm},
                                timeout=self.timeout)
         pv = int(info.get("protocol") or 0)
         if pv != PROTOCOL_VERSION:
