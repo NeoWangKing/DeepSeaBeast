@@ -46,7 +46,7 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
                           % (len(bundle.faces_top), "、".join(bundle.faces_top)))
         if bundle.mention:
             inline.append("@人")
-        inline.append("Unicode 表情和颜文字（直接写就行）")
+        inline.append("Unicode 表情（😂 这种）和颜文字（(｡•ᴗ•｡) 这种）——两者不是一回事，看对方要哪种再给")
         lines.append("能混在文字里发的：" + "；".join(inline))
         lines.append("要单独发的：图片、文件、语音、戳一戳（有对应工具才发得出去）")
         if bundle.max_chars:
