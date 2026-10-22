@@ -20,6 +20,10 @@ from .tools import Turn
 log = logging.getLogger("agent")
 
 
+def _has_tool(turn, name: str) -> bool:
+    return any((t.get("function") or {}).get("name") == name for t in turn.schemas)
+
+
 def _assistant_msg(resp) -> dict[str, Any]:
     """把模型的工具调用还原成 OpenAI 的 assistant 消息。"""
     return {
@@ -45,9 +49,12 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
                 log.info("%s 提前结束：%s", ctx.id, stop)
                 break
             ctx.rounds = r
-        # 每轮都要求调工具：正文不算发言，只有 send_message 才发出去。
-        # （2026-10-22 踩到：第二轮模型直接输出文本、没调工具 → 她"决定回"却一个字没说）
-        choice = "required" if not turn.finished else "auto"
+        # 每轮都要求调工具。第一轮**指定**必须是 decide：
+        # 否则模型常先调 send_message，被门控拒绝后再补 decide，白烧一轮（实测 400+ token）
+        if r == 1 and not turn.finished and _has_tool(turn, "decide"):
+            choice = {"type": "function", "function": {"name": "decide"}}
+        else:
+            choice = "required" if not turn.finished else "auto"
         try:
             resp = await asyncio.to_thread(chat_tools, list(messages), turn.schemas,
                                            turn.llm, choice, 400)

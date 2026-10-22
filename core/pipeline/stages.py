@@ -67,10 +67,13 @@ def stage_rate_limit(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Stag
     state.roll_hour(ctx.now)
     if state.hour_count >= cfg.max_auto_per_hour:
         return StageResult("drop", "本小时额度用完（%d/%d）" % (state.hour_count, cfg.max_auto_per_hour))
+    # 主人说话、私聊、被 @ —— 都不该被"刚说过话"挡住（人也不会这么对自己的熟人）
+    exempt = bool(ctx.msg.at_me or ctx.msg.sender.is_owner
+                  or ctx.msg.chat.kind in ("private", "local"))
     gap = ctx.now - state.last_reply_ts
-    if state.last_reply_ts and gap < cfg.min_interval_sec and not ctx.msg.at_me:
+    if state.last_reply_ts and gap < cfg.min_interval_sec and not exempt:
         return StageResult("drop", "刚说过话（%.1fs < %.0fs）" % (gap, cfg.min_interval_sec))
-    if (not ctx.msg.at_me and state.last_reply_to == ctx.msg.sender.id
+    if (not exempt and state.last_reply_to == ctx.msg.sender.id
             and state.last_reply_ts and gap < cfg.burst_suppress_sec):
         return StageResult("drop", "同一人连发，这轮只回一条")
     return StageResult("pass", "频率 OK")

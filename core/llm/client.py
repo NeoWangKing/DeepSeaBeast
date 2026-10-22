@@ -109,7 +109,8 @@ def chat(messages: list[dict[str, Any]], cfg: LLMConfig | None = None,
 
 
 def chat_tools(messages: list[dict[str, Any]], tools: list[dict[str, Any]],
-               cfg: LLMConfig | None = None, tool_choice: str = "auto",
+               cfg: LLMConfig | None = None,
+               tool_choice: str | dict[str, Any] = "auto",
                max_tokens: int | None = None) -> LLMResponse:
     """带工具的一轮（等价于 OpenAI function calling）。"""
     cfg = cfg or LLMConfig()
@@ -118,7 +119,7 @@ def chat_tools(messages: list[dict[str, Any]], tools: list[dict[str, Any]],
                             "max_tokens": int(max_tokens or cfg.max_tokens)}
     if tools:
         body["tools"] = tools
-        body["tool_choice"] = tool_choice or "auto"
+        body["tool_choice"] = tool_choice or "auto"      # 可以是 "required" 或指定函数
     d = _post(cfg, body)
     ch = (d.get("choices") or [{}])[0]
     msg = ch.get("message") or {}

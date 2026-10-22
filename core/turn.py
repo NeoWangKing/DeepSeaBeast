@@ -24,7 +24,7 @@ def new_turn_id() -> str:
 
 @dataclass(slots=True)
 class TurnConfig:
-    max_tokens: int = 20000        # 单回合 token 上限（含所有轮次）
+    max_tokens: int = 3000         # 单回合**输出** token 上限（所有轮次累计）
     max_seconds: float = 45.0      # 单回合墙钟上限
     max_rounds: int = 6            # 模型-工具循环上限
     max_sends: int = 4             # 最多几条气泡
@@ -78,11 +78,17 @@ class TurnContext:
         return self.tokens_used > self.cfg.max_tokens
 
     def add_usage(self, usage: dict | None) -> None:
+        """只累计**输出** token。
+
+        输入 token 大部分命中前缀缓存、而且是"必须发"的，拿它当预算会误杀正常回合
+        （实测：5 轮 × 4.4k 上下文 = 22k，把上限顶爆，话说一半就被截断）。
+        """
         u = usage or {}
         try:
-            self.tokens_used += int(u.get("total_tokens")
-                                    or (int(u.get("prompt_tokens") or 0)
-                                        + int(u.get("completion_tokens") or 0)))
+            out = u.get("completion_tokens")
+            if out is None:
+                out = int(u.get("total_tokens") or 0) - int(u.get("prompt_tokens") or 0)
+            self.tokens_used += max(0, int(out))
         except Exception:
             pass
 
