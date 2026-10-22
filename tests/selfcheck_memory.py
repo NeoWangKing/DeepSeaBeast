@@ -78,6 +78,41 @@ async def main() -> int:
         ck("群2 看不到群1 的印象", "终末地" not in str(mem.scope_parts(g2)))
 
         print()
+        print("== 上下文顺序：用户先说，她再说 ==")
+        from core.channel import OutboundMessage, SendResult
+        from core.pipeline import GateConfig
+        from core.runtime import Runtime
+
+        class _Ch:
+            name = "cli"
+            supports = {"local"}
+            abilities = {"text"}
+
+            async def send(self, out):
+                return SendResult(ok=True)
+
+            async def start(self, on):
+                pass
+
+            async def stop(self):
+                pass
+
+        async def _echo(msg):
+            return "答:%s" % msg.text
+
+        rt = Runtime(_Ch(), GateConfig.from_dict({"force_mode": "peak",
+                                                  "reply_probability": 1.0}),
+                     [1], reply_fn=_echo, data_dir=str(td / "rt"))
+        for t in ("第一句", "第二句"):
+            m2 = InboundMessage(chat=ChatRef.local(), sender=Sender(1, "灵其啊"),
+                                message=Message.from_text(t), message_id="1", at_me=True)
+            await rt.on_message(m2)
+        rows2 = rt.recent.get("cli")
+        ck("顺序是 用户→我→用户→我",
+           [r[1] for r in rows2] == ["第一句", "答:第一句", "第二句", "答:第二句"],
+           str([r[1] for r in rows2]))
+
+        print()
         print("== 渲染顺序（缓存友好）==")
         reg = ContextRegistry()
         reg.add(Provider("mem", 20, "【记忆】这个群在聊终末地"))

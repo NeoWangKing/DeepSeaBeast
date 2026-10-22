@@ -68,7 +68,9 @@ class Runtime:
             return
         if out.kind != "reply":
             return
+        await self._notify("on_message", msg)
         said = await self._reply(msg)
+        self._record_turn(msg, said)          # 记上下文与回复实现无关
         if said:
             self.pipeline.note_replied(msg, time.time())
             log.info("已回复 [%s] %r", msg.chat.key, said[:40])
@@ -106,7 +108,6 @@ class Runtime:
         scope = Scope.from_chat(msg.chat)
         bundle = await self.build_context(msg)
         messages = render(bundle)
-        await self._notify("on_message", msg)
         if hasattr(self.channel, "reset_pacing"):
             self.channel.reset_pacing(msg.chat)      # 新一轮第一条不等待
         turn = Turn(self.channel, msg, self.llm, persona=bundle.persona,
@@ -116,16 +117,19 @@ class Runtime:
         if turn.decision:
             log.info("她的决定：%s（%s）", turn.decision.get("action"),
                      turn.decision.get("intent") or "")
-        for text in turn.sent:
-            self.recent.append(scope.key, "我", text, 0, time.time())
-            await self._notify("on_reply", msg, text)
-            await self._emit("reply.sent", {
-                "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": msg.chat.key},
-                "text": text, "ts": time.time()})
-        if turn.sent:
-            who = msg.sender.name or "对方"
-            self.recent.append(scope.key, who, msg.text, msg.sender.id, time.time())
         return "\n".join(turn.sent)
+
+    def _record_turn(self, msg: InboundMessage, said: str) -> None:
+        """把这一轮写进上下文：**用户先说，她再说**。
+
+        顺序反了的话，模型会以为"她说完用户才接话"，下一轮就把自己当主导者乱接
+        （2026-10-23 实测：问"在吗"，她继续上一轮的"损人"）。
+        """
+        key = msg.chat.key
+        who = msg.sender.name or "对方"
+        self.recent.append(key, who, msg.text, msg.sender.id, time.time())
+        for text in [x for x in (said or "").splitlines() if x.strip()]:
+            self.recent.append(key, "我", text, 0, time.time())
 
     async def _emit(self, event: str, data: dict) -> None:
         """把事件推给订阅的插件（单向，失败不影响主流程）。"""
@@ -168,6 +172,7 @@ class Runtime:
                          out.kind, out.stage or "-")
                 if out.kind == "reply":
                     said = await self._reply(replay)
+                    self._record_turn(replay, said)
                     if said:
                         self.pipeline.note_replied(replay, time.time())
             except asyncio.CancelledError:
