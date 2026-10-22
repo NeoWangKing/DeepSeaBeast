@@ -1,0 +1,57 @@
+# 服务器实例配置模板（不含密钥明文；key 放 /opt/deepsea/.secrets/deepseek.key）
+# 安装：sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
+
+[onebot]
+host = "127.0.0.1"
+port = 6199
+allow_self_ids = [3237702352]
+
+[log]
+level = "INFO"
+
+data_dir = "data"
+owner_ids = [3245938285]
+
+[adapters.cli]
+enabled = false          # 服务器上不开 CLI（systemd 的 stdin 会立刻 EOF）
+
+[adapters.onebot]
+enabled = true
+host = "127.0.0.1"
+port = 6199
+allow_self_ids = [3237702352]
+
+[gate]
+force_mode = "off"                 # off = 只认 @
+allowed_groups = [1109525246]      # 先只在调试群跑；确认稳定后放开
+at_only_groups = [1109525246]
+private_owner_only = true
+merge_window_sec = 10
+burst_suppress_sec = 30
+min_interval_sec = 8
+max_auto_per_hour = 30
+reply_probability = 0.2
+offpeak_probability = 0.25
+
+[llm]
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+api_key_file = "/opt/deepsea/.secrets/deepseek.key"
+temperature = 0.9
+max_tokens = 900
+timeout = 60
+
+[memory]
+budget_tokens = 6000
+
+[[plugins]]
+name = "echo_plugin"
+command = [".venv/bin/python", "plugins/echo_plugin/main.py"]
+timeout = 10
+
+[[plugins]]
+name = "persona"
+command = [".venv/bin/python", "plugins/persona/main.py"]
+timeout = 10
+priority = 5
+can_persona = true

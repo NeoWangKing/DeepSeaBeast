@@ -12,6 +12,19 @@
   data/                      记忆 / recent / 缓存（不进 git）
 ```
 
+## 配置文件
+
+服务器配置模板在 `deploy/server.core.toml`（不含密钥明文）。**它不会被 sync.sh 覆盖**：
+
+```bash
+sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
+```
+
+关键项：
+- `[adapters.onebot] enabled = true` —— 没有它核心会报"没有启用任何通道"直接退出
+- `[adapters.cli] enabled = false` —— 服务器上开 CLI 会因 stdin EOF 立刻退出
+- `api_key_file` 必须是服务器路径（`/opt/deepsea/.secrets/deepseek.key`）
+
 ## 首次部署
 
 ```bash

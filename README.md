@@ -40,6 +40,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp core.example.toml core.toml      # 端口 / 机器人 QQ / LLM key
 
 make chat        # 命令行直接聊（不需要 QQ）
+                 # 也可以同时接 QQ：core.toml 里 [adapters.*] 都 enabled
 make selfcheck   # 一体自测：核心 + 假 SnowLuma 往返
 make test        # 全部自测（管线/工具/插件/记忆/模型）
 make bot         # OneBot 模式（等 SnowLuma 连上来）
@@ -56,7 +57,8 @@ make bot         # OneBot 模式（等 SnowLuma 连上来）
 | M4 插件协议（stdio JSON-RPC） | ✅ |
 | M4.5 分层记忆 + 上下文装配 + 缓存命中日志 | ✅ |
 | **M5 真机上线**（SnowLuma 保留，AstrBot 停用） | ✅ 2026-10-22 |
-| M6 多通道（CLI + QQ 同时在线）/ 插件生态 | ⬜ |
+| M6 多通道（CLI + QQ 同时在线） | ✅ |
+| M7 人格式记忆策略 / 插件生态 | ⬜ |
 
 ## 已知未做
 
