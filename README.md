@@ -46,7 +46,7 @@ make chat        # 命令行直接聊（不需要 QQ）
 make selfcheck   # 一体自测：核心 + 假 SnowLuma 往返
 make test        # 全部自测（管线/工具/插件/记忆/模型）
 make bot         # OneBot 模式（等 SnowLuma 连上来）
-make telnet      # 连服务器上运行中的核心（telnet 风格，同一个人格与记忆）
+# 服务器上另开 TCP 通道后，用 SSH 隧道 + telnet 连（见 deploy/README.md）
 ```
 
 ## 里程碑

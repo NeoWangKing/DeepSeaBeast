@@ -31,8 +31,7 @@ sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
 # 1. 同步代码（本机执行）
 # 用脚本（自动排除 core.toml / .secrets / data，不会覆盖服务器配置）
 ./deploy/sync.sh
-ssh -i ~/.sshhelper/agent_key agent@117.72.111.241 \
-  'sudo cp -a /tmp/deepsea_src/. /opt/deepsea/ && sudo chown -R astrbot:astrbot /opt/deepsea'
+DEEPSEA_HOST=<user>@<服务器> DEEPSEA_KEY=<你的私钥> ./deploy/sync.sh
 
 # 2. 依赖
 sudo -u astrbot uv venv --python 3.11 /opt/deepsea/.venv
@@ -94,19 +93,22 @@ journalctl -u deepsea-beast -f                                        # 看线�
 
 TCP 通道只绑 `127.0.0.1:4000`（不占公网端口），三种连法：
 
+TCP 通道只监听 `<服务器>:127.0.0.1:4000`，**不是公网端口**，所以本机连不上，
+需要一条 SSH 隧道：
+
 ```bash
-# ① 一条命令（推荐）
-make telnet
-# 等价于：ssh -t agent@服务器 'nc 127.0.0.1 4000'
+# 终端 A：建立隧道（保持开着）
+ssh -N -L 4000:127.0.0.1:4000 <user>@<服务器>
 
-# ② 本地隧道 + telnet
-ssh -N -L 4000:127.0.0.1:4000 agent@服务器     # 保持这个窗口
-telnet 127.0.0.1 4000                          # 另一个窗口
-
-# ③ 服务器上直接连
-ssh agent@服务器
-nc 127.0.0.1 4000
+# 终端 B：连本机隧道口
+telnet 127.0.0.1 4000      # 或 nc 127.0.0.1 4000
 ```
+
+在服务器上直接聊：`ssh <user>@<服务器>` 之后 `nc 127.0.0.1 4000`。
+
+> 想直接 `telnet <服务器IP> 4000`（不建隧道）需要把 `[adapters.tcp]` 的 `host` 改成
+> 服务器网卡地址并在防火墙放行 —— 那是**新增一个公网端口**，默认不做；
+> 若确实要开，务必配 `token = "..."`，否则任何人都能和她聊天并消耗你的额度。
 
 - 纯文本行：打一行回车发送，她每说一句回一行（连发就是多行）
 - `/quit` 或关窗口退出

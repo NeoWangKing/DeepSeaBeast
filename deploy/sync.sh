@@ -5,8 +5,9 @@
 # 用法：./deploy/sync.sh [--no-restart]
 set -euo pipefail
 
-HOST="${DEEPSEA_HOST:-agent@117.72.111.241}"
-KEY="${DEEPSEA_KEY:-$HOME/.sshhelper/agent_key}"
+# 目标必须由调用者提供（仓库里不放任何服务器地址/密钥路径）
+HOST="${DEEPSEA_HOST:?请先设置 DEEPSEA_HOST=user@主机}"
+KEY="${DEEPSEA_KEY:?请先设置 DEEPSEA_KEY=/path/to/ssh_key}"
 DEST="${DEEPSEA_DEST:-/opt/deepsea}"
 RESTART=1
 [ "${1:-}" = "--no-restart" ] && RESTART=0
