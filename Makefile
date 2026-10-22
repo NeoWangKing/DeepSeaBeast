@@ -7,6 +7,7 @@ help:
 	@echo "make chat       —— 命令行直接和机器人聊天（不用 QQ）"
 	@echo "make bot        —— 以 OneBot 模式起核心（等 SnowLuma 连上来）"
 	@echo "make selfcheck  —— 一体自测：核心 + 假 SnowLuma 往返"
+	@echo "make test       —— 跑所有自测（pipeline/agent/plugin/memory/llm）"
 	@echo "make test       —— 跑所有自测脚本"
 
 chat:

@@ -50,7 +50,10 @@ async def run(config_path: str, channel_name: str) -> None:
     plugins = PluginManager()
     await plugins.load_all(getattr(cfg, "plugins", []) or [], base_dir=".")
 
-    runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins)
+    memory_cfg = getattr(cfg, "memory", {}) or {}
+    runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins,
+                      data_dir=cfg.data_dir,
+                      budget_tokens=int(memory_cfg.get("budget_tokens", 6000)))
     _p = cfg.persona or {}
     if _p.get("file"):
         try:

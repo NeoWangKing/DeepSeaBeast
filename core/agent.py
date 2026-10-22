@@ -43,6 +43,12 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
         except Exception as e:
             log.warning("模型调用失败（第 %d 轮）：%r", r, e)
             break
+        _u = resp.usage or {}
+        if _u.get("prompt_tokens"):
+            _hit = int(_u.get("prompt_cache_hit_tokens") or 0)
+            _tot = int(_u.get("prompt_tokens") or 0)
+            log.info("token：命中 %d / 总计 %d（%d%%）", _hit, _tot,
+                     (100 * _hit // _tot) if _tot else 0)
         if not resp.tool_calls:
             log.debug("第 %d 轮模型没调工具（finish_reason=%s），收敛", r, resp.finish_reason)
             break

@@ -38,3 +38,7 @@ timeout = 60
 name = "echo_plugin"
 command = [".venv/bin/python", "plugins/echo_plugin/main.py"]
 timeout = 10
+
+[memory]
+# 上下文总预算（估算 token）：超了先丢低优先级素材，规则/场景永不裁
+budget_tokens = 6000
