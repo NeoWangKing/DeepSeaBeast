@@ -1,11 +1,12 @@
 # 服务器实例配置模板（不含密钥明文；key 放 /opt/deepsea/.secrets/deepseek.key）
 # 安装：sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
 
+data_dir = "data"
+owner_ids = [3245938285]   # 业主账号（私聊/特权判断用）
+
 [log]
 level = "INFO"
 
-data_dir = "data"
-owner_ids = [3245938285]
 
 [adapters.cli]
 enabled = false          # 服务器上不开 CLI（systemd 的 stdin 会立刻 EOF）

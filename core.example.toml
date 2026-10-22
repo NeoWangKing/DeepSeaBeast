@@ -1,5 +1,8 @@
 # 核心配置。生产环境里这个文件不进 git（用 core.example.toml 当模板）。
 
+data_dir = "data"
+owner_ids = [3245938285]   # 业主账号（私聊/特权判断用）
+
 [onebot]
 host = "127.0.0.1"
 port = 6200
@@ -9,8 +12,6 @@ allow_self_ids = [3237702352]
 [log]
 level = "INFO"
 
-data_dir = "data"
-owner_ids = [3245938285]   # 业主 QQ（私聊/特权判断用）
 
 [jobs]
 # 后台任务总开关（插件在 hello 里声明 jobs，这里可以整体关掉）
