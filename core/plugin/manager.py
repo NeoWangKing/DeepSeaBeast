@@ -34,6 +34,8 @@ class PluginManager:
     def __init__(self) -> None:
         self._procs: dict[str, PluginProcess] = {}
         self.tools: dict[str, PluginTool] = {}
+        self.capabilities: dict[str, set[str]] = {}     # 插件名 → 能力集合
+        self._specs: dict[str, dict[str, Any]] = {}     # 插件名 → 原始配置
 
     # ── 装载 ──
     async def load(self, spec: dict[str, Any], base_dir: str = ".") -> None:
@@ -46,6 +48,8 @@ class PluginManager:
         proc = PluginProcess(name, argv, cwd=cwd, timeout=float(spec.get("timeout", 20)))
         info = await proc.start()
         self._procs[name] = proc
+        self._specs[name] = dict(spec)
+        self.capabilities[name] = {str(x) for x in (info.get("capabilities") or [])}
         for t in (info.get("tools") or []):
             tool = PluginTool(name=str(t.get("name")), description=str(t.get("description") or ""),
                               parameters=t.get("parameters") or {"type": "object", "properties": {}},
@@ -92,7 +96,53 @@ class PluginManager:
         self._procs.clear()
         self.tools.clear()
 
+    # ── 上下文 provider ──
+    def context_providers(self) -> list[Any]:
+        """把声明了 context 能力的插件包成 ContextProvider。"""
+        out: list[Any] = []
+        for name, caps in self.capabilities.items():
+            if "context" not in caps:
+                continue
+            spec = self._specs.get(name) or {}
+            out.append(PluginContextProvider(
+                manager=self, plugin=name,
+                priority=int(spec.get("priority", 50)),
+                can_persona=bool(spec.get("can_persona", False)),
+                timeout=float(spec.get("timeout", 10))))
+        return out
+
     # ── 健康检查（给 /health 用）──
     def status(self) -> dict[str, Any]:
         return {name: {"alive": p._alive(), "restarts": p._restarts}
                 for name, p in self._procs.items()}
+
+
+class PluginContextProvider:
+    """把一个插件包装成 ContextProvider（核心只认贡献，不认插件细节）。"""
+
+    def __init__(self, manager: "PluginManager", plugin: str, priority: int = 50,
+                 can_persona: bool = False, timeout: float = 10) -> None:
+        self.manager = manager
+        self.plugin = plugin
+        self.name = "plugin:" + plugin
+        self.priority = int(priority)
+        self.can_persona = bool(can_persona)
+        self.timeout = float(timeout)
+
+    async def contribute(self, bundle):
+        from ..context import Contribution
+        params = {
+            "scope": {"kind": bundle.scope_kind, "id": bundle.scope_id, "key": bundle.scope_key},
+            "sender": {"id": bundle.sender_id, "name": bundle.sender_name},
+        }
+        try:
+            res = await self.manager._procs[self.plugin].call("get_context", params, self.timeout)
+        except Exception as e:
+            log.warning("上下文插件 %s 调用失败：%r", self.plugin, e)
+            return None
+        if not isinstance(res, dict):
+            return None
+        return Contribution(priority=self.priority,
+                            knowledge=[str(x) for x in (res.get("knowledge") or [])],
+                            rules=[str(x) for x in (res.get("rules") or [])],
+                            persona=str(res.get("persona") or ""))

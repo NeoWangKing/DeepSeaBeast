@@ -1,0 +1,17 @@
+{
+  "_说明": "scope → 人格卡。group:<群号> 优先，private:<QQ> 其次，最后用 default。",
+  "default": "system_prompt_sharp.txt",
+  "groups": {
+    "869622030": "system_prompt_friend.txt",
+    "966812151": "system_prompt_tool.txt",
+    "1105410423": "project_assistant.txt",
+    "1109525246": "1109525246.txt",
+    "866103773": "866103773.txt"
+  },
+  "privates": {
+    "3245938285": "system_prompt_private.txt",
+    "287383512": "private_warm.txt"
+  },
+  "private_default": "system_prompt_private.txt",
+  "append_common": true
+}

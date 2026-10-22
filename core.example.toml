@@ -42,3 +42,10 @@ timeout = 10
 [memory]
 # 上下文总预算（估算 token）：超了先丢低优先级素材，规则/场景永不裁
 budget_tokens = 6000
+
+[[plugins]]
+name = "persona"
+command = [".venv/bin/python", "plugins/persona/main.py"]
+timeout = 10
+priority = 5
+can_persona = true

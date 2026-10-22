@@ -43,6 +43,14 @@ class Runtime:
         self.memory = MemoryStore(Path(data_dir) / "memory")
         self.recent = RecentStore(Path(data_dir) / "recent")
         self.registry = ContextRegistry()
+        if plugins is not None:
+            try:
+                for p in plugins.context_providers():
+                    self.registry.add(p)
+                    log.info("上下文插件已注册：%s（priority=%d, persona=%s）",
+                             p.name, p.priority, p.can_persona)
+            except Exception:
+                log.exception("注册上下文插件失败")
         self._flush: dict[str, asyncio.Task] = {}
 
     # ── 收 ──
@@ -65,7 +73,10 @@ class Runtime:
     async def build_context(self, msg: InboundMessage) -> ContextBundle:
         scope = Scope.from_chat(msg.chat)
         b = ContextBundle(scope_key=scope.key, persona=self.persona,
-                          budget_tokens=self.budget_tokens, current=msg)
+                          budget_tokens=self.budget_tokens, current=msg,
+                          scope_kind=scope.kind, scope_id=scope.id,
+                          sender_id=msg.sender.id,
+                          sender_name=msg.sender.name or "")
         b.rules = list(self.rules)
         parts = self.memory.self_parts()
         b.self_knowledge = [parts[k] for k in ("identity", "owner", "lessons") if k in parts]

@@ -40,6 +40,10 @@ class Contribution:
 @dataclass(slots=True)
 class ContextBundle:
     scope_key: str = ""
+    scope_kind: str = ""       # group / private / local
+    scope_id: int = 0
+    sender_id: int = 0
+    sender_name: str = ""
     persona: str = ""
     rules: list[str] = field(default_factory=list)
     self_knowledge: list[str] = field(default_factory=list)
