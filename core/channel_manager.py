@@ -15,12 +15,14 @@ import asyncio
 import logging
 
 from .channel import ChatRef, OnMessage, OutboundMessage, SendResult
+from .pacing import PacingConfig, Pacer
 
 log = logging.getLogger("channels")
 
 
 class ChannelManager:
-    def __init__(self) -> None:
+    def __init__(self, pacing: PacingConfig | None = None) -> None:
+        self.pacer = Pacer(pacing)
         self._channels: list = []
         self._tasks: list[asyncio.Task] = []
         self._last: dict[str, object] = {}      # 会话 key → 最近一次收到消息的通道
@@ -103,8 +105,13 @@ class ChannelManager:
         self._tasks.clear()
 
     # ── 发送 ──
+    def reset_pacing(self, chat: ChatRef) -> None:
+        """新一轮开始：第一条不用等节奏。"""
+        self.pacer.reset(chat.key)
+
     async def send(self, out: OutboundMessage) -> SendResult:
         c = self.route(out.chat)
         if c is None:
             return SendResult(ok=False, error="没有可用的通道")
+        await self.pacer.before_send(out.chat.key, out.message.text)   # 节奏在这里统一生效
         return await c.send(out)

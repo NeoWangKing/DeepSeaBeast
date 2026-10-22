@@ -34,6 +34,7 @@ class CoreConfig:
     plugins: list[dict] = field(default_factory=list)   # [[plugins]] 数组
     memory: dict = field(default_factory=dict)   # [memory] budget_tokens 等
     adapters: dict = field(default_factory=dict)  # [adapters.cli] / [adapters.onebot]
+    pacing: dict = field(default_factory=dict)    # [pacing] 发言节奏
 
 
 def load(path: str | Path = "core.toml") -> CoreConfig:
@@ -59,4 +60,5 @@ def load(path: str | Path = "core.toml") -> CoreConfig:
         plugins=list(raw.get("plugins") or []),
         memory=dict(raw.get("memory") or {}),
         adapters=dict(raw.get("adapters") or {}),
+        pacing=dict(raw.get("pacing") or {}),
     )

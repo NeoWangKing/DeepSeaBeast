@@ -106,6 +106,8 @@ class Runtime:
         bundle = await self.build_context(msg)
         messages = render(bundle)
         await self._notify("on_message", msg)
+        if hasattr(self.channel, "reset_pacing"):
+            self.channel.reset_pacing(msg.chat)      # 新一轮第一条不等待
         turn = Turn(self.channel, msg, self.llm, persona=bundle.persona,
                     plugins=self.plugins,
                     abilities=self.abilities_for(msg.chat))

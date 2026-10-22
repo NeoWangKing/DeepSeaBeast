@@ -21,6 +21,7 @@ core/               内核（协议无关）
   pipeline/         门控四阶段：白名单 / 频率 / 决定 / 连发合并
   agent.py + tools.py  工具调用循环（decide / send_message / finish）
   context.py        ContextBundle：人格/规则/self 记忆/scope 记忆/场景/最近
+  pacing.py         发言节奏（多条气泡之间的人味间隔，全通道统一）
   memory.py         分层记忆（self / scope / recent）
   prompt.py         渲染（顺序固定，利于前缀缓存）
   llm/              OpenAI 兼容客户端（chat / chat_tools）

@@ -12,6 +12,15 @@ level = "INFO"
 data_dir = "data"
 owner_ids = [3245938285]   # 业主 QQ（私聊/特权判断用）
 
+[pacing]
+# 发言节奏：多条气泡之间的间隔 ≈ base_sec + 上一条字数 × sec_per_char（封顶 max_sec）
+# 首条不等待（模型思考时间已经够久）；jitter 是 ±抖动，避免机械感
+enabled = true
+base_sec = 1.2
+sec_per_char = 0.035
+max_sec = 4.0
+jitter = 0.2
+
 [gate]
 force_mode = "off"              # off=只认 @；peak/offpeak=按概率接话
 allowed_groups = [1109525246]   # 留空 = 所有群都管

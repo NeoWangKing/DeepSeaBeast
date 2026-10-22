@@ -11,6 +11,7 @@ from . import __version__
 from . import config as cfg_mod
 from .channel_manager import ChannelManager
 from .llm import LLMConfig
+from .pacing import PacingConfig
 from .pipeline import GateConfig
 from .plugin import PluginManager
 from .runtime import Runtime
@@ -84,7 +85,11 @@ async def run(config_path: str, channel_name: str) -> None:
         ad = {channel_name: {"enabled": True}}
         cfg.adapters = ad
     channels = build_channels(cfg, owner_ids)
-    channel = ChannelManager()
+    pacing_cfg = PacingConfig.from_dict(getattr(cfg, "pacing", {}) or {})
+    channel = ChannelManager(pacing_cfg)
+    log.info("发言节奏：%s（基础 %.1fs + %.3fs/字，封顶 %.1fs）",
+             "开" if pacing_cfg.enabled else "关",
+             pacing_cfg.base_sec, pacing_cfg.sec_per_char, pacing_cfg.max_sec)
     for c in channels:
         channel.add(c)
 
