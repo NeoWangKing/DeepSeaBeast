@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 import websockets  # noqa: E402
 
 from adapters.onebot import OneBotChannel  # noqa: E402
+from core.pipeline import GateConfig  # noqa: E402
 from core.runtime import Runtime  # noqa: E402
 
 PORT = 6299
@@ -33,7 +34,10 @@ def step(msg: str) -> None:
 async def main() -> int:
     channel = OneBotChannel(host="127.0.0.1", port=PORT, allow_self_ids=[BOT],
                             owner_ids=[OWNER], bot_id=BOT)
-    runtime = Runtime(channel, [OWNER])
+    gate = GateConfig.from_dict({"force_mode": "off", "allowed_groups": [1109525246],
+                                 "at_only_groups": [1109525246],
+                                 "min_interval_sec": 0, "burst_suppress_sec": 0})
+    runtime = Runtime(channel, gate, [OWNER])
     ch_task = asyncio.create_task(channel.start(runtime.on_message))
     await asyncio.sleep(0.5)
     step("核心已启动，端口 %d" % PORT)

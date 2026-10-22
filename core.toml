@@ -11,3 +11,15 @@ level = "INFO"
 
 data_dir = "data"
 owner_ids = [3245938285]   # 业主 QQ（私聊/特权判断用）
+
+[gate]
+force_mode = "off"              # off=只认 @；peak/offpeak=按概率接话
+allowed_groups = [1109525246]   # 留空 = 所有群都管
+at_only_groups = [1109525246]
+private_owner_only = true
+merge_window_sec = 10
+burst_suppress_sec = 30
+min_interval_sec = 8
+max_auto_per_hour = 30
+reply_probability = 0.2
+offpeak_probability = 0.25

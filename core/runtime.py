@@ -1,40 +1,85 @@
-"""运行时：收到消息 → （后续接管线）→ 决定回什么 → 交给 channel 发出去。
+"""运行时：收消息 → 管线判断 → （M2：占位回复 / M3：LLM）→ 交给 channel 发。
 
-阶段 M1：先把"@ 她 → 回一句"跑通，证明双向链路成立。
-管线（激活/白名单/合并/打分/decide）在 M2 接进来，替换 `_decide`。
+连发合并的"延后重放"也在这里：管线返回 defer 时，过 merge_window 秒把攒下的
+文本当成一条新消息再跑一次（这次跳过 merge 段）。
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 
 from .channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult
+from .pipeline import GateConfig, Pipeline
 
 log = logging.getLogger("runtime")
 
 
 class Runtime:
-    def __init__(self, channel, owner_ids: list[int] | None = None) -> None:
+    def __init__(self, channel, gate: GateConfig | None = None,
+                 owner_ids: list[int] | None = None) -> None:
         self.channel = channel
         self.owner_ids = set(owner_ids or [])
+        self.pipeline = Pipeline(gate or GateConfig())
+        self._flush: dict[str, asyncio.Task] = {}
 
     # ── 收 ──
     async def on_message(self, msg: InboundMessage) -> None:
-        log.info("收到 [%s] %s(%s): %r%s", msg.chat.key, msg.sender.name or "?",
-                 msg.sender.id, msg.text[:60], "（在叫她）" if msg.at_me else "")
-        decision = self._decide(msg)
-        if decision is None:
+        now = time.time()
+        out = self.pipeline.run(msg, now)
+        log.info("判断 [%s] %r → %s（%s%s）", msg.chat.key, msg.text[:30],
+                 out.kind, out.stage or "-", ("：" + out.reason) if out.reason else "")
+        if out.kind == "defer":
+            self._schedule_replay(msg, out.text, now)
             return
-        text, extra = decision
-        await self.say(msg.chat, text, **extra)
+        if out.kind != "reply":
+            return
+        text = self._reply_text(msg)
+        res = await self.say(msg.chat, text, quote_id=msg.message_id)
+        if res.ok:
+            self.pipeline.note_replied(msg, time.time())
+            log.info("已回复 [%s] %r", msg.chat.key, text[:40])
 
-    # ── 决策（M1 的占位实现，M2 换成真管线）──
-    def _decide(self, msg: InboundMessage) -> tuple[str, dict] | None:
+    # ── M2 的占位回复（M3 接 LLM）──
+    def _reply_text(self, msg: InboundMessage) -> str:
         if msg.chat.kind == "local":
-            return "收到：%s" % msg.text, {}
-        if msg.at_me:
-            return "在的，你说的是「%s」" % msg.text[:40], {"quote_id": msg.message_id}
-        return None
+            return "收到：%s" % msg.text
+        return "在的，你说的是「%s」" % msg.text[:40]
+
+    # ── 连发合并的延后重放 ──
+    def _schedule_replay(self, msg: InboundMessage, merged: str, now: float) -> None:
+        key = msg.chat.key
+        old = self._flush.get(key)
+        if old is not None and not old.done():
+            old.cancel()
+
+        async def _later() -> None:
+            try:
+                await asyncio.sleep(self.pipeline.cfg.merge_window_sec)
+                state = self.pipeline.state_for(key)
+                if not state.merge_buf or state.merge_buf.strip() != merged.strip():
+                    return                    # 已经被后来的消息合并掉了
+                replay = InboundMessage(
+                    chat=msg.chat, sender=msg.sender,
+                    message=Message.from_text(state.merge_buf),
+                    message_id=msg.message_id, at_me=msg.at_me, raw=msg.raw)
+                state.merge_buf = ""
+                out = self.pipeline.run(replay, time.time(), skip=("merge",))
+                tag = ("：" + out.reason) if out.reason else ""
+                log.info("重放合并 [%s] %r → %s（%s%s）",
+                         key, replay.text[:30], out.kind, out.stage or "-", tag)
+                if out.kind == "reply":
+                    text = self._reply_text(replay)
+                    res = await self.say(replay.chat, text, quote_id=replay.message_id)
+                    if res.ok:
+                        self.pipeline.note_replied(replay, time.time())
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                log.exception("重放失败")
+
+        self._flush[key] = asyncio.create_task(_later())
 
     # ── 发 ──
     async def say(self, chat: ChatRef, text: str, quote_id: str = "",

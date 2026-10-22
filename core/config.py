@@ -28,6 +28,7 @@ class CoreConfig:
     log: LogConfig = field(default_factory=LogConfig)
     data_dir: str = "data"
     owner_ids: list[int] = field(default_factory=list)
+    gate: dict = field(default_factory=dict)     # [gate] 段原样交给 pipeline 解析
 
 
 def load(path: str | Path = "core.toml") -> CoreConfig:
@@ -47,4 +48,5 @@ def load(path: str | Path = "core.toml") -> CoreConfig:
         log=LogConfig(level=str(lg.get("level", "INFO")).upper()),
         data_dir=str(raw.get("data_dir", "data")),
         owner_ids=[int(x) for x in (raw.get("owner_ids") or [])],
+        gate=dict(raw.get("gate") or {}),
     )

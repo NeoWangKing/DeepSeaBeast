@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""管线单测：不联网、不起服务，直接喂消息看"放行/吞掉/延后"。
+
+用法：.venv/bin/python tests/selfcheck_pipeline.py
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from core.channel import ChatRef, InboundMessage, Message, Sender  # noqa: E402
+from core.pipeline import GateConfig, Pipeline  # noqa: E402
+
+FAIL: list[str] = []
+
+
+def ck(name: str, cond: bool, extra: str = "") -> None:
+    print("  %-46s %s %s" % (name, "OK" if cond else "FAIL", extra))
+    if not cond:
+        FAIL.append(name)
+
+
+def mk(text: str, *, gid: int = 1109525246, uid: int = 111, at: bool = False,
+       owner: bool = False, private: bool = False) -> InboundMessage:
+    chat = ChatRef.private(uid) if private else ChatRef.group(gid)
+    return InboundMessage(chat=chat, sender=Sender(uid, "测试", is_owner=owner),
+                          message=Message.from_text(text), message_id="1", at_me=at)
+
+
+CFG = GateConfig.from_dict({
+    "force_mode": "off",
+    "allowed_groups": [1109525246],
+    "at_only_groups": [1109525246],
+    "private_owner_only": True,
+    "merge_window_sec": 10,
+    "burst_suppress_sec": 30,
+    "min_interval_sec": 8,
+    "max_auto_per_hour": 2,
+})
+
+print("== 白名单 ==")
+p = Pipeline(CFG)
+ck("白名单外的群 → drop", p.run(mk("在吗", gid=999), time.time()).kind == "drop")
+ck("白名单内的群 + @ → reply", p.run(mk("在吗", at=True), time.time()).kind == "reply")
+
+print()
+print("== 只认 @ / 概率 ==")
+p = Pipeline(CFG)
+ck("群里没 @ → silence", p.run(mk("今天天气不错"), time.time()).kind == "silence")
+p2 = Pipeline(GateConfig.from_dict({"force_mode": "peak", "reply_probability": 1.0}))
+ck("概率=1 时非 @ 也回", p2.run(mk("随便说说"), time.time()).kind == "reply")
+p3 = Pipeline(GateConfig.from_dict({"force_mode": "peak", "reply_probability": 0.0}))
+ck("概率=0 时不回", p3.run(mk("随便说说"), time.time()).kind == "silence")
+
+print()
+print("== 连发合并 ==")
+p = Pipeline(CFG)
+t0 = time.time()
+r1 = p.run(mk("我跟你", at=True), t0)
+r2 = p.run(mk("说个事啊", at=True), t0 + 1)
+ck("第一条正常放行", r1.kind == "reply")
+ck("第二条被合并（defer）", r2.kind == "defer", r2.text)
+ck("合并后的文本对", r2.text == "我跟你 说个事啊", r2.text)
+r3 = p.run(mk("算了不说了", at=True), t0 + 15)
+ck("超过窗口就重新开始", r3.kind == "reply")
+
+print()
+print("== 频率 ==")
+_cfg_loose = GateConfig.from_dict({
+    "force_mode": "off", "allowed_groups": [1109525246],
+    "at_only_groups": [1109525246], "private_owner_only": True,
+    "merge_window_sec": 10, "burst_suppress_sec": 30,
+    "min_interval_sec": 8, "max_auto_per_hour": 10,
+})
+p = Pipeline(_cfg_loose)
+now = time.time()
+p.run(mk("在吗", at=True), now)
+p.note_replied(mk("在吗", at=True), now)
+ck("刚说完，别人说话被间隔挡住", p.run(mk("喂", uid=222), now + 1).kind == "drop")
+ck("@她 不受间隔限制", p.run(mk("喂", uid=222, at=True), now + 1).kind == "reply")
+p.note_replied(mk("喂", uid=222, at=True), now + 1)
+
+# 额度：单独用一个 max_auto_per_hour=2 的配置测
+p_cap = Pipeline(GateConfig.from_dict({
+    "force_mode": "off", "allowed_groups": [1109525246],
+    "at_only_groups": [1109525246], "min_interval_sec": 0,
+    "burst_suppress_sec": 0, "max_auto_per_hour": 2,
+}))
+t2 = time.time()
+for _ in range(2):
+    m = mk("在吗", uid=777, at=True)
+    p_cap.run(m, t2)
+    p_cap.note_replied(m, t2)
+r = p_cap.run(mk("第三次", uid=777, at=True), t2 + 1)
+ck("每小时额度用完 → drop", r.kind == "drop" and "额度" in r.reason, r.reason)
+
+print()
+print("== 私聊 ==")
+p = Pipeline(CFG)
+ck("私聊陌生人 → drop", p.run(mk("你好", uid=444, private=True), time.time()).kind == "drop")
+ck("私聊主人 → reply", p.run(mk("你好", uid=444, owner=True, private=True), time.time()).kind == "reply")
+
+print()
+if FAIL:
+    print("FAILED: %s" % "、".join(FAIL))
+    sys.exit(1)
+print("全部通过")
