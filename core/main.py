@@ -46,6 +46,14 @@ async def run(config_path: str, channel_name: str) -> None:
     llm_cfg = LLMConfig.from_dict(getattr(cfg, "llm", {}) or {})
     channel = build_channel(channel_name, cfg, owner_ids, 0)
     runtime = Runtime(channel, gate, owner_ids, llm_cfg)
+    _p = cfg.persona or {}
+    if _p.get("file"):
+        try:
+            runtime.persona = open(str(_p["file"]), encoding="utf-8").read().strip()
+        except Exception as e:
+            log.warning("读不到人格文件：%r", e)
+    elif _p.get("text"):
+        runtime.persona = str(_p["text"]).strip()
 
     stop = asyncio.Event()
 

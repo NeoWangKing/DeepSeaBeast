@@ -30,6 +30,7 @@ class CoreConfig:
     owner_ids: list[int] = field(default_factory=list)
     gate: dict = field(default_factory=dict)     # [gate] 段原样交给 pipeline 解析
     llm: dict = field(default_factory=dict)      # [llm] 段原样交给 llm 客户端解析
+    persona: dict = field(default_factory=dict)   # [persona] text/file 覆盖默认人格
 
 
 def load(path: str | Path = "core.toml") -> CoreConfig:
@@ -51,4 +52,5 @@ def load(path: str | Path = "core.toml") -> CoreConfig:
         owner_ids=[int(x) for x in (raw.get("owner_ids") or [])],
         gate=dict(raw.get("gate") or {}),
         llm=dict(raw.get("llm") or {}),
+        persona=dict(raw.get("persona") or {}),
     )

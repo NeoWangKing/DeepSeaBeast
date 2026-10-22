@@ -26,6 +26,7 @@ class Runtime:
         self.owner_ids = set(owner_ids or [])
         self.pipeline = Pipeline(gate or GateConfig())
         self.llm = llm or LLMConfig()
+        self.persona = ""            # [persona] 覆盖默认人格；人格插件以后也往这里塞
         # 测试可以注入假回复；不注入就走真模型
         self.reply_fn = reply_fn or self._llm_reply
         self._flush: dict[str, asyncio.Task] = {}
@@ -59,7 +60,9 @@ class Runtime:
 
     async def _llm_reply(self, msg: InboundMessage) -> str:
         state = self.pipeline.state_for(msg.chat.key)
-        messages = build_messages(msg, list(state.recent))
+        messages = build_messages(msg, list(state.recent),
+                                  channel_name=getattr(self.channel, "name", ""),
+                                  persona=self.persona)
         text = await asyncio.to_thread(chat, messages, self.llm, 300)
         text = " ".join(str(text or "").split())
         if not text:
