@@ -117,13 +117,17 @@ class Runtime:
     # ── 上下文组装 ──
     async def build_context(self, msg: InboundMessage) -> ContextBundle:
         scope = Scope.from_chat(msg.chat)
+        _info = (self.channel.scope_info(msg.chat)
+                 if hasattr(self.channel, "scope_info") else {})
         b = ContextBundle(scope_key=scope.key, persona=self.persona,
                           budget_tokens=self.budget_tokens, current=msg,
                           scope_kind=scope.kind, scope_id=scope.id,
                           sender_id=msg.sender.id,
                           sender_name=msg.sender.name or "",
                           channel_name=(self.channel.name_for(msg.chat)
-                                        if hasattr(self.channel, "name_for") else ""))
+                                        if hasattr(self.channel, "name_for") else ""),
+                          scope_label=str(_info.get("label") or ""),
+                          scope_name=str(_info.get("name") or ""))
         b.abilities = sorted(self.abilities_for(msg.chat))
         prof = self._channel_profile(msg.chat)
         b.style = str(prof.get("style") or "")

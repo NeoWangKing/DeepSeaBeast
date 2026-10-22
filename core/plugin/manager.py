@@ -184,7 +184,9 @@ class PluginContextProvider:
     async def contribute(self, bundle):
         from ..context import Contribution
         params = {
-            "scope": {"kind": bundle.scope_kind, "id": bundle.scope_id, "key": bundle.scope_key},
+            "scope": {"kind": bundle.scope_kind, "id": bundle.scope_id,
+                      "key": bundle.scope_key, "label": bundle.scope_label,
+                      "name": bundle.scope_name},
             "sender": {"id": bundle.sender_id, "name": bundle.sender_name},
             "channel": {"name": bundle.channel_name},
         }

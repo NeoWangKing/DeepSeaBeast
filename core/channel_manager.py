@@ -85,6 +85,20 @@ class ChannelManager:
             log.exception("读取通道 profile 失败")
             return {}
 
+    def scope_info(self, chat: ChatRef) -> dict:
+        """这个会话是什么（kind/id/key/label/name）——由通道说，核心不猜。"""
+        c = self.route(chat)
+        fn = getattr(c, "scope_info", None) if c is not None else None
+        if fn is None:
+            return {"kind": chat.kind, "id": chat.id, "key": chat.key,
+                    "label": "", "name": ""}
+        try:
+            return dict(fn(chat))
+        except Exception:
+            log.debug("scope_info 失败", exc_info=True)
+            return {"kind": chat.kind, "id": chat.id, "key": chat.key,
+                    "label": "", "name": ""}
+
     def name_for(self, chat: ChatRef) -> str:
         c = self.route(chat)
         return str(getattr(c, "name", "")) if c is not None else ""

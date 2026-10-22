@@ -61,7 +61,8 @@
 `get_context` 的入参：
 
 ```json
-{"scope": {"kind": "group|private|local", "id": 1109525246, "key": "g1109525246"},
+{"scope": {"kind": "group|private|local", "id": <平台给的 id>, "key": "<稳定唯一键>",
+           "label": "<人话类别，如 群聊/私聊/终端>", "name": "<平台显示名，可能为空>"},
  "sender": {"id": 3245938285, "name": "灵其啊"},
  "channel": {"name": "onebot"}}          // 这条消息从哪个 adapter 来的
 ```

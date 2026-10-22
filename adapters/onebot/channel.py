@@ -27,6 +27,8 @@ class OneBotChannel:
                  bot_id: int = 0) -> None:
         self._server = OneBotServer(host, port, allow_self_ids)
         self._owner_ids = set(owner_ids or [])
+        self._scope_names: dict[str, str] = {}     # chat.key → 昵称（来自事件）
+        self._group_names: dict[str, str] = {}     # chat.key → 群名（查 get_group_info）
         self.bot_id = int(bot_id)
         self._on_message: OnMessage | None = None
         self._stop: asyncio.Event | None = None
@@ -35,6 +37,27 @@ class OneBotChannel:
     @property
     def self_account(self) -> str:
         return str(getattr(self, "bot_id", "") or "")
+
+    async def _fetch_group_name(self, chat) -> None:
+        """群名不在 message 事件里，用 get_group_info 查一次；查不到就留着空。"""
+        try:
+            r = await self._server.call_action("get_group_info",
+                                               {"group_id": chat.id}, timeout=10)
+            name = str((r.get("data") or {}).get("group_name") or "")
+            if name:
+                self._group_names[chat.key] = name
+                log.info("记下群名：%s → %s", chat.key, name)
+        except Exception:
+            log.debug("取群名失败（忽略）：%s", chat.key)
+
+    def scope_info(self, chat) -> dict:
+        """群/私聊的事实。名字来自事件或 get_group_info，代码里没有任何具体群。"""
+        label = "QQ 群" if chat.kind == "group" else ("QQ 私聊" if chat.kind == "private" else "QQ")
+        name = self._group_names.get(chat.key) or self._scope_names.get(chat.key, "")
+        if chat.kind == "private":
+            name = self._scope_names.get(chat.key, "")
+        return {"kind": chat.kind, "id": chat.id, "key": chat.key,
+                "label": label, "name": name}
 
     def profile(self) -> dict:
         """QQ 的说话习惯 + 行内可用物（表情清单由核心按群统计后挑选）。"""
@@ -87,6 +110,11 @@ class OneBotChannel:
                 segs.append(Segment(kind="face", text=qq_faces.to_token(fid), data=data))
             else:
                 segs.append(Segment(kind=x.type, text=x.text, data=data))
+        name = str(ev.sender_name or "")
+        if name:
+            self._scope_names[chat.key] = name
+        if ev.message_type == "group" and chat.key not in self._group_names:
+            asyncio.create_task(self._fetch_group_name(chat))
         at_me = bool(self.bot_id) and ev.is_at(self.bot_id)
         msg = InboundMessage(
             chat=chat,

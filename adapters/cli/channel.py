@@ -27,6 +27,10 @@ class CliChannel:
         self._on_message: OnMessage | None = None
         self._stop = asyncio.Event()
 
+    def scope_info(self, chat) -> dict:
+        return {"kind": chat.kind, "id": chat.id, "key": chat.key,
+                "label": "命令行", "name": ""}
+
     def profile(self) -> dict:
         return {"style": "这是命令行。纯文本，别用表情符号和 markdown，可以把话说完整。",
                 "inline": {"faces": [], "mention": False, "markdown": False},

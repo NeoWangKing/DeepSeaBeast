@@ -41,6 +41,8 @@ class Contribution:
 class ContextBundle:
     scope_key: str = ""
     channel_name: str = ""       # 这条消息从哪个 adapter 来的（cli/tcp/onebot…）
+    scope_label: str = ""        # 人话类别（由通道给，如"群聊"/"私聊"/"终端"）
+    scope_name: str = ""         # 平台给的显示名（群名/昵称），拿不到就空
     scope_kind: str = ""       # group / private / local
     scope_id: int = 0
     sender_id: int = 0

@@ -1,5 +1,5 @@
 {
-  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > default。{channel} 会被替换成通道名。",
+  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > 自动建档。{channel}/{id}/{name} 会被替换。",
   "by_group": {
     "869622030": "system_prompt_friend.txt",
     "966812151": "system_prompt_tool.txt",
@@ -18,5 +18,11 @@
   },
   "private_default": "system_prompt_private.txt",
   "default": "system_prompt_sharp.txt",
-  "append_common": true
+  "append_common": true,
+  "filing": {
+    "group": "groups/{id}.md",
+    "private": "privates/{id}.md",
+    "local": "channels/{channel}.md"
+  },
+  "template": "_template.txt"
 }

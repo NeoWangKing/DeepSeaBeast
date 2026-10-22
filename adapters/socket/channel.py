@@ -34,6 +34,10 @@ class SocketChannel:
         self._stop: asyncio.Event | None = None
         self._server = None
 
+    def scope_info(self, chat) -> dict:
+        return {"kind": chat.kind, "id": chat.id, "key": chat.key,
+                "label": "脚本接口", "name": ""}
+
     def profile(self) -> dict:
         return {"style": "这是终端（脚本接入）。纯文本，别用表情符号和 markdown。",
                 "inline": {"faces": [], "mention": False, "markdown": False},
