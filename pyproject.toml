@@ -1,0 +1,9 @@
+[project]
+name = "deepsea-beast"
+version = "0.1.0"
+description = "QQ 群机器人核心：OneBot 反向 WS 接入 + 门控管线 + LLM 工具调用 + 插件"
+requires-python = ">=3.12"
+dependencies = ["websockets>=15,<18"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
