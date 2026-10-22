@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 同步代码到服务器并重启核心。**绝不覆盖服务器上的配置/密钥/数据**。
+# 同步代码到服务器并重启核心。
+# 只同步"代码白名单"，绝不碰服务器上的 core.toml / .secrets / data（踩过两次坑）。
 #
 # 用法：./deploy/sync.sh [--no-restart]
 set -euo pipefail
@@ -11,21 +12,23 @@ RESTART=1
 [ "${1:-}" = "--no-restart" ] && RESTART=0
 
 cd "$(dirname "$0")/.."
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
-echo "→ 同步代码到 $HOST:$DEST"
-rsync -az \
-  --exclude '.venv' --exclude '__pycache__' --exclude 'data' \
-  --exclude '.git' --exclude '.secrets' --exclude 'core.toml' \
-  -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
-  ./ "$HOST:/tmp/deepsea_src/"
+# 白名单：只拷这些（core.toml / .secrets / data 一律不进）
+for p in core adapters plugins tests deploy docs Makefile README.md pyproject.toml requirements.txt core.example.toml; do
+  [ -e "$p" ] && cp -a "$p" "$TMP"/
+done
+find "$TMP" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
+echo "→ 同步到 $HOST:$DEST"
+rsync -az -e "ssh -i $KEY -o StrictHostKeyChecking=no" "$TMP"/ "$HOST:/tmp/deepsea_src/"
 ssh -i "$KEY" "$HOST" "sudo cp -a /tmp/deepsea_src/. $DEST/ && sudo chown -R astrbot:astrbot $DEST"
 
-# 同步后自检：配置里的端口必须是 6199（SnowLuma 连这里）
-PORT=$(ssh -i "$KEY" "$HOST" "grep -E '^port' $DEST/core.toml | head -1")
-echo "→ 服务器配置：$PORT"
+PORT=$(ssh -i "$KEY" "$HOST" "grep -E '^port' $DEST/core.toml | head -1 || echo '（缺少 core.toml）'")
+KEYPATH=$(ssh -i "$KEY" "$HOST" "grep -E '^api_key_file' $DEST/core.toml | head -1 || echo '（未配置 key）'")
+echo "→ 服务器配置：$PORT / $KEYPATH"
 
 if [ "$RESTART" = "1" ]; then
-  echo "→ 重启 deepsea-beast"
-  ssh -i "$KEY" "$HOST" "sudo systemctl restart deepsea-beast && sleep 6 && sudo journalctl -u deepsea-beast --since '1 minute ago' --no-pager | grep -E '监听|连接已建立|Traceback|ERROR' | tail -4"
+  ssh -i "$KEY" "$HOST" "sudo systemctl restart deepsea-beast && sleep 7 && sudo journalctl -u deepsea-beast --since '1 minute ago' --no-pager | grep -E '监听|连接已建立|ERROR|Traceback' | tail -4"
 fi

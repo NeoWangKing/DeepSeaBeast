@@ -45,6 +45,14 @@ async def run(config_path: str, channel_name: str) -> None:
     owner_ids = [int(x) for x in getattr(cfg, "owner_ids", []) or []]
     gate = GateConfig.from_dict(cfg.gate or {})
     llm_cfg = LLMConfig.from_dict(getattr(cfg, "llm", {}) or {})
+
+    # 启动自检：连不上模型的话，宁可启动失败让人看见，也别静默不说话
+    _key = llm_cfg.resolve_key()
+    if not _key:
+        log.error("LLM key 读不到：api_key_file=%r / api_key_env=%r",
+                  llm_cfg.api_key_file, llm_cfg.api_key_env)
+        if channel_name != "cli":
+            raise SystemExit(2)
     channel = build_channel(channel_name, cfg, owner_ids, 0)
 
     plugins = PluginManager()
