@@ -32,3 +32,31 @@ persona       turtle_soup   websearch    （任意语言）
 ## 里程碑
 
 M0 收事件（已完成）→ M1 能回消息 → M2 管线骨架 → M3 LLM+工具 → M4 插件协议 → M5 真机切换
+
+## 落地后的最终形态（2026-10-22，M5 已上线）
+
+```
+            ┌─────────── core（协议无关的内核）───────────┐
+            │ runtime：收 → 管线 → 上下文装配 → 工具循环   │
+            │ pipeline：白名单/频率/决定/连发合并           │
+            │ context：ContextBundle（人格/规则/记忆/场景） │
+            │ memory：self（她是谁）+ scope（这一处）+ recent│
+            │ llm：OpenAI 兼容 chat / chat_tools           │
+            │ plugin：stdio JSON-RPC 插件宿主              │
+            └──────────────┬──────────────────────────────┘
+                           │  Channel 协议（进程内）
+        ┌──────────────────┴───────────────────┐
+   adapters/cli（命令行）            adapters/onebot（SnowLuma 等）
+                           │  JSON-RPC（进程外，任意语言）
+        ┌──────────────────┴───────────────────┐
+   plugins/persona  plugins/memory  plugins/turtle …
+```
+
+三条关键决策（都踩过坑）：
+
+1. **事件处理不能 await 在读循环里**——否则处理函数里的 `send_group_msg` 等回包会死锁
+   （消息发出去了、回包读不到、30 秒超时后模型重发，表现为"一条消息回两遍"）。
+2. **渲染顺序固定**：人格+规则 → self 记忆 → scope 记忆 → 场景 → 最近 → 当前。
+   实测前缀缓存命中 71~83%。
+3. **记忆分三层**：self 极少写（只有主人明确要求或每日自省），scope 由后台任务写，
+   recent 自动写。混在一起会被某个群的闲聊污染。
