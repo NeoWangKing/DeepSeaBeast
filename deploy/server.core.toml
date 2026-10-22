@@ -21,6 +21,16 @@ host = "127.0.0.1"
 port = 6199
 allow_self_ids = [3237702352]
 
+[adapters.tcp]
+enabled = true                    # telnet 127.0.0.1:4000（只绑回环，不开公网）
+host = "127.0.0.1"
+port = 4000
+token = ""                        # 留空=不需要密码（回环访问）
+
+[adapters.socket]
+enabled = true                    # SSH 上去 chat.py 直接和运行中的核心聊
+path = "/tmp/deepsea.sock"
+
 [gate]
 force_mode = "off"                 # off = 只认 @
 allowed_groups = [1109525246]      # 先只在调试群跑；确认稳定后放开

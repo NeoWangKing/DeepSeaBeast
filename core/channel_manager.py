@@ -23,6 +23,7 @@ class ChannelManager:
     def __init__(self) -> None:
         self._channels: list = []
         self._tasks: list[asyncio.Task] = []
+        self._last: dict[str, object] = {}      # 会话 key → 最近一次收到消息的通道
         self._stop = asyncio.Event()
 
     # ── 注册 ──
@@ -38,7 +39,14 @@ class ChannelManager:
 
     # ── 路由 ──
     def route(self, chat: ChatRef):
-        """按会话类型挑通道：local → cli，group/private → onebot。"""
+        """挑通道：优先"这条会话上次从哪进来的"，其次按类型。
+
+        （多个本地通道都能处理 local：cli / socket / tcp —— 必须回到原路，
+          否则 tcp 里说的话会试图从没人的 socket 通道发出去。）
+        """
+        last = self._last.get(chat.key)
+        if last is not None and chat.kind in getattr(last, "supports", set()):
+            return last
         for c in self._channels:
             if chat.kind in getattr(c, "supports", set()):
                 return c
@@ -59,7 +67,7 @@ class ChannelManager:
         for c in self._channels:
             name = getattr(c, "name", "?")
             log.info("启动通道：%s（支持 %s）", name, ",".join(sorted(getattr(c, "supports", set()))))
-            self._tasks.append(asyncio.create_task(self._run(c, on_message)))
+            self._tasks.append(asyncio.create_task(self._run(c, self._wrap(c, on_message))))
         stop_task = asyncio.create_task(self._stop.wait())
         done, _ = await asyncio.wait([*self._tasks, stop_task],
                                      return_when=asyncio.FIRST_COMPLETED)
@@ -67,6 +75,13 @@ class ChannelManager:
             if t in done and not t.cancelled() and t.exception():
                 log.error("通道异常退出：%r", t.exception())
         stop_task.cancel()
+
+    def _wrap(self, channel, on_message: OnMessage):
+        """记住消息来自哪个通道，供 route() 回程用。"""
+        async def _inner(msg):
+            self._last[msg.chat.key] = channel
+            await on_message(msg)
+        return _inner
 
     async def _run(self, channel, on_message: OnMessage) -> None:
         name = getattr(channel, "name", "?")

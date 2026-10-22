@@ -45,8 +45,20 @@ def build_channels(cfg, owner_ids: list[int]) -> list:
                                  bot_id=int(ob.get("bot_id", 0) or
                                             (cfg.onebot.allow_self_ids[0]
                                              if cfg.onebot.allow_self_ids else 0))))
+    sk = ad.get("socket") or {}
+    if sk.get("enabled"):
+        from adapters.socket import SocketChannel
+        out.append(SocketChannel(path=str(sk.get("path", "/tmp/deepsea.sock"))))
+
+    tc = ad.get("tcp") or {}
+    if tc.get("enabled"):
+        from adapters.tcp import TcpChannel
+        out.append(TcpChannel(host=str(tc.get("host", "127.0.0.1")),
+                              port=int(tc.get("port", 4000)),
+                              token=str(tc.get("token", ""))))
+
     if not out:
-        raise SystemExit("没有启用任何通道（[adapters.cli] 或 [adapters.onebot]）")
+        raise SystemExit("没有启用任何通道（[adapters.cli]/[adapters.onebot]/[adapters.socket]/[adapters.tcp]）")
     return out
 
 

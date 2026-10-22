@@ -89,3 +89,35 @@ journalctl -u deepsea-beast -f                                        # 看线�
 2. **事件处理 await 在读循环里** → `send_group_msg` 等回包死锁，30 秒超时后模型重发，
    表现是"同一句话回两遍"。
 3. **切换时两个服务抢 6199** → 一定要 `systemctl disable astrbot`，否则重启后互相踢。
+
+## 用 telnet 和她聊天（连的是**运行中的核心**）
+
+TCP 通道只绑 `127.0.0.1:4000`（不占公网端口），三种连法：
+
+```bash
+# ① 一条命令（推荐）
+make telnet
+# 等价于：ssh -t agent@服务器 'nc 127.0.0.1 4000'
+
+# ② 本地隧道 + telnet
+ssh -N -L 4000:127.0.0.1:4000 agent@服务器     # 保持这个窗口
+telnet 127.0.0.1 4000                          # 另一个窗口
+
+# ③ 服务器上直接连
+ssh agent@服务器
+nc 127.0.0.1 4000
+```
+
+- 纯文本行：打一行回车发送，她每说一句回一行（连发就是多行）
+- `/quit` 或关窗口退出
+- 走的是 `local` 作用域：和 CLI 同一份记忆，工具集只有文本（不会让她在终端里发表情包）
+- 聊天内容会写进 `data/recent/local.json`，QQ 那边互不影响
+
+## 通道一览
+
+| 通道 | 绑定 | 用途 |
+|---|---|---|
+| `onebot` | `127.0.0.1:6199` | QQ（SnowLuma 反向 WS） |
+| `tcp` | `127.0.0.1:4000` | telnet/nc 直接聊 |
+| `socket` | `/tmp/deepsea.sock` | 本机脚本接入（`deploy/chat.py`） |
+| `cli` | stdin | 本地开发（服务器上关闭） |

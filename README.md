@@ -28,6 +28,8 @@ core/               内核（协议无关）
   scope.py          作用域（local / private / group）
 adapters/           前端通道
   cli/              命令行（本地开发、也是"核心不认识 QQ"的证明）
+  tcp/              telnet 风格（127.0.0.1:4000，SSH 隧道即可用）
+  socket/           unix socket（本机脚本接入）
   onebot/           SnowLuma / NapCat / Lagrange 等 OneBot 实现
 plugins/            能力插件（示例 echo_plugin）
 deploy/             部署文档与 systemd 单元
@@ -44,6 +46,7 @@ make chat        # 命令行直接聊（不需要 QQ）
 make selfcheck   # 一体自测：核心 + 假 SnowLuma 往返
 make test        # 全部自测（管线/工具/插件/记忆/模型）
 make bot         # OneBot 模式（等 SnowLuma 连上来）
+make telnet      # 连服务器上运行中的核心（telnet 风格，同一个人格与记忆）
 ```
 
 ## 里程碑
