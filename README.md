@@ -11,13 +11,13 @@ QQ 群机器人核心。**QQ 接入用 SnowLuma（OneBot 反向 WS）**，核心
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp core.example.toml core.toml          # 改端口/机器人 QQ
-.venv/bin/python -m core core.toml      # 起反向 WS（默认 127.0.0.1:6200）
 
-# 另开一个终端，用假客户端验证链路（不需要真 QQ）
-.venv/bin/python tests/fake_onebot.py
+make chat        # ① 命令行直接聊（不用 QQ，最好用）
+make selfcheck   # ② 一体自测：核心 + 假 SnowLuma，验证"收→回"往返
+make bot         # ③ OneBot 模式（等 SnowLuma 连上来，端口见 core.toml）
 ```
 
-预期：核心日志里出现 `收到消息 [g1109525246] 灵其啊(3245938285): '…'`。
+`make chat` 里输入 `/quit` 退出。
 
 ## Membership
 

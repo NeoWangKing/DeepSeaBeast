@@ -48,4 +48,12 @@ async def main(url: str = "ws://127.0.0.1:6200") -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "ws://127.0.0.1:6200"))
+    url = sys.argv[1] if len(sys.argv) > 1 else "ws://127.0.0.1:6200"
+    try:
+        asyncio.run(main(url))
+    except OSError as e:
+        print("[fake] 连不上 %s：%s" % (url, e))
+        print("[fake] 先在另一个终端起核心：")
+        print("       .venv/bin/python -m core --channel onebot")
+        print("[fake] 或者直接跑一体自测：.venv/bin/python tests/selfcheck_roundtrip.py")
+        raise SystemExit(2)
