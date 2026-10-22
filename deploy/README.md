@@ -16,8 +16,8 @@
 
 ```bash
 # 1. 同步代码（本机执行）
-rsync -az --exclude .venv --exclude __pycache__ --exclude data --exclude .git --exclude .secrets \
-  -e "ssh -i ~/.sshhelper/agent_key" ./ agent@117.72.111.241:/tmp/deepsea_src/
+# 用脚本（自动排除 core.toml / .secrets / data，不会覆盖服务器配置）
+./deploy/sync.sh
 ssh -i ~/.sshhelper/agent_key agent@117.72.111.241 \
   'sudo cp -a /tmp/deepsea_src/. /opt/deepsea/ && sudo chown -R astrbot:astrbot /opt/deepsea'
 
@@ -68,3 +68,11 @@ astrbot-<时间戳>/
 sudo -u astrbot /opt/deepsea/.venv/bin/python -m core --channel cli   # 本地聊两句
 journalctl -u deepsea-beast -f                                        # 看线上日志
 ```
+
+## 常犯的错（都踩过）
+
+1. **把 core.toml 同步上去** → 服务器端口被改成开发机的 6200，SnowLuma 连 6199 连不上，
+   表现是"她完全不说话"。`deploy/sync.sh` 已排除该文件。
+2. **事件处理 await 在读循环里** → `send_group_msg` 等回包死锁，30 秒超时后模型重发，
+   表现是"同一句话回两遍"。
+3. **切换时两个服务抢 6199** → 一定要 `systemctl disable astrbot`，否则重启后互相踢。
