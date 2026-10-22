@@ -27,6 +27,7 @@ class OneBotChannel:
         self.bot_id = int(bot_id)
         self._on_message: OnMessage | None = None
         self._stop: asyncio.Event | None = None
+        self._locks: dict[str, asyncio.Lock] = {}
 
     # ── 生命周期 ──
     async def start(self, on_message: OnMessage) -> None:
@@ -64,7 +65,10 @@ class OneBotChannel:
             at_me=at_me,
             raw=ev.raw,
         )
-        await self._on_message(msg)
+        # 同一个会话串行处理（避免两条消息同时跑管线），不同会话互不影响
+        lock = self._locks.setdefault(chat.key, asyncio.Lock())
+        async with lock:
+            await self._on_message(msg)
 
     # ── 发：OutboundMessage → OneBot 动作 ──
     @staticmethod

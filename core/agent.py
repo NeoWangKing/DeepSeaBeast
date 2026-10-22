@@ -58,6 +58,8 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
                 out = "参数 JSON 解析失败（可能被输出上限截断），重来一次，内容写短点"
             else:
                 out = await turn.dispatch(call.name, call.arguments)
+                log.info("工具 %s(%s) → %s", call.name,
+                         json.dumps(call.arguments, ensure_ascii=False)[:60], str(out)[:60])
             messages.append({"role": "tool", "tool_call_id": call.id or "", "content": out})
         if turn.finished:
             break

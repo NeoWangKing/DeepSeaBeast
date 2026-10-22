@@ -41,6 +41,17 @@ class OneBotServer:
         self._on_event: EventHook | None = None
         self._connected = asyncio.Event()
         self._server: Any = None
+        self._probe = True
+        self._tasks: set[asyncio.Task] = set()
+
+    async def _probe_after_connect(self) -> None:
+        """连上后调一次 get_login_info，把原始回包打出来（用来确认协议形态）。"""
+        try:
+            await asyncio.sleep(1.0)
+            raw = await self.call_action("get_login_info", {}, timeout=8)
+            log.info("探针 get_login_info 回包：%s", json.dumps(raw, ensure_ascii=False)[:200])
+        except Exception as e:
+            log.warning("探针失败：%r（如果这里超时，说明回包不带 echo）", e)
 
     # ── 生命周期 ────────────────────────────────────────────────
     def on_event(self, hook: EventHook) -> None:
@@ -113,10 +124,13 @@ class OneBotServer:
             log.info("OneBot 连接已断开")
 
     async def _dispatch(self, data: dict[str, Any]) -> None:
-        if "echo" in data and "retcode" in data:          # API 调用的回包
+        if "retcode" in data or "echo" in data:          # API 调用的回包
             fut = self._pending.pop(str(data.get("echo")), None)
             if fut is not None and not fut.done():
                 fut.set_result(data)
+            else:
+                log.info("未匹配的回包（没有 echo 或 echo 不认识）：%s",
+                         json.dumps(data, ensure_ascii=False)[:200])
             return
         self_id = int(data.get("self_id") or 0)
         if self.allow_self_ids and self_id not in self.allow_self_ids:
@@ -126,13 +140,24 @@ class OneBotServer:
         if post in ("meta_event",):                        # 心跳/生命周期
             if data.get("meta_event_type") == "lifecycle":
                 log.info("OneBot 生命周期事件：%s", data.get("sub_type"))
+                if data.get("sub_type") == "connect" and self._probe:
+                    self._probe = False
+                    asyncio.create_task(self._probe_after_connect())
             return
         ev = Event.from_raw(data)
         if self._on_event is not None:
-            try:
-                await self._on_event(ev, self)
-            except Exception:
-                log.exception("事件处理出错（不影响后续消息）")
+            # 关键：**不能 await**。处理函数里可能调 action 并等回包，
+            # 而回包只能由这个读循环读 → await 会死锁（2026-10-22 真机踩到：
+            # 消息发出去了，但我们等不到回包，30 秒超时后又重发一条）。
+            task = asyncio.create_task(self._run_event(ev))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+
+    async def _run_event(self, ev: Event) -> None:
+        try:
+            await self._on_event(ev, self)          # type: ignore[misc]
+        except Exception:
+            log.exception("事件处理出错（不影响后续消息）")
 
     # ── 发调用 ──────────────────────────────────────────────────
     async def call_action(self, action: str, params: dict[str, Any] | None = None,

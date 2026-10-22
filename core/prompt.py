@@ -47,11 +47,12 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
     return out
 
 
-def build_scene(msg, channel_name: str = "") -> str:
+def build_scene(msg, channel_name: str = "", self_id: int = 0) -> str:
     who = msg.sender.name or ("QQ%s" % msg.sender.id if msg.sender.id else "对方")
+    me = ("你的 QQ 号是 %d。" % self_id) if self_id else ""
     if msg.chat.kind == "local":
         return "当前场景：命令行对话（一对一）。对面是 %s。" % who
     if msg.chat.kind == "group":
-        return ("当前场景：QQ 群（群号 %d），你是群里的一员；正在说话的是 %s（QQ %s）。"
-                % (msg.chat.id, who, msg.sender.id))
-    return "当前场景：QQ 私聊，对面是 %s（QQ %s）。" % (who, msg.sender.id)
+        return ("当前场景：QQ 群（群号 %d），你是群里的一员（%s）；正在说话的是 %s（QQ %s）。"
+                % (msg.chat.id, me or "你的账号", who, msg.sender.id))
+    return "当前场景：QQ 私聊（%s），对面是 %s（QQ %s）。" % (me or "你的账号", who, msg.sender.id)
