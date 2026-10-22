@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from core.channel import (ChatRef, InboundMessage, Message, OnMessage, OutboundMessage,
@@ -140,10 +141,12 @@ class OneBotChannel:
                 if seg.kind == "file":
                     return await self._send_file(out, seg)
             raw = self._to_raw(out)
+            log.debug("发送 → chat=%s %s", out.chat.key, json.dumps(raw, ensure_ascii=False)[:200])
             if out.chat.kind == "group":
                 r = await self._server.send_group_msg(out.chat.id, raw)
             else:
                 r = await self._server.send_private_msg(out.chat.id, raw)
+            log.debug("回包 ← %s", json.dumps(r, ensure_ascii=False)[:200])
             if int(r.get("retcode", 0)) != 0:
                 return SendResult(ok=False, error=str(r.get("wording") or r.get("retcode")))
             mid = (r.get("data") or {}).get("message_id")

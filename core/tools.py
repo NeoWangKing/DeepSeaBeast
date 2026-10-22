@@ -254,7 +254,9 @@ class Turn:
         if not name:
             return "name 不能为空"
         # 行内写法交给通道去替换成原生表情；这里单独发一条
-        await self._do_send({"text": "[表情:%s]" % name})
+        r = await self._do_send({"text": "[表情:%s]" % name})
+        if "已发出" not in r:
+            return "表情没发出去：%s" % r
         return "表情已发出"
 
     def _do_list_faces(self, args: dict[str, Any]) -> str:
