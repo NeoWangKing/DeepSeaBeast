@@ -10,6 +10,7 @@ import signal
 from . import __version__
 from . import config as cfg_mod
 from adapters import build_channels      # 装配层：唯一知道有哪些通道的地方
+from .capability import build_report
 from .channel_manager import ChannelManager
 from .llm import LLMConfig
 from .pacing import PacingConfig
@@ -60,6 +61,9 @@ async def run(config_path: str, channel_name: str) -> None:
     scheduler = Scheduler()
     if getattr(cfg, "jobs", {}).get("enabled", True):
         scheduler.add_plugin_jobs(plugins)
+
+    for line in build_report(channels, list(plugins.tools.values())).lines():
+        log.info(line)
 
     runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins,
                       data_dir=cfg.data_dir,

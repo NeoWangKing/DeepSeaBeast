@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .capability import KIND_TO_VERB, TEXT, Unsupported, supports
 from .channel import InboundMessage, Message, Segment
 
 log = logging.getLogger("tools")
@@ -68,7 +69,28 @@ FINISH = ToolSpec(
         "reason": {"type": "string", "description": "为什么收工（可选）"}}},
 )
 
-DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, FINISH]
+SEND_FILE = ToolSpec(
+    name="send_file",
+    description="把本机上的一个文件发到当前会话（**只有支持文件的通道才有这个工具**）",
+    parameters={"type": "object", "properties": {
+        "path": {"type": "string", "description": "文件的绝对路径"},
+        "name": {"type": "string", "description": "可选：显示的文件名"},
+    }, "required": ["path"]},
+    requires={"file"},
+)
+
+SEND_IMAGE = ToolSpec(
+    name="send_image",
+    description="发一张图片（本地路径或直链 URL；**只有支持图片的通道才有**）",
+    parameters={"type": "object", "properties": {
+        "path": {"type": "string", "description": "本地图片路径"},
+        "url": {"type": "string", "description": "图片直链"},
+        "caption": {"type": "string", "description": "可选：配一句话"},
+    }},
+    requires={"image"},
+)
+
+DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FILE, SEND_IMAGE, FINISH]
 
 
 class Turn:
@@ -115,6 +137,10 @@ class Turn:
                         if not res.get("ok"):
                             return "插件返回错误：%s" % (res.get("error") or "未知")
                         data = res.get("data")
+                        # 插件不直接碰通道：它给"意图"，核心负责执行
+                        note = await self._run_intents(data)
+                        if note:
+                            return note
                         return data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
                     return res if isinstance(res, str) else json.dumps(res, ensure_ascii=False)
                 except Exception as e:
@@ -126,6 +152,10 @@ class Turn:
                 return self._do_decide(args)
             if name == "send_message":
                 return await self._do_send(args)
+            if name == "send_file":
+                return await self._do_send_file(args)
+            if name == "send_image":
+                return await self._do_send_image(args)
             if name == "finish":
                 self.finished = True
                 self.finish_reason = str(args.get("reason") or "")
@@ -147,6 +177,95 @@ class Turn:
             self.finished = True
             return "好，这条不接（%s），别调用 send_message。" % action
         return "行，按这个回：%s" % (self.decision["intent"] or "顺着上下文接一句")
+
+    async def _run_intents(self, data: Any) -> str:
+        """插件在 data.send 里给动作列表，核心按通道能力执行。
+
+            {"send": [{"kind": "text", "text": "看看这个"},
+                      {"kind": "file", "path": "/tmp/x.log", "name": "x.log"}]}
+
+        通道做不了 → 原样告诉模型（**不静默降级**），由它用语言兜底。
+        """
+        if not isinstance(data, dict):
+            return ""
+        intents = data.get("send")
+        if not isinstance(intents, list) or not intents:
+            return ""
+        done: list[str] = []
+        for it in intents:
+            if not isinstance(it, dict):
+                continue
+            kind = str(it.get("kind") or "text")
+            verb = KIND_TO_VERB.get(kind, TEXT)
+            if not supports(self.abilities, verb):
+                return "这个通道做不到「%s」（能力缺失），请用文字表达" % verb
+            try:
+                if kind == "text":
+                    await self._do_send({"text": str(it.get("text") or "")})
+                    done.append("text")
+                elif kind == "file":
+                    seg = Segment("file", text="[文件]",
+                                  data={"path": str(it.get("path") or ""),
+                                        "name": str(it.get("name") or "")})
+                    r = await self._send_message_out([seg])
+                    if not r:
+                        return "文件发送失败"
+                    done.append("file")
+                elif kind == "image":
+                    seg = Segment("image", text="[图片]",
+                                  data={"path": str(it.get("path") or ""),
+                                        "url": str(it.get("url") or "")})
+                    r = await self._send_message_out([seg])
+                    if not r:
+                        return "图片发送失败"
+                    done.append("image")
+                else:
+                    return "不认识的发送动作：%s" % kind
+            except Unsupported as e:
+                return str(e)
+        return "已执行：%s" % "、".join(done) if done else ""
+
+    async def _do_send_file(self, args: dict[str, Any]) -> str:
+        if self.ctx is not None and self.ctx.should_stop():
+            return "这一轮已经结束了，不要再发"
+        path = str(args.get("path") or "")
+        if not path:
+            return "path 不能为空"
+        seg = Segment("file", text="[文件]", data={"path": path,
+                                                  "name": str(args.get("name") or "")})
+        ok = await self._send_message_out([seg])
+        if not ok:
+            return "这个通道发不了文件（能力缺失），请用文字说明"
+        self.sent.append("[文件]%s" % path.rsplit("/", 1)[-1])
+        if self.ctx is not None:
+            self.ctx.sends += 1
+        return "文件已发出"
+
+    async def _do_send_image(self, args: dict[str, Any]) -> str:
+        if self.ctx is not None and self.ctx.should_stop():
+            return "这一轮已经结束了，不要再发"
+        path = str(args.get("path") or "")
+        url = str(args.get("url") or "")
+        if not path and not url:
+            return "path 或 url 至少给一个"
+        caption = str(args.get("caption") or "")
+        if caption:
+            await self._do_send({"text": caption})
+        seg = Segment("image", text="[图片]", data={"path": path, "url": url})
+        ok = await self._send_message_out([seg])
+        if not ok:
+            return "这个通道发不了图片（能力缺失），请用文字说明"
+        self.sent.append("[图片]")
+        if self.ctx is not None:
+            self.ctx.sends += 1
+        return "图片已发出"
+
+    async def _send_message_out(self, segments: list[Segment]) -> bool:
+        from .channel import OutboundMessage
+        out = OutboundMessage(chat=self.msg.chat, message=Message(segments=segments),
+                              quote_id="", at_user=0)
+        res = await self.channel.send(out)
+        return bool(getattr(res, "ok", False))
 
     async def _do_send(self, args: dict[str, Any]) -> str:
         if self.ctx is not None:

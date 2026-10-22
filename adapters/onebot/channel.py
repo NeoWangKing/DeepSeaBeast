@@ -98,11 +98,21 @@ class OneBotChannel:
             data = dict(s.data) if s.data else {}
             if s.kind == "text":
                 data = {"text": s.text}
+            elif s.kind == "image":
+                # QQ 收本地路径要 file:// 前缀；有 url 就直接用
+                if data.get("url"):
+                    data = {"file": data["url"]}
+                elif data.get("path"):
+                    data = {"file": "file://" + str(data["path"])}
             raw.append({"type": s.kind, "data": data})
         return raw
 
     async def send(self, out: OutboundMessage) -> SendResult:
         try:
+            # 文件走独立的上传接口，不是 send_*_msg
+            for seg in out.message.segments:
+                if seg.kind == "file":
+                    return await self._send_file(out, seg)
             raw = self._to_raw(out)
             if out.chat.kind == "group":
                 r = await self._server.send_group_msg(out.chat.id, raw)

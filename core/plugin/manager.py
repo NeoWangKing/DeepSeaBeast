@@ -63,6 +63,10 @@ class PluginManager:
                               parameters=t.get("parameters") or {"type": "object", "properties": {}},
                               plugin=name,
                               requires={str(x) for x in (t.get("requires") or [])})
+            if tool.name in ("decide", "send_message", "finish"):
+                log.warning("插件 %s 想注册内置工具名 %s，已忽略（内置工具不可覆盖）",
+                            name, tool.name)
+                continue
             if tool.name in self.tools:
                 log.warning("工具名重复：%s（%s 覆盖 %s）", tool.name, name,
                             self.tools[tool.name].plugin)
