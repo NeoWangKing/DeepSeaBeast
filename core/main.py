@@ -1,69 +1,81 @@
-"""核心入口：读配置 → 起反向 WS → 收事件 → 交给管线（M0 只打印）。"""
+"""核心入口：选 adapter → 起运行时 → 等退出信号。"""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import signal
-import sys
 
+from . import __version__
 from . import config as cfg_mod
-from .onebot import Event, OneBotServer
+from .runtime import Runtime
 
 log = logging.getLogger("core")
 
 
 def setup_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO),
+                        format="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
+                        datefmt="%H:%M:%S")
 
 
-async def handle_event(ev: Event, server: OneBotServer) -> None:
-    """M0：只把收到的事件打印清楚，用来确认链路通。"""
-    if ev.post_type != "message":
-        log.info("事件：post_type=%s", ev.post_type)
-        return
-    log.info("收到消息 [%s] %s(%s): %r | message_id=%s",
-             ev.chat_key, ev.get_sender_name() or "?", ev.get_sender_id(),
-             ev.message_str[:60], ev.message_id)
-    # M1 会在这里接管线；先留个明确的钩子
-    _ = server
+def build_channel(name: str, cfg, owner_ids: list[int], bot_id: int):
+    if name == "cli":
+        from adapters.cli import CliChannel
+        return CliChannel(user_name="本地用户", owner_id=(owner_ids[0] if owner_ids else 0))
+    if name == "onebot":
+        from adapters.onebot import OneBotChannel
+        return OneBotChannel(host=cfg.onebot.host, port=cfg.onebot.port,
+                             allow_self_ids=cfg.onebot.allow_self_ids,
+                             owner_ids=owner_ids, bot_id=bot_id or
+                             (cfg.onebot.allow_self_ids[0] if cfg.onebot.allow_self_ids else 0))
+    raise SystemExit("未知 channel：%s（可选 cli / onebot）" % name)
 
 
-async def run(config_path: str) -> None:
+async def run(config_path: str, channel_name: str) -> None:
     cfg = cfg_mod.load(config_path)
     setup_logging(cfg.log.level)
-    log.info("DeepSeaBeast 核心启动（data_dir=%s）", cfg.data_dir)
+    log.info("DeepSeaBeast 核心 v%s 启动（channel=%s，data_dir=%s）",
+             __version__, channel_name, cfg.data_dir)
 
-    server = OneBotServer(cfg.onebot.host, cfg.onebot.port, cfg.onebot.allow_self_ids)
-    server.on_event(handle_event)
-    await server.start()
+    owner_ids = [int(x) for x in getattr(cfg, "owner_ids", []) or []]
+    channel = build_channel(channel_name, cfg, owner_ids, 0)
+    runtime = Runtime(channel, owner_ids)
 
     stop = asyncio.Event()
 
     def _ask_stop(*_: object) -> None:
-        log.info("收到退出信号，准备收工")
+        log.info("收到退出信号")
         stop.set()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, _ask_stop)
-        except NotImplementedError:      # Windows 上不支持
+        except NotImplementedError:
             pass
 
-    await stop.wait()
-    await server.stop()
+    # channel.start() 自己结束（比如 CLI 里 /quit）也算收工
+    start_task = asyncio.create_task(channel.start(runtime.on_message))
+    stop_task = asyncio.create_task(stop.wait())
+    done, pending = await asyncio.wait({start_task, stop_task},
+                                      return_when=asyncio.FIRST_COMPLETED)
+    for t in pending:
+        t.cancel()
+    await channel.stop()
+    if start_task in done and start_task.exception():
+        log.error("channel 异常退出：%r", start_task.exception())
     log.info("已退出")
 
 
 def main() -> None:
-    path = sys.argv[1] if len(sys.argv) > 1 else "core.toml"
+    ap = argparse.ArgumentParser(prog="deepsea-beast")
+    ap.add_argument("config", nargs="?", default="core.toml")
+    ap.add_argument("--channel", default="cli", choices=["cli", "onebot"])
+    a = ap.parse_args()
     try:
-        asyncio.run(run(path))
+        asyncio.run(run(a.config, a.channel))
     except KeyboardInterrupt:
         pass
 

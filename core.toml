@@ -10,3 +10,4 @@ allow_self_ids = [3237702352]
 level = "INFO"
 
 data_dir = "data"
+owner_ids = [3245938285]   # 业主 QQ（私聊/特权判断用）
