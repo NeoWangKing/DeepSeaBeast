@@ -44,10 +44,11 @@ async def main() -> int:
     for p in providers:
         reg.add(p)
 
-    async def persona_for(msg):
+    async def persona_for(msg, channel="onebot"):
         b = ContextBundle(scope_key=msg.chat.key, scope_kind=msg.chat.kind,
                           scope_id=msg.chat.id, sender_id=msg.sender.id,
-                          sender_name=msg.sender.name, current=msg)
+                          sender_name=msg.sender.name, current=msg,
+                          channel_name=channel)
         await reg.collect(b)
         return (b.persona or ""), render(b)
 
@@ -60,6 +61,25 @@ async def main() -> int:
 
     p_light, _ = await persona_for(mk("group", 869622030))
     ck("闪电群人格不同", p_light != p_dbg, p_light[:30])
+
+    print()
+    print("== 按通道选卡 ==")
+    from core.channel import ChatRef as CR
+    from core.context import ContextBundle as CB
+
+    async def persona_with_channel(channel: str):
+        b = CB(scope_key="cli", scope_kind="local", scope_id=0,
+               sender_id=1, sender_name="灵其啊", channel_name=channel)
+        await reg.collect(b)
+        return b.persona or ""
+
+    p_cli = await persona_with_channel("cli")
+    p_tcp = await persona_with_channel("tcp")
+    p_sock = await persona_with_channel("socket")
+    ck("cli 拿到终端卡", "终端" in p_cli, p_cli[:26])
+    ck("tcp 也走终端卡", "终端" in p_tcp, p_tcp[:26])
+    ck("socket 拿到脚本卡", "脚本接口" in p_sock, p_sock[:26])
+    ck("三种通道的卡不同", len({p_cli[:20], p_sock[:20]}) == 2)
 
     print()
     print("== 私聊人格 ==")

@@ -121,7 +121,9 @@ class Runtime:
                           budget_tokens=self.budget_tokens, current=msg,
                           scope_kind=scope.kind, scope_id=scope.id,
                           sender_id=msg.sender.id,
-                          sender_name=msg.sender.name or "")
+                          sender_name=msg.sender.name or "",
+                          channel_name=(self.channel.name_for(msg.chat)
+                                        if hasattr(self.channel, "name_for") else ""))
         b.abilities = sorted(self.abilities_for(msg.chat))
         prof = self._channel_profile(msg.chat)
         b.style = str(prof.get("style") or "")

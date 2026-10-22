@@ -44,22 +44,35 @@ def read_card(name: str) -> str:
         return ""
 
 
-def pick(scope: dict, mp: dict) -> str:
+def pick(scope: dict, mp: dict, channel: str = "") -> str:
+    """优先级：具体群/具体人 > 通道种类 > default。"""
     kind = str(scope.get("kind") or "")
     sid = str(scope.get("id") or "")
     if kind == "group":
-        return str((mp.get("groups") or {}).get(sid) or mp.get("default") or "")
-    if kind == "private":
-        return str((mp.get("privates") or {}).get(sid) or mp.get("private_default")
-                   or mp.get("default") or "")
-    # local（命令行）
-    return str(mp.get("local") or mp.get("private_default") or mp.get("default") or "")
+        hit = (mp.get("by_group") or {}).get(sid)
+        if hit:
+            return str(hit)
+    elif kind == "private":
+        hit = (mp.get("by_private") or {}).get(sid)
+        if hit:
+            return str(hit)
+        if mp.get("private_default"):
+            return str(mp["private_default"])
+    # 通道种类兜底（cli / tcp / socket / onebot …）
+    hit = (mp.get("by_channel") or {}).get(channel or "")
+    if hit:
+        return str(hit)
+    if kind == "private" and mp.get("private_default"):
+        return str(mp["private_default"])
+    return str(mp.get("default") or "")
 
 
 def get_context(params: dict) -> dict:
     mp = load_mapping()
     scope = params.get("scope") or {}
-    card = read_card(pick(scope, mp))
+    channel = str((params.get("channel") or {}).get("name") or "")
+    card = read_card(pick(scope, mp, channel))
+    card = card.replace("{channel}", channel or "终端")
     parts = [card] if card else []
     if mp.get("append_common"):
         common = read_card("_common_patch.txt")

@@ -1,17 +1,22 @@
 {
-  "_说明": "scope → 人格卡。group:<群号> 优先，private:<QQ> 其次，最后用 default。",
-  "default": "system_prompt_sharp.txt",
-  "groups": {
+  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > default。{channel} 会被替换成通道名。",
+  "by_group": {
     "869622030": "system_prompt_friend.txt",
     "966812151": "system_prompt_tool.txt",
     "1105410423": "project_assistant.txt",
     "1109525246": "1109525246.txt",
     "866103773": "866103773.txt"
   },
-  "privates": {
+  "by_private": {
     "3245938285": "system_prompt_private.txt",
     "287383512": "private_warm.txt"
   },
+  "by_channel": {
+    "cli": "terminal.txt",
+    "tcp": "terminal.txt",
+    "socket": "terminal_script.txt"
+  },
   "private_default": "system_prompt_private.txt",
+  "default": "system_prompt_sharp.txt",
   "append_common": true
 }

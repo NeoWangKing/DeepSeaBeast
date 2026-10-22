@@ -85,6 +85,10 @@ class ChannelManager:
             log.exception("读取通道 profile 失败")
             return {}
 
+    def name_for(self, chat: ChatRef) -> str:
+        c = self.route(chat)
+        return str(getattr(c, "name", "")) if c is not None else ""
+
     def abilities_for(self, chat: ChatRef) -> set[str]:
         """这个会话能用哪些能力（决定哪些工具出现）。"""
         c = self.route(chat)

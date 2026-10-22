@@ -40,6 +40,7 @@ class Contribution:
 @dataclass(slots=True)
 class ContextBundle:
     scope_key: str = ""
+    channel_name: str = ""       # 这条消息从哪个 adapter 来的（cli/tcp/onebot…）
     scope_kind: str = ""       # group / private / local
     scope_id: int = 0
     sender_id: int = 0

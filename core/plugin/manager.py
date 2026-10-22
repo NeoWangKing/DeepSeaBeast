@@ -186,6 +186,7 @@ class PluginContextProvider:
         params = {
             "scope": {"kind": bundle.scope_kind, "id": bundle.scope_id, "key": bundle.scope_key},
             "sender": {"id": bundle.sender_id, "name": bundle.sender_name},
+            "channel": {"name": bundle.channel_name},
         }
         try:
             res = await self.manager._procs[self.plugin].call("get_context", params, self.timeout)

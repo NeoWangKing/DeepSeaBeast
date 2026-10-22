@@ -58,6 +58,16 @@
 
 ### call_tool 示例
 
+`get_context` 的入参：
+
+```json
+{"scope": {"kind": "group|private|local", "id": 1109525246, "key": "g1109525246"},
+ "sender": {"id": 3245938285, "name": "灵其啊"},
+ "channel": {"name": "onebot"}}          // 这条消息从哪个 adapter 来的
+```
+
+`channel.name` 让插件能按"通道种类"选不同的人格卡（QQ / 终端 / 脚本接口…）。
+
 ```json
 // 核心 → 插件
 {"id": 7, "method": "call_tool", "params": {
