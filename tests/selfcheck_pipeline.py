@@ -36,7 +36,6 @@ CFG = GateConfig.from_dict({
     "force_mode": "off",
     "allowed_groups": [1109525246],
     "at_only_groups": [1109525246],
-    "private_owner_only": True,
     "merge_window_sec": 10,
     "burst_suppress_sec": 30,
     "min_interval_sec": 8,
@@ -102,8 +101,11 @@ ck("每小时额度用完 → drop", r.kind == "drop" and "额度" in r.reason, 
 print()
 print("== 私聊 ==")
 p = Pipeline(CFG)
-ck("私聊陌生人 → drop", p.run(mk("你好", uid=444, private=True), time.time()).kind == "drop")
-ck("私聊主人 → reply", p.run(mk("你好", uid=444, owner=True, private=True), time.time()).kind == "reply")
+ck("私聊陌生人默认也回", p.run(mk("你好", uid=444, private=True), time.time()).kind == "reply")
+ck("私聊主人也回", p.run(mk("你好", uid=444, owner=True, private=True), time.time()).kind == "reply")
+p_strict = Pipeline(GateConfig.from_dict({"force_mode": "off", "private_owner_only": True}))
+ck("显式开启 owner_only 时才拦陌生人",
+   p_strict.run(mk("你好", uid=444, private=True), time.time()).kind == "drop")
 
 print()
 if FAIL:

@@ -52,7 +52,7 @@ jitter = 0.2
 force_mode = "off"                 # off = 只认 @
 allowed_groups = [1109525246]      # 先只在调试群跑；确认稳定后放开
 at_only_groups = [1109525246]
-private_owner_only = true
+private_owner_only = false   # false = 私聊都理（靠频率限制防刷）
 merge_window_sec = 10
 typing_wait_sec = 8         # 每说一句就重新计时
 typing_max_wait_sec = 40    # 但一串话最多等这么久

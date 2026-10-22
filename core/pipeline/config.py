@@ -13,8 +13,8 @@ class GateConfig:
     allowed_groups: list[int] = field(default_factory=list)
     # 只认 @ 的群（其余群允许按概率接话）
     at_only_groups: list[int] = field(default_factory=list)
-    # 私聊默认只回主人
-    private_owner_only: bool = True
+    # 私聊是否只回主人（默认 false：私聊都理，靠频率限制防刷）
+    private_owner_only: bool = False
 
     # 连发合并窗口（秒）
     merge_window_sec: float = 10.0
@@ -51,7 +51,7 @@ class GateConfig:
         return cls(
             allowed_groups=[int(x) for x in (d.get("allowed_groups") or [])],
             at_only_groups=[int(x) for x in (d.get("at_only_groups") or [])],
-            private_owner_only=bool(d.get("private_owner_only", True)),
+            private_owner_only=bool(d.get("private_owner_only", False)),
             merge_window_sec=_f("merge_window_sec", 10.0),
             typing_wait_sec=_f("typing_wait_sec", 8.0),
             typing_max_wait_sec=_f("typing_max_wait_sec", 40.0),
