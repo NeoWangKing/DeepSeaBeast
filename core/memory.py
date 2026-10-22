@@ -18,7 +18,8 @@ from .scope import Scope
 log = logging.getLogger("memory")
 
 SELF_PARTS = ("identity", "owner", "lessons")
-_MAX_PART_CHARS = 1200
+_MAX_PART_CHARS = 1200        # 手写规矩：够长就基本不截
+_MAX_IMPRESSION_CHARS = 400   # 自动群印象：只带一个概要，细节留在文件里
 _MAX_ITEMS = 8
 
 
@@ -59,16 +60,31 @@ class MemoryStore:
         return self.scope_dir / scope.dirname
 
     def scope_parts(self, scope: Scope) -> dict[str, str]:
-        """把该作用域下的记忆拼成几段短文本（顺序固定，利于缓存）。"""
+        """把该作用域下的记忆拼成几段短文本（顺序固定，利于缓存）。
+
+        注入什么（2026-10-22 定的策略）：
+          rules       手写规矩 —— 全量（这是底线，不能丢）
+          impression  自动群印象 —— 只带概要（≤400 字）
+          members     成员档案 —— 只给"当前说话人"以外的高频成员摘要
+        不注入：notes.jsonl（理解笔记）、jargon/expressions（黑话/表达库，留待以后按需检索）
+        """
         d = self._scope_dir(scope)
         out: dict[str, str] = {}
-        prof = d / "profile.md"
-        try:
-            t = prof.read_text(encoding="utf-8").strip()
-            if t:
-                out["profile"] = t[:_MAX_PART_CHARS]
-        except Exception:
-            pass
+        for name, cap in (("rules", _MAX_PART_CHARS), ("impression", _MAX_IMPRESSION_CHARS)):
+            try:
+                t = (d / ("%s.md" % name)).read_text(encoding="utf-8").strip()
+                if t:
+                    out[name] = t[:cap]
+            except Exception:
+                pass
+        # 兼容：老数据只有 profile.md 时，整篇当规矩带上
+        if not out:
+            try:
+                t = (d / "profile.md").read_text(encoding="utf-8").strip()
+                if t:
+                    out["rules"] = t[:_MAX_PART_CHARS]
+            except Exception:
+                pass
         # 成员档案：只取前 N 个，压成一行一个
         try:
             data = json.loads((d / "members.json").read_text(encoding="utf-8"))
@@ -82,30 +98,16 @@ class MemoryStore:
                 out["members"] = "\n".join(rows)
         except Exception:
             pass
-        # 黑话 / 表达库：只取有释义的少量
-        try:
-            jg = json.loads((d / "jargon.json").read_text(encoding="utf-8"))
-            terms = [x for x in (jg.get("terms") or []) if x.get("meaning")][:_MAX_ITEMS]
-            if terms:
-                out["jargon"] = "、".join("%s（%s）" % (x.get("term"), str(x.get("meaning"))[:20])
-                                          for x in terms)
-        except Exception:
-            pass
-        try:
-            ex = json.loads((d / "expressions.json").read_text(encoding="utf-8"))
-            items = (ex.get("items") or [])[:_MAX_ITEMS]
-            if items:
-                out["expressions"] = " / ".join(str(x.get("surface") or "") for x in items if x.get("surface"))
-        except Exception:
-            pass
+        # 黑话 / 表达库：先不注入（文件和采集都留着，等以后做"命中才给"的检索）
         return out
 
     def learn_scope(self, scope: Scope, kind: str, data) -> None:
         """后台学习任务写入（profile / members / jargon / expressions）。"""
         d = self._scope_dir(scope)
         d.mkdir(parents=True, exist_ok=True)
-        if kind == "profile":
-            (d / "profile.md").write_text(str(data).strip() + "\n", encoding="utf-8")
+        if kind in ("rules", "impression", "profile"):
+            name = "impression" if kind == "profile" else kind
+            (d / ("%s.md" % name)).write_text(str(data).strip() + "\n", encoding="utf-8")
             return
         p = d / ("%s.json" % kind)
         tmp = p.with_suffix(".json.tmp")
