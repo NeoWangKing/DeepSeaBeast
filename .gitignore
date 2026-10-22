@@ -4,3 +4,6 @@ __pycache__/
 data/
 .secrets/
 *.log
+
+# 本地/服务器各自的配置（含路径与个人信息），模板见 core.example.toml
+core.toml

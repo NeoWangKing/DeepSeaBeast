@@ -1,0 +1,19 @@
+[Unit]
+Description=DeepSeaBeast core (QQ bot via OneBot reverse WS)
+After=network-online.target snowluma.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=astrbot
+Group=astrbot
+WorkingDirectory=/opt/deepsea
+ExecStart=/opt/deepsea/.venv/bin/python -m core core.toml --channel onebot
+Restart=always
+RestartSec=3
+MemoryMax=768M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
