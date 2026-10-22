@@ -23,3 +23,12 @@ min_interval_sec = 8
 max_auto_per_hour = 30
 reply_probability = 0.2
 offpeak_probability = 0.25
+
+[llm]
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+# key 放文件里（不进 git）；也可用 api_key_env 指定环境变量
+api_key_file = ""   # 或 api_key_env = "DEEPSEEK_API_KEY"
+temperature = 0.9
+max_tokens = 900
+timeout = 60

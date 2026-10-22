@@ -27,6 +27,10 @@ BOT = 3237702352
 OWNER = 3245938285
 
 
+async def _async(v):
+    return v
+
+
 def step(msg: str) -> None:
     print("[selfcheck] %s" % msg, flush=True)
 
@@ -37,7 +41,8 @@ async def main() -> int:
     gate = GateConfig.from_dict({"force_mode": "off", "allowed_groups": [1109525246],
                                  "at_only_groups": [1109525246],
                                  "min_interval_sec": 0, "burst_suppress_sec": 0})
-    runtime = Runtime(channel, gate, [OWNER])
+    runtime = Runtime(channel, gate, [OWNER],
+                      reply_fn=lambda m: _async("测试回复：%s" % m.text))
     ch_task = asyncio.create_task(channel.start(runtime.on_message))
     await asyncio.sleep(0.5)
     step("核心已启动，端口 %d" % PORT)

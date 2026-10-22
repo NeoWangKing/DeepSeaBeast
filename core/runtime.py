@@ -11,17 +11,23 @@ import logging
 import time
 
 from .channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult
+from .llm import LLMConfig, chat
 from .pipeline import GateConfig, Pipeline
+from .prompt import build_messages
 
 log = logging.getLogger("runtime")
 
 
 class Runtime:
     def __init__(self, channel, gate: GateConfig | None = None,
-                 owner_ids: list[int] | None = None) -> None:
+                 owner_ids: list[int] | None = None, llm: LLMConfig | None = None,
+                 reply_fn=None) -> None:
         self.channel = channel
         self.owner_ids = set(owner_ids or [])
         self.pipeline = Pipeline(gate or GateConfig())
+        self.llm = llm or LLMConfig()
+        # 测试可以注入假回复；不注入就走真模型
+        self.reply_fn = reply_fn or self._llm_reply
         self._flush: dict[str, asyncio.Task] = {}
 
     # ── 收 ──
@@ -35,17 +41,33 @@ class Runtime:
             return
         if out.kind != "reply":
             return
-        text = self._reply_text(msg)
+        text = await self._reply(msg)
+        if not text:
+            return
         res = await self.say(msg.chat, text, quote_id=msg.message_id)
         if res.ok:
             self.pipeline.note_replied(msg, time.time())
             log.info("已回复 [%s] %r", msg.chat.key, text[:40])
 
-    # ── M2 的占位回复（M3 接 LLM）──
-    def _reply_text(self, msg: InboundMessage) -> str:
-        if msg.chat.kind == "local":
-            return "收到：%s" % msg.text
-        return "在的，你说的是「%s」" % msg.text[:40]
+    # ── 回复：默认走真模型，失败就静默（不编话）──
+    async def _reply(self, msg: InboundMessage) -> str:
+        try:
+            return await self.reply_fn(msg)
+        except Exception:
+            log.exception("生成回复失败，这条不回")
+            return ""
+
+    async def _llm_reply(self, msg: InboundMessage) -> str:
+        state = self.pipeline.state_for(msg.chat.key)
+        messages = build_messages(msg, list(state.recent))
+        text = await asyncio.to_thread(chat, messages, self.llm, 300)
+        text = " ".join(str(text or "").split())
+        if not text:
+            return ""
+        state.recent.append(("我", text[:120], 0, time.time()))
+        state.recent.append((msg.sender.name or "对方", msg.text[:120],
+                             msg.sender.id, time.time()))
+        return text[:400]
 
     # ── 连发合并的延后重放 ──
     def _schedule_replay(self, msg: InboundMessage, merged: str, now: float) -> None:
@@ -70,7 +92,7 @@ class Runtime:
                 log.info("重放合并 [%s] %r → %s（%s%s）",
                          key, replay.text[:30], out.kind, out.stage or "-", tag)
                 if out.kind == "reply":
-                    text = self._reply_text(replay)
+                    text = await self._reply(replay)
                     res = await self.say(replay.chat, text, quote_id=replay.message_id)
                     if res.ok:
                         self.pipeline.note_replied(replay, time.time())

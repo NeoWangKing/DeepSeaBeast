@@ -9,6 +9,7 @@ import signal
 
 from . import __version__
 from . import config as cfg_mod
+from .llm import LLMConfig
 from .pipeline import GateConfig
 from .runtime import Runtime
 
@@ -42,8 +43,9 @@ async def run(config_path: str, channel_name: str) -> None:
 
     owner_ids = [int(x) for x in getattr(cfg, "owner_ids", []) or []]
     gate = GateConfig.from_dict(cfg.gate or {})
+    llm_cfg = LLMConfig.from_dict(getattr(cfg, "llm", {}) or {})
     channel = build_channel(channel_name, cfg, owner_ids, 0)
-    runtime = Runtime(channel, gate, owner_ids)
+    runtime = Runtime(channel, gate, owner_ids, llm_cfg)
 
     stop = asyncio.Event()
 
