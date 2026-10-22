@@ -47,12 +47,15 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
     return out
 
 
-def build_scene(msg, channel_name: str = "", self_id: int = 0) -> str:
-    who = msg.sender.name or ("QQ%s" % msg.sender.id if msg.sender.id else "对方")
-    me = ("你的 QQ 号是 %d。" % self_id) if self_id else ""
-    if msg.chat.kind == "local":
-        return "当前场景：命令行对话（一对一）。对面是 %s。" % who
-    if msg.chat.kind == "group":
-        return ("当前场景：QQ 群（群号 %d），你是群里的一员（%s）；正在说话的是 %s（QQ %s）。"
-                % (msg.chat.id, me or "你的账号", who, msg.sender.id))
-    return "当前场景：QQ 私聊（%s），对面是 %s（QQ %s）。" % (me or "你的账号", who, msg.sender.id)
+def build_scene(msg, *, where: str = "", self_account: str = "") -> str:
+    """场景段：**由 adapter 告诉我们"这是哪儿"**，核心只负责拼装。
+
+    核心不认识 QQ/终端——它只知道"有个地方叫 where，对面是某个人"。
+    """
+    who = msg.sender.name or "对方"
+    sid = ("（%s）" % msg.sender.id) if msg.sender.id else ""
+    parts = ["当前场景：%s" % (where or "一对一对话")]
+    if self_account:
+        parts.append("你的账号：%s" % self_account)
+    parts.append("正在说话的是 %s%s" % (who, sid))
+    return "。".join(parts) + "。"

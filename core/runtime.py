@@ -86,8 +86,9 @@ class Runtime:
         b.self_knowledge = [parts[k] for k in ("identity", "owner", "lessons") if k in parts]
         for text in self.memory.scope_parts(scope).values():
             b.add_knowledge(text, 20)
-        b.scene = build_scene(msg, getattr(self.channel, "name", ""),
-                              int(getattr(self.channel, "bot_id", 0) or 0))
+        where = self.channel.describe(msg.chat) if hasattr(self.channel, "describe") else ""
+        b.scene = build_scene(msg, where=where,
+                              self_account=str(getattr(self.channel, "self_account", "") or ""))
         b.recent = self.recent.get(scope.key)
         await self.registry.collect(b)
         b.trim()

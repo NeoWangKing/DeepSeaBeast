@@ -32,6 +32,9 @@ class SocketChannel:
         self._stop: asyncio.Event | None = None
         self._server = None
 
+    def describe(self, chat) -> str:
+        return "终端对话（socket，一对一）"
+
     # ── 生命周期 ──
     async def start(self, on_message) -> None:
         try:

@@ -54,6 +54,20 @@ class ChannelManager:
                 return c
         return self._channels[0] if self._channels else None
 
+    def describe(self, chat: ChatRef) -> str:
+        """这是哪儿 —— 由通道自己说，核心不猜。"""
+        c = self.route(chat)
+        fn = getattr(c, "describe", None) if c is not None else None
+        return fn(chat) if fn else ""
+
+    @property
+    def self_account(self) -> str:
+        for c in self._channels:
+            acc = getattr(c, "self_account", "")
+            if acc:
+                return str(acc)
+        return ""
+
     def abilities_for(self, chat: ChatRef) -> set[str]:
         """这个会话能用哪些能力（决定哪些工具出现）。"""
         c = self.route(chat)

@@ -57,7 +57,7 @@ SEND_MESSAGE = ToolSpec(
     parameters={"type": "object", "properties": {
         "text": {"type": "string", "description": "要说的话"},
         "quote_id": {"type": "string", "description": "可选：引用哪条消息"},
-        "at": {"type": "integer", "description": "可选：@ 谁的 QQ"},
+        "at": {"type": "integer", "description": "可选：@ 谁的账号 id（通道支持才行）"},
     }, "required": ["text"]},
 )
 
@@ -154,7 +154,7 @@ class Turn:
         text = str(args.get("text") or "").strip()
         if not text:
             return "text 是空的"
-        segs = [Segment("text", {"text": text})]
+        segs = [Segment("text", text=text)]
         if self.msg.chat.kind != "local" or True:
             pass
         quote_id = str(args.get("quote_id") or "")

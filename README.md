@@ -16,7 +16,7 @@ QQ 群机器人**核心**。QQ 接入用 SnowLuma（OneBot v11 反向 WS），�
 
 ```
 core/               内核（协议无关）
-  channel.py        Channel 抽象：InboundMessage / OutboundMessage / abilities
+  channel.py        Channel 抽象：InboundMessage / OutboundMessage / abilities / describe
   runtime.py        收 → 管线 → 上下文装配 → 工具循环 → 发
   pipeline/         门控四阶段：白名单 / 频率 / 决定 / 连发合并
   agent.py + tools.py  工具调用循环（decide / send_message / finish）

@@ -16,24 +16,19 @@ from typing import Any, Awaitable, Callable, Protocol
 # ── 消息模型（与 QQ 无关的最小集合）─────────────────────────────────
 @dataclass(slots=True)
 class Segment:
-    type: str                     # text / at / image / file / face / reply / record
-    data: dict[str, Any] = field(default_factory=dict)
+    """消息的一个片段。
+
+    **核心只读 `text`（已归一化的可见文本）**；`data` 是通道私有数据，
+    核心绝不解读——QQ 的段格式、别家的 JSON 结构都只属于 adapter。
+    """
+
+    kind: str                     # text / image / file / face / voice / at / other
+    text: str = ""                # 归一化后的可见文本（adapter 负责填）
+    data: dict[str, Any] = field(default_factory=dict)   # 通道私有，核心不解读
 
     @property
-    def text(self) -> str:
-        if self.type == "text":
-            return str(self.data.get("text") or "")
-        if self.type == "at":
-            return f"@{self.data.get('name') or self.data.get('qq')}"
-        if self.type == "image":
-            return "<图片>"
-        if self.type == "record":
-            return "<语音>"
-        if self.type == "file":
-            return f"[文件:{self.data.get('file') or ''}]"
-        if self.type == "face":
-            return f"[表情:{self.data.get('id')}]"
-        return ""
+    def type(self) -> str:        # 兼容旧字段名
+        return self.kind
 
 
 @dataclass(slots=True)
@@ -50,7 +45,7 @@ class Message:
 
     @classmethod
     def from_text(cls, text: str) -> Message:
-        return cls(segments=[Segment("text", {"text": text})])
+        return cls(segments=[Segment("text", text=text)])
 
 
 # ── 会话 / 发送者 ───────────────────────────────────────────────────
@@ -58,7 +53,7 @@ class Message:
 class ChatRef:
     kind: str                     # "group" | "private" | "local"
     id: int
-    key: str                      # g<群号> / p<QQ> / cli
+    key: str                      # 作用域目录名，如 g<群id> / p<用户id> / cli
 
     @staticmethod
     def group(gid: int) -> ChatRef:

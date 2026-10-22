@@ -1,11 +1,6 @@
 # 服务器实例配置模板（不含密钥明文；key 放 /opt/deepsea/.secrets/deepseek.key）
 # 安装：sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
 
-[onebot]
-host = "127.0.0.1"
-port = 6199
-allow_self_ids = [3237702352]
-
 [log]
 level = "INFO"
 

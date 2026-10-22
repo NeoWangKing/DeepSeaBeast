@@ -9,6 +9,7 @@ import signal
 
 from . import __version__
 from . import config as cfg_mod
+from adapters import build_channels      # 装配层：唯一知道有哪些通道的地方
 from .channel_manager import ChannelManager
 from .llm import LLMConfig
 from .pacing import PacingConfig
@@ -23,44 +24,6 @@ def setup_logging(level: str) -> None:
     logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO),
                         format="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
                         datefmt="%H:%M:%S")
-
-
-def build_channels(cfg, owner_ids: list[int]) -> list:
-    """按配置装多个通道：CLI 和 QQ 可以同时在线。"""
-    out = []
-    ad = getattr(cfg, "adapters", {}) or {}
-
-    if (ad.get("cli") or {}).get("enabled"):
-        from adapters.cli import CliChannel
-        out.append(CliChannel(user_name="本地用户",
-                              owner_id=(owner_ids[0] if owner_ids else 0)))
-
-    ob = ad.get("onebot") or {}
-    if ob.get("enabled"):
-        from adapters.onebot import OneBotChannel
-        out.append(OneBotChannel(host=str(ob.get("host", cfg.onebot.host)),
-                                 port=int(ob.get("port", cfg.onebot.port)),
-                                 allow_self_ids=list(ob.get("allow_self_ids")
-                                                     or cfg.onebot.allow_self_ids),
-                                 owner_ids=owner_ids,
-                                 bot_id=int(ob.get("bot_id", 0) or
-                                            (cfg.onebot.allow_self_ids[0]
-                                             if cfg.onebot.allow_self_ids else 0))))
-    sk = ad.get("socket") or {}
-    if sk.get("enabled"):
-        from adapters.socket import SocketChannel
-        out.append(SocketChannel(path=str(sk.get("path", "/tmp/deepsea.sock"))))
-
-    tc = ad.get("tcp") or {}
-    if tc.get("enabled"):
-        from adapters.tcp import TcpChannel
-        out.append(TcpChannel(host=str(tc.get("host", "127.0.0.1")),
-                              port=int(tc.get("port", 4000)),
-                              token=str(tc.get("token", ""))))
-
-    if not out:
-        raise SystemExit("没有启用任何通道（[adapters.cli]/[adapters.onebot]/[adapters.socket]/[adapters.tcp]）")
-    return out
 
 
 async def run(config_path: str, channel_name: str) -> None:
@@ -78,13 +41,8 @@ async def run(config_path: str, channel_name: str) -> None:
     if not _key:
         log.error("LLM key 读不到：api_key_file=%r / api_key_env=%r",
                   llm_cfg.api_key_file, llm_cfg.api_key_env)
-        if channel_name != "cli":
-            raise SystemExit(2)
-    if channel_name in ("cli", "onebot"):
-        # 命令行显式指定时，只开那一个（本地开发最常用）
-        ad = {channel_name: {"enabled": True}}
-        cfg.adapters = ad
-    channels = build_channels(cfg, owner_ids)
+        raise SystemExit(2)
+    channels = build_channels(cfg, owner_ids, only=channel_name)
     pacing_cfg = PacingConfig.from_dict(getattr(cfg, "pacing", {}) or {})
     channel = ChannelManager(pacing_cfg)
     log.info("发言节奏：%s（基础 %.1fs + %.3fs/字，封顶 %.1fs）",
@@ -139,8 +97,8 @@ async def run(config_path: str, channel_name: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(prog="deepsea-beast")
     ap.add_argument("config", nargs="?", default="core.toml")
-    ap.add_argument("--channel", default="", choices=["", "cli", "onebot", "all"],
-                    help="留空=按配置；cli/onebot=只开一个；all=按配置全开")
+    ap.add_argument("--channel", default="",
+                    help="留空=按配置全开；填名字=只开那一个（如 cli），名字由 adapters/ 定义")
     a = ap.parse_args()
     try:
         asyncio.run(run(a.config, a.channel))

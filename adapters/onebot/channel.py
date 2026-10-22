@@ -30,6 +30,17 @@ class OneBotChannel:
         self._stop: asyncio.Event | None = None
         self._locks: dict[str, asyncio.Lock] = {}
 
+    @property
+    def self_account(self) -> str:
+        return str(getattr(self, "bot_id", "") or "")
+
+    def describe(self, chat) -> str:
+        if chat.kind == "group":
+            return "QQ 群 %d" % chat.id
+        if chat.kind == "private":
+            return "QQ 私聊"
+        return "QQ"
+
     # ── 生命周期 ──
     async def start(self, on_message: OnMessage) -> None:
         self._on_message = on_message
@@ -55,7 +66,9 @@ class OneBotChannel:
             chat = ChatRef.group(ev.group_id)
         else:
             chat = ChatRef.private(ev.user_id)
-        segs = [Segment(s.type, dict(s.data)) for s in ev.get_messages()]
+        # adapter 负责把 OneBot 段"归一化"：核心只读 kind + text，data 留作通道私有
+        segs = [Segment(kind=x.type, text=x.text, data=dict(x.data))
+                for x in ev.get_messages()]
         at_me = bool(self.bot_id) and ev.is_at(self.bot_id)
         msg = InboundMessage(
             chat=chat,
@@ -81,7 +94,11 @@ class OneBotChannel:
         if out.at_user:
             raw.append({"type": "at", "data": {"qq": str(out.at_user)}})
         for s in segs:
-            raw.append({"type": s.type, "data": dict(s.data)})
+            # 核心给的段只保证 kind/text；发出去时按 OneBot 格式还原
+            data = dict(s.data) if s.data else {}
+            if s.kind == "text":
+                data = {"text": s.text}
+            raw.append({"type": s.kind, "data": data})
         return raw
 
     async def send(self, out: OutboundMessage) -> SendResult:
