@@ -78,8 +78,8 @@ command = [".venv/bin/python", "plugins/echo_plugin/main.py"]
 timeout = 10
 
 [[plugins]]
-name = "persona"
-command = [".venv/bin/python", "plugins/persona/main.py"]
+name = "personas"
+command = [".venv/bin/python", "plugins/personas/main.py"]
 timeout = 10
 priority = 5
 can_persona = true

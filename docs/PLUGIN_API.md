@@ -18,7 +18,7 @@
 {"id": 1, "method": "hello", "params": {
     "protocol": 1,
     "core_version": "0.1.0",
-    "data_dir": "/opt/deepsea/data/plugins/persona"
+    "data_dir": "/opt/deepsea/data/plugins/personas"
 }}
 
 // 插件 → 核心
@@ -213,4 +213,4 @@ for line in sys.stdin:
 | 插件 | 位置 | 演示了什么 |
 |---|---|---|
 | `echo_plugin` | `plugins/echo_plugin/` | 工具、事件订阅、**后台任务**、数据目录、shutdown |
-| `persona` | `plugins/persona/` | `context` 能力、按作用域选人格卡 |
+| `personas` | `plugins/personas/` | `context` 能力、按作用域选人格卡 |

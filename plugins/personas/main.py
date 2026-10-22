@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""人格插件：按作用域挑人格卡，通过 get_context 交给核心。
+"""人格插件（personas）：按作用域挑人格卡，通过 get_context 交给核心。
 
 协议：core/plugin/__init__.py
   hello      → {"name","version","tools":[],"capabilities":["context"]}
@@ -19,7 +19,7 @@ MAPPING = os.path.join(BASE, "mapping.json")
 
 
 def log(msg: str) -> None:
-    sys.stderr.write("[persona] %s\n" % msg)
+    sys.stderr.write("[personas] %s\n" % msg)
     sys.stderr.flush()
 
 
@@ -71,7 +71,7 @@ def get_context(params: dict) -> dict:
 
 def handle(method: str, params: dict):
     if method == "hello":
-        return {"name": "persona", "version": "2.0", "protocol": 1,
+        return {"name": "personas", "version": "2.1", "protocol": 1,
                 "capabilities": ["context"], "events": [], "tools": []}
     if method == "ping":
         return {"pong": True}

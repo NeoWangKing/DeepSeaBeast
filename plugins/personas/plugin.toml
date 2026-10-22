@@ -1,6 +1,6 @@
 # 人格插件：按作用域选人格卡，作为 ContextProvider 注入
-name = "persona"
-command = ["/opt/deepsea/.venv/bin/python", "plugins/persona/main.py"]
+name = "personas"
+command = ["/opt/deepsea/.venv/bin/python", "plugins/personas/main.py"]
 timeout = 10
 priority = 5            # 越小越先，且不会被预算裁掉
 can_persona = true      # 允许覆盖核心默认人格

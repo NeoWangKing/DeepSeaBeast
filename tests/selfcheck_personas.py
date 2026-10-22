@@ -33,7 +33,7 @@ def mk(kind: str = "group", cid: int = 1109525246, uid: int = 3245938285) -> Inb
 async def main() -> int:
     py = str(ROOT / ".venv/bin/python")
     mgr = PluginManager()
-    await mgr.load({"name": "persona", "command": [py, "plugins/persona/main.py"],
+    await mgr.load({"name": "personas", "command": [py, "plugins/personas/main.py"],
                     "cwd": str(ROOT), "timeout": 10, "priority": 5,
                     "can_persona": True}, base_dir=str(ROOT))
 

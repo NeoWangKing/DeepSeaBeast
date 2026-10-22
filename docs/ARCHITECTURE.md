@@ -49,7 +49,7 @@ M0 收事件（已完成）→ M1 能回消息 → M2 管线骨架 → M3 LLM+�
    adapters/cli（命令行）            adapters/onebot（SnowLuma 等）
                            │  JSON-RPC（进程外，任意语言）
         ┌──────────────────┴───────────────────┐
-   plugins/persona  plugins/memory  plugins/turtle …
+   plugins/personas  plugins/memory  plugins/turtle …
 ```
 
 三条关键决策（都踩过坑）：
