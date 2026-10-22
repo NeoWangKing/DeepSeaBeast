@@ -103,7 +103,8 @@ class Runtime:
         messages = render(bundle)
         await self._notify("on_message", msg)
         turn = Turn(self.channel, msg, self.llm, persona=bundle.persona,
-                    plugins=self.plugins)
+                    plugins=self.plugins,
+                    abilities=self.abilities_for(msg.chat))
         await run_turn(turn, messages, max_rounds=6)
         if turn.decision:
             log.info("她的决定：%s（%s）", turn.decision.get("action"),
@@ -158,6 +159,10 @@ class Runtime:
         self._flush[key] = asyncio.create_task(_later())
 
     # ── 发 ──
+    def abilities_for(self, chat: ChatRef) -> set[str]:
+        fn = getattr(self.channel, "abilities_for", None)
+        return set(fn(chat)) if fn else set(getattr(self.channel, "abilities", set()))
+
     async def say(self, chat: ChatRef, text: str, quote_id: str = "",
                   at_user: int = 0) -> SendResult:
         out = OutboundMessage(chat=chat, message=Message.from_text(text),

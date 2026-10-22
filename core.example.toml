@@ -49,3 +49,13 @@ command = [".venv/bin/python", "plugins/persona/main.py"]
 timeout = 10
 priority = 5
 can_persona = true
+
+# 通道（可以同时开多个）
+[adapters.cli]
+enabled = true
+
+[adapters.onebot]
+enabled = true
+host = "127.0.0.1"
+port = 6199
+allow_self_ids = [3237702352]

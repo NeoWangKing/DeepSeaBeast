@@ -76,7 +76,7 @@ class Turn:
 
     def __init__(self, channel, msg: InboundMessage, llm, persona: str = "",
                  specs: list[ToolSpec] | None = None, max_sends: int = 4,
-                 plugins=None) -> None:
+                 plugins=None, abilities: set[str] | None = None) -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
@@ -84,6 +84,9 @@ class Turn:
         self.specs = list(specs or DEFAULT_SPECS)
         self.max_sends = max_sends
         self.plugins = plugins            # PluginManager（可选）
+        # 由调用方按"这条消息走哪个通道"决定；缺省用 channel 自己的
+        self.abilities = set(abilities) if abilities is not None \
+            else set(getattr(channel, "abilities", set()))
         self.decision: dict[str, Any] | None = None
         self.sent: list[str] = []
         self.finished = False
@@ -93,7 +96,7 @@ class Turn:
 
     @property
     def schemas(self) -> list[dict[str, Any]]:
-        ab = getattr(self.channel, "abilities", set())
+        ab = self.abilities
         out = schema(self.specs, ab)
         if self.plugins is not None:
             out.extend(self.plugins.schemas(ab))

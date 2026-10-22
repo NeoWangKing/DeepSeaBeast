@@ -116,7 +116,8 @@ OnMessage = Callable[[InboundMessage], Awaitable[None]]
 
 class Channel(Protocol):
     name: str
-    abilities: set[str]
+    abilities: set[str]      # 能做哪些动作：text / at / image / file / face / poke …
+    supports: set[str]       # 负责哪类会话：local / group / private
 
     async def start(self, on_message: OnMessage) -> None: ...
     async def send(self, out: OutboundMessage) -> SendResult: ...

@@ -18,6 +18,7 @@ class CliChannel:
     name = "cli"
     # CLI 只有文本；at/quote/image/file/face/poke 都声明不了 → 相关工具会被核心隐藏
     abilities: set[str] = {"text"}
+    supports: set[str] = {"local"}
 
     def __init__(self, user_name: str = "本地用户", owner_id: int = 0) -> None:
         self.user_name = user_name

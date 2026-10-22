@@ -33,6 +33,7 @@ class CoreConfig:
     persona: dict = field(default_factory=dict)   # [persona] text/file 覆盖默认人格
     plugins: list[dict] = field(default_factory=list)   # [[plugins]] 数组
     memory: dict = field(default_factory=dict)   # [memory] budget_tokens 等
+    adapters: dict = field(default_factory=dict)  # [adapters.cli] / [adapters.onebot]
 
 
 def load(path: str | Path = "core.toml") -> CoreConfig:
@@ -57,4 +58,5 @@ def load(path: str | Path = "core.toml") -> CoreConfig:
         persona=dict(raw.get("persona") or {}),
         plugins=list(raw.get("plugins") or []),
         memory=dict(raw.get("memory") or {}),
+        adapters=dict(raw.get("adapters") or {}),
     )

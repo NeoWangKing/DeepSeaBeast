@@ -9,6 +9,7 @@ import signal
 
 from . import __version__
 from . import config as cfg_mod
+from .channel_manager import ChannelManager
 from .llm import LLMConfig
 from .pipeline import GateConfig
 from .plugin import PluginManager
@@ -23,17 +24,30 @@ def setup_logging(level: str) -> None:
                         datefmt="%H:%M:%S")
 
 
-def build_channel(name: str, cfg, owner_ids: list[int], bot_id: int):
-    if name == "cli":
+def build_channels(cfg, owner_ids: list[int]) -> list:
+    """按配置装多个通道：CLI 和 QQ 可以同时在线。"""
+    out = []
+    ad = getattr(cfg, "adapters", {}) or {}
+
+    if (ad.get("cli") or {}).get("enabled"):
         from adapters.cli import CliChannel
-        return CliChannel(user_name="本地用户", owner_id=(owner_ids[0] if owner_ids else 0))
-    if name == "onebot":
+        out.append(CliChannel(user_name="本地用户",
+                              owner_id=(owner_ids[0] if owner_ids else 0)))
+
+    ob = ad.get("onebot") or {}
+    if ob.get("enabled"):
         from adapters.onebot import OneBotChannel
-        return OneBotChannel(host=cfg.onebot.host, port=cfg.onebot.port,
-                             allow_self_ids=cfg.onebot.allow_self_ids,
-                             owner_ids=owner_ids, bot_id=bot_id or
-                             (cfg.onebot.allow_self_ids[0] if cfg.onebot.allow_self_ids else 0))
-    raise SystemExit("未知 channel：%s（可选 cli / onebot）" % name)
+        out.append(OneBotChannel(host=str(ob.get("host", cfg.onebot.host)),
+                                 port=int(ob.get("port", cfg.onebot.port)),
+                                 allow_self_ids=list(ob.get("allow_self_ids")
+                                                     or cfg.onebot.allow_self_ids),
+                                 owner_ids=owner_ids,
+                                 bot_id=int(ob.get("bot_id", 0) or
+                                            (cfg.onebot.allow_self_ids[0]
+                                             if cfg.onebot.allow_self_ids else 0))))
+    if not out:
+        raise SystemExit("没有启用任何通道（[adapters.cli] 或 [adapters.onebot]）")
+    return out
 
 
 async def run(config_path: str, channel_name: str) -> None:
@@ -53,7 +67,14 @@ async def run(config_path: str, channel_name: str) -> None:
                   llm_cfg.api_key_file, llm_cfg.api_key_env)
         if channel_name != "cli":
             raise SystemExit(2)
-    channel = build_channel(channel_name, cfg, owner_ids, 0)
+    if channel_name in ("cli", "onebot"):
+        # 命令行显式指定时，只开那一个（本地开发最常用）
+        ad = {channel_name: {"enabled": True}}
+        cfg.adapters = ad
+    channels = build_channels(cfg, owner_ids)
+    channel = ChannelManager()
+    for c in channels:
+        channel.add(c)
 
     plugins = PluginManager()
     await plugins.load_all(getattr(cfg, "plugins", []) or [], base_dir=".")
@@ -85,13 +106,13 @@ async def run(config_path: str, channel_name: str) -> None:
             pass
 
     # channel.start() 自己结束（比如 CLI 里 /quit）也算收工
-    start_task = asyncio.create_task(channel.start(runtime.on_message))
+    start_task = asyncio.create_task(channel.start_all(runtime.on_message))
     stop_task = asyncio.create_task(stop.wait())
     done, pending = await asyncio.wait({start_task, stop_task},
                                       return_when=asyncio.FIRST_COMPLETED)
     for t in pending:
         t.cancel()
-    await channel.stop()
+    await channel.stop_all()
     await plugins.close()
     if start_task in done and start_task.exception():
         log.error("channel 异常退出：%r", start_task.exception())
@@ -101,7 +122,8 @@ async def run(config_path: str, channel_name: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(prog="deepsea-beast")
     ap.add_argument("config", nargs="?", default="core.toml")
-    ap.add_argument("--channel", default="cli", choices=["cli", "onebot"])
+    ap.add_argument("--channel", default="", choices=["", "cli", "onebot", "all"],
+                    help="留空=按配置；cli/onebot=只开一个；all=按配置全开")
     a = ap.parse_args()
     try:
         asyncio.run(run(a.config, a.channel))

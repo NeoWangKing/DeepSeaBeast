@@ -18,6 +18,7 @@ class OneBotChannel:
     name = "onebot"
     # SnowLuma 这边支持得比较全；真正发的时候再按能力挑
     abilities: set[str] = {"text", "at", "quote", "image", "file", "face", "poke", "voice"}
+    supports: set[str] = {"group", "private"}
 
     def __init__(self, host: str = "127.0.0.1", port: int = 6200,
                  allow_self_ids: list[int] | None = None, owner_ids: list[int] | None = None,

@@ -36,7 +36,9 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
                    max_rounds: int = 6, force_first: str = "decide") -> Turn:
     """跑一轮：模型 → 工具 → 模型 → … 直到 finish / 说完了 / 轮数用完。"""
     for r in range(1, max(1, int(max_rounds)) + 1):
-        choice = "required" if (r == 1 and force_first) else "auto"
+        # 每轮都要求调工具：正文不算发言，只有 send_message 才发出去。
+        # （2026-10-22 踩到：第二轮模型直接输出文本、没调工具 → 她"决定回"却一个字没说）
+        choice = "required" if not turn.finished else "auto"
         try:
             resp = await asyncio.to_thread(chat_tools, list(messages), turn.schemas,
                                            turn.llm, choice, 400)
@@ -50,7 +52,8 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
             log.info("token：命中 %d / 总计 %d（%d%%）", _hit, _tot,
                      (100 * _hit // _tot) if _tot else 0)
         if not resp.tool_calls:
-            log.debug("第 %d 轮模型没调工具（finish_reason=%s），收敛", r, resp.finish_reason)
+            log.warning("第 %d 轮模型没调工具（finish_reason=%s，正文 %.40r），收敛",
+                        r, resp.finish_reason, resp.content)
             break
         messages.append(_assistant_msg(resp))
         for call in resp.tool_calls:
