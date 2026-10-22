@@ -31,7 +31,8 @@ adapters/           前端通道
   tcp/              telnet 风格（127.0.0.1:4000，SSH 隧道即可用）
   socket/           unix socket（本机脚本接入）
   onebot/           SnowLuma / NapCat / Lagrange 等 OneBot 实现
-plugins/            能力插件（示例 echo_plugin）
+plugins/            能力插件（echo_plugin 参考实现 / persona 人格卡）
+docs/PLUGIN_API.md  插件协议 v1（外部契约）
 deploy/             部署文档与 systemd 单元
 ```
 
@@ -61,7 +62,9 @@ make bot         # OneBot 模式（等 SnowLuma 连上来）
 | M4.5 分层记忆 + 上下文装配 + 缓存命中日志 | ✅ |
 | **M5 真机上线**（SnowLuma 保留，AstrBot 停用） | ✅ 2026-10-22 |
 | M6 多通道（CLI + QQ 同时在线） | ✅ |
-| M7 人格式记忆策略 / 插件生态 | ⬜ |
+| M7-① 插件协议 v1（事件订阅/健康检查/数据目录/熔断） | ✅ |
+| M7-② 回合模型（队列/取消/预算/追踪） | ⬜ |
+| M7-③ 工具契约（结构化/权限/审计） | ⬜ |
 
 ## 已知未做
 

@@ -71,7 +71,12 @@ def get_context(params: dict) -> dict:
 
 def handle(method: str, params: dict):
     if method == "hello":
-        return {"name": "persona", "version": "1.0", "tools": [], "capabilities": ["context"]}
+        return {"name": "persona", "version": "2.0", "protocol": 1,
+                "capabilities": ["context"], "events": [], "tools": []}
+    if method == "ping":
+        return {"pong": True}
+    if method == "shutdown":
+        return {"ok": True}
     if method == "get_context":
         return get_context(params)
     raise ValueError("不认识的方法：%s" % method)
@@ -87,6 +92,8 @@ def main() -> None:
             msg = json.loads(line)
         except Exception:
             continue
+        if str(msg.get("method") or "") == "event":
+            continue
         mid = msg.get("id")
         try:
             send_ok = {"id": mid, "result": handle(str(msg.get("method") or ""),
@@ -95,6 +102,8 @@ def main() -> None:
             send_ok = {"id": mid, "error": str(e)}
         sys.stdout.write(json.dumps(send_ok, ensure_ascii=False) + "\n")
         sys.stdout.flush()
+        if str(msg.get("method") or "") == "shutdown":
+            break
 
 
 if __name__ == "__main__":

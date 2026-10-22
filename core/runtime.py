@@ -56,6 +56,10 @@ class Runtime:
     # ── 收 ──
     async def on_message(self, msg: InboundMessage) -> None:
         now = time.time()
+        await self._emit("message.received", {
+            "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": msg.chat.key},
+            "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
+            "text": msg.text, "at_me": bool(msg.at_me), "ts": now})
         out = self.pipeline.run(msg, now)
         log.info("判断 [%s] %r → %s（%s%s）", msg.chat.key, msg.text[:30], out.kind,
                  out.stage or "-", ("：" + out.reason) if out.reason else "")
@@ -112,10 +116,22 @@ class Runtime:
         for text in turn.sent:
             self.recent.append(scope.key, "我", text, 0, time.time())
             await self._notify("on_reply", msg, text)
+            await self._emit("reply.sent", {
+                "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": msg.chat.key},
+                "text": text, "ts": time.time()})
         if turn.sent:
             who = msg.sender.name or "对方"
             self.recent.append(scope.key, who, msg.text, msg.sender.id, time.time())
         return "\n".join(turn.sent)
+
+    async def _emit(self, event: str, data: dict) -> None:
+        """把事件推给订阅的插件（单向，失败不影响主流程）。"""
+        if self.plugins is None:
+            return
+        try:
+            await self.plugins.emit(event, data)
+        except Exception:
+            log.debug("事件 %s 分发失败", event, exc_info=True)
 
     async def _notify(self, hook: str, *args) -> None:
         for p in getattr(self.registry, "_providers", []):

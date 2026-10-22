@@ -108,6 +108,12 @@ class Turn:
             if self.plugins is not None and self.plugins.has(name):
                 try:
                     res = await self.plugins.call(name, args)
+                    # 协议 v1：{"ok": true, "data": ...} / {"ok": false, "error": ...}
+                    if isinstance(res, dict) and "ok" in res:
+                        if not res.get("ok"):
+                            return "插件返回错误：%s" % (res.get("error") or "未知")
+                        data = res.get("data")
+                        return data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
                     return res if isinstance(res, str) else json.dumps(res, ensure_ascii=False)
                 except Exception as e:
                     log.warning("插件工具 %s 失败：%r", name, e)

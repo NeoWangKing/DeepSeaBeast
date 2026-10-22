@@ -35,6 +35,7 @@ class PluginManager:
         self._procs: dict[str, PluginProcess] = {}
         self.tools: dict[str, PluginTool] = {}
         self.capabilities: dict[str, set[str]] = {}     # 插件名 → 能力集合
+        self.events: dict[str, set[str]] = {}           # 插件名 → 订阅的事件
         self._specs: dict[str, dict[str, Any]] = {}     # 插件名 → 原始配置
 
     # ── 装载 ──
@@ -45,11 +46,16 @@ class PluginManager:
         if not name or not argv:
             raise ValueError("插件配置要 name + command")
         cwd = str(spec.get("cwd") or base_dir)
-        proc = PluginProcess(name, argv, cwd=cwd, timeout=float(spec.get("timeout", 20)))
+        data_dir = str(spec.get("data_dir")
+                       or (os.path.join(base_dir, "data", "plugins", name)))
+        proc = PluginProcess(name, argv, cwd=cwd, timeout=float(spec.get("timeout", 20)),
+                             data_dir=data_dir,
+                             max_concurrency=int(spec.get("max_concurrency", 4)))
         info = await proc.start()
         self._procs[name] = proc
         self._specs[name] = dict(spec)
         self.capabilities[name] = {str(x) for x in (info.get("capabilities") or [])}
+        self.events[name] = set(proc.events)
         for t in (info.get("tools") or []):
             tool = PluginTool(name=str(t.get("name")), description=str(t.get("description") or ""),
                               parameters=t.get("parameters") or {"type": "object", "properties": {}},
@@ -78,21 +84,46 @@ class PluginManager:
         return out
 
     async def call(self, tool: str, arguments: dict[str, Any],
-                   timeout: float | None = None) -> Any:
+                   timeout: float | None = None,
+                   turn: dict[str, Any] | None = None) -> Any:
         t = self.tools.get(tool)
         if t is None:
             raise PluginError("没有这个插件工具：%s" % tool)
         proc = self._procs.get(t.plugin)
         if proc is None:
             raise PluginError("插件 %s 没在运行" % t.plugin)
-        return await proc.call_tool(tool, arguments, timeout)
+        return await proc.call_tool(tool, arguments, timeout, turn)
 
     def has(self, tool: str) -> bool:
         return tool in self.tools
 
+    # ── 事件 ──
+    async def emit(self, event: str, data: dict[str, Any]) -> None:
+        """把事件推给所有订阅者（单向，不影响主流程）。"""
+        for name, evs in self.events.items():
+            if event not in evs:
+                continue
+            proc = self._procs.get(name)
+            if proc is None:
+                continue
+            await proc.notify(event, data)
+
+    # ── 健康检查 ──
+    async def health(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for name, proc in self._procs.items():
+            pong = await proc.ping()
+            out[name] = {"alive": proc._alive(), "pong": bool(pong.get("pong")),
+                         "restarts": proc._restarts, "disabled": proc.disabled,
+                         "fails": proc._fails, "events": sorted(self.events.get(name, ()))}
+        return out
+
     async def close(self) -> None:
         for p in list(self._procs.values()):
-            await p.close()
+            try:
+                await p.shutdown()          # 先请它自己退，再兜底 kill
+            except Exception:
+                await p.close()
         self._procs.clear()
         self.tools.clear()
 
