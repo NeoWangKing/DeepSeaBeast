@@ -30,6 +30,7 @@ class SocketChannel:
         self.path = path
         self.mode = mode
         self._writers: dict[str, asyncio.StreamWriter] = {}
+        self._idle: dict[str, asyncio.Event] = {}    # 会话空闲信号（EOF 后等它再关）
         self._stop: asyncio.Event | None = None
         self._server = None
 
@@ -51,6 +52,12 @@ class SocketChannel:
         log.info("socket 通道已就绪：%s（SSH 上去可直接聊天）", self.path)
         self._stop = asyncio.Event()
         await self._stop.wait()
+
+    def idle(self, chat) -> None:
+        """运行时说"这个会话暂时没活了" → 放掉等待中的连接。"""
+        ev = self._idle.get(chat.key)
+        if ev is not None:
+            ev.set()
 
     async def stop(self) -> None:
         if self._stop is not None:
@@ -78,6 +85,8 @@ class SocketChannel:
         key = ChatRef.local().key
         self._writers[key] = writer
         pending: list[asyncio.Task] = []         # 后台回合：断开前等它们跑完
+        idle = asyncio.Event()
+        self._idle[key] = idle
         log.info("终端已接入")
         try:
             while True:

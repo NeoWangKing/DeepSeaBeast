@@ -68,6 +68,13 @@ class ChannelManager:
                 return str(acc)
         return ""
 
+    def idle(self, chat: ChatRef) -> None:
+        """这个会话暂时没活了 —— 通道可以放心收尾（比如断开等待中的终端）。"""
+        c = self.route(chat)
+        fn = getattr(c, "idle", None) if c is not None else None
+        if fn:
+            fn(chat)
+
     def abilities_for(self, chat: ChatRef) -> set[str]:
         """这个会话能用哪些能力（决定哪些工具出现）。"""
         c = self.route(chat)

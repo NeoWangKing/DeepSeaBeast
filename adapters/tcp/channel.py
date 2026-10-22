@@ -34,6 +34,7 @@ class TcpChannel:
         self.port = int(port)
         self.token = token or ""
         self._writers: dict[str, asyncio.StreamWriter] = {}
+        self._idle: dict[str, asyncio.Event] = {}    # 会话空闲信号（EOF 后等它再关）
         self._stop: asyncio.Event | None = None
         self._server = None
 
@@ -47,6 +48,12 @@ class TcpChannel:
         log.info("TCP 通道已就绪：%s:%d（telnet 进去就能聊）", self.host, self.port)
         self._stop = asyncio.Event()
         await self._stop.wait()
+
+    def idle(self, chat) -> None:
+        """运行时说"这个会话暂时没活了" → 放掉等待中的连接。"""
+        ev = self._idle.get(chat.key)
+        if ev is not None:
+            ev.set()
 
     async def stop(self) -> None:
         if self._stop is not None:
@@ -70,6 +77,8 @@ class TcpChannel:
         key = ChatRef.local().key
         self._writers[key] = writer              # 多个终端同时连时，回复给最后说话的那个
         pending: list[asyncio.Task] = []         # 后台回合：断开前等它们跑完
+        idle = asyncio.Event()
+        self._idle[key] = idle
         peer = writer.get_extra_info("peername") or ("?", 0)
         log.info("终端接入：%s", peer)
         try:
@@ -100,12 +109,19 @@ class TcpChannel:
         except Exception:
             log.debug("终端连接异常（正常断开可忽略）")
         finally:
+            # 输入可能已经 EOF（printf | nc），但她的回合（含"等她说完"的重放）
+            # 可能还在跑：等它们都结束、或者运行时通知 idle，才断开
             if pending:
-                # 输入可能已经 EOF（printf | nc），但她的回合还在跑：等它说完再断
                 try:
                     await asyncio.wait(pending, timeout=120)
                 except Exception:
                     pass
+            try:
+                await asyncio.wait_for(idle.wait(), timeout=120)
+            except Exception:
+                pass
+            await asyncio.sleep(0.2)     # 留给最后一句话写出去
+            self._idle.pop(key, None)
             if self._writers.get(key) is writer:
                 self._writers.pop(key, None)
             try:

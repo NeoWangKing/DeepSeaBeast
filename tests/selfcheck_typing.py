@@ -33,6 +33,13 @@ def main() -> int:
         ck("「%s」→ 回" % (t or "（空）"), looks_unfinished(t) is False)
 
     print()
+    print("== 英文 ==")
+    for t in ("im just think that", "what if", "i want to", "and then"):
+        ck("「%s」→ 等" % t, looks_unfinished(t) is True)
+    for t in ("hi", "hello", "ok", "thanks", "I like that.", "what?"):
+        ck("「%s」→ 回" % t, looks_unfinished(t) is False)
+
+    print()
     print("== 边界 ==")
     ck("省略号结尾算没说完", looks_unfinished("我想想…") is True)
     ck("问号结尾算说完", looks_unfinished("你去不去？") is False)

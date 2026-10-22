@@ -28,13 +28,25 @@ TAIL_MARKS = ("，", ",", "、", "…", "...", "：", ":")
 COMPLETE_PARTICLES = ("吗", "呢", "吧", "嘛", "啊", "呀", "啦", "哦", "哈", "了")
 
 # 结尾是这些符号，说明说完了
-END_MARKS = ("。", "？", "?", "！", "!", "~", "～", "）", ")", "”", "\"")
+END_MARKS = ("。", "？", "?", "！", "!", "~", "～", "）", ")", "”", "\"", ".")
 # 短但完整的常见话
 COMPLETE_SHORT = {
     "在吗", "在不在", "在么", "你好", "您好", "谢谢", "好的", "好", "行", "嗯", "哦",
     "哈哈", "哈哈哈", "收到", "ok", "okay", "人呢", "有人吗", "早", "晚安", "拜拜",
     "笑死", "牛逼", "牛", "服了", "确实", "真的", "对", "是的", "算了", "没事",
+    # 英文常见短句
+    "hi", "hey", "hello", "yo", "thanks", "thx", "ok", "okay", "yes", "no", "sure",
+    "good", "nice", "lol", "gg", "bye", "morning", "night",
 }
+# 英文里"后面还有话"的词（句尾出现时大概率没说完）
+TAIL_WORDS_EN = (
+    "that", "and", "but", "because", "so", "if", "when", "while", "the", "a", "an",
+    "to", "of", "in", "on", "for", "with", "is", "are", "was", "were", "i", "you",
+    "we", "they", "he", "she", "it", "my", "your", "just", "think", "want", "like",
+    "then", "than", "about", "or", "not", "do", "does", "did", "can", "could",
+    "would", "should", "will", "have", "has", "had", "there", "here", "this",
+    "these", "those", "at", "by", "from", "as", "too", "very", "really",
+)
 
 
 def looks_unfinished(text: str, min_short: int = 6) -> bool:
@@ -52,6 +64,9 @@ def looks_unfinished(text: str, min_short: int = 6) -> bool:
     if t.endswith(TAIL_MARKS):
         return True
     if t.endswith(TAIL_WORDS):
+        return True
+    words = t.lower().rstrip(".,!?").split()
+    if words and words[-1] in TAIL_WORDS_EN:
         return True
     # 很短的、没标点、也不在"完整短句"表里 → 大概率还有下文
     if len(t) <= min_short and not any(ch in t for ch in "。？！?!~～"):

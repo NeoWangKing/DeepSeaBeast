@@ -37,9 +37,6 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
       ③ 说完整了                  → 直接放行
     """
     msg = ctx.msg
-    if msg.chat.kind == "local":
-        return StageResult("pass", "本地模式不合并")
-
     text = ctx.text
     same = state.merge_sender == msg.sender.id
     fresh = bool(state.merge_buf) and same and \

@@ -80,7 +80,7 @@ class Runtime:
             log.info("[%s] 回合 %s 判断 %r → %s（%s%s）", key, ctx.id, msg.text[:24],
                      out.kind, out.stage or "-", ("：" + out.reason) if out.reason else "")
             if out.kind == "defer":
-                self._schedule_replay(msg, out.text, now)
+                self._schedule_replay(msg, out.text, now)   # 稍后重放，不算空闲
                 return
             if out.kind != "reply":
                 return
@@ -94,11 +94,15 @@ class Runtime:
                 log.info("[%s] 回合 %s 完成：%r", key, ctx.id, said[:40])
             elif self._said_wait() and not _is_recheck(msg):
                 self._schedule_recheck(msg)      # 她说"先等等" → 过几秒再决定一次
+            else:
+                self._mark_idle(msg.chat)
         finally:
             ctx.finished = True
             if self._active.get(key) is ctx:
                 self._active.pop(key, None)
             log.info("[%s] %s", key, ctx.describe())
+            if not self._has_pending(key):
+                self._mark_idle(msg.chat)
 
     # ── 上下文组装 ──
     async def build_context(self, msg: InboundMessage) -> ContextBundle:
@@ -146,6 +150,18 @@ class Runtime:
             log.info("她的决定：%s（%s）", turn.decision.get("action"),
                      turn.decision.get("intent") or "")
         return "\n".join(turn.sent)
+
+    def _has_pending(self, key: str) -> bool:
+        t = self._flush.get(key)
+        return bool(t is not None and not t.done())
+
+    def _mark_idle(self, chat) -> None:
+        fn = getattr(self.channel, "idle", None)
+        if fn is not None:
+            try:
+                fn(chat)
+            except Exception:
+                pass
 
     def _said_wait(self) -> bool:
         d = self._last_decision or {}
@@ -215,7 +231,7 @@ class Runtime:
 
         async def _later() -> None:
             try:
-                await asyncio.sleep(self.pipeline.cfg.merge_window_sec)
+                await asyncio.sleep(self.pipeline.cfg.typing_wait_sec)
                 state = self.pipeline.state_for(key)
                 if not state.merge_buf or state.merge_buf.strip() != merged.strip():
                     return
@@ -241,6 +257,7 @@ class Runtime:
                         rctx.finished = True
                         if self._active.get(key) is rctx:
                             self._active.pop(key, None)
+                        self._mark_idle(replay.chat)
             except asyncio.CancelledError:
                 pass
             except Exception:
