@@ -68,6 +68,13 @@ class Runtime:
             "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
             "text": msg.text, "at_me": bool(msg.at_me), "ts": now})
         key = msg.chat.key
+        # 同一个人又说话了：上一条"等着重放"的计时直接作废，由这条重新计时
+        pending_flush = self._flush.get(key)
+        if pending_flush is not None and not pending_flush.done():
+            st = self.pipeline.state_for(key)
+            if st.merge_sender in (0, msg.sender.id):
+                pending_flush.cancel()
+                self._flush.pop(key, None)
         prev = self._active.get(key)
         if prev is not None and not prev.finished:
             prev.cancel("新消息打断")

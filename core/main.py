@@ -13,6 +13,7 @@ from adapters import build_channels      # 装配层：唯一知道有哪些通�
 from .channel_manager import ChannelManager
 from .llm import LLMConfig
 from .pacing import PacingConfig
+from .scheduler import Scheduler
 from .turn import TurnConfig
 from .pipeline import GateConfig
 from .plugin import PluginManager
@@ -56,6 +57,10 @@ async def run(config_path: str, channel_name: str) -> None:
     await plugins.load_all(getattr(cfg, "plugins", []) or [], base_dir=".")
 
     memory_cfg = getattr(cfg, "memory", {}) or {}
+    scheduler = Scheduler()
+    if getattr(cfg, "jobs", {}).get("enabled", True):
+        scheduler.add_plugin_jobs(plugins)
+
     runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins,
                       data_dir=cfg.data_dir,
                       budget_tokens=int(memory_cfg.get("budget_tokens", 6000)),
@@ -83,6 +88,7 @@ async def run(config_path: str, channel_name: str) -> None:
             pass
 
     # channel.start() 自己结束（比如 CLI 里 /quit）也算收工
+    await scheduler.start()
     start_task = asyncio.create_task(channel.start_all(runtime.on_message))
     stop_task = asyncio.create_task(stop.wait())
     done, pending = await asyncio.wait({start_task, stop_task},
@@ -90,6 +96,7 @@ async def run(config_path: str, channel_name: str) -> None:
     for t in pending:
         t.cancel()
     await channel.stop_all()
+    await scheduler.stop()
     await plugins.close()
     if start_task in done and start_task.exception():
         log.error("channel 异常退出：%r", start_task.exception())

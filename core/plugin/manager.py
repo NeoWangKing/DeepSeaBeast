@@ -36,6 +36,7 @@ class PluginManager:
         self.tools: dict[str, PluginTool] = {}
         self.capabilities: dict[str, set[str]] = {}     # 插件名 → 能力集合
         self.events: dict[str, set[str]] = {}           # 插件名 → 订阅的事件
+        self.jobs: dict[str, list[dict[str, Any]]] = {}  # 插件名 → 声明的后台任务
         self._specs: dict[str, dict[str, Any]] = {}     # 插件名 → 原始配置
 
     # ── 装载 ──
@@ -56,6 +57,7 @@ class PluginManager:
         self._specs[name] = dict(spec)
         self.capabilities[name] = {str(x) for x in (info.get("capabilities") or [])}
         self.events[name] = set(proc.events)
+        self.jobs[name] = [dict(j) for j in (info.get("jobs") or []) if j.get("name")]
         for t in (info.get("tools") or []):
             tool = PluginTool(name=str(t.get("name")), description=str(t.get("description") or ""),
                               parameters=t.get("parameters") or {"type": "object", "properties": {}},
@@ -107,6 +109,21 @@ class PluginManager:
             if proc is None:
                 continue
             await proc.notify(event, data)
+
+    # ── 后台任务 ──
+    def iter_jobs(self):
+        for name, specs in self.jobs.items():
+            proc = self._procs.get(name)
+            if proc is None:
+                continue
+            for spec in specs:
+                yield name, spec, proc
+
+    async def run_job(self, plugin: str, job: str) -> Any:
+        proc = self._procs.get(plugin)
+        if proc is None:
+            raise PluginError("插件 %s 没在运行" % plugin)
+        return await proc.run_job(job)
 
     # ── 健康检查 ──
     async def health(self) -> dict[str, Any]:

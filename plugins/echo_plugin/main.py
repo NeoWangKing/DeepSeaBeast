@@ -52,12 +52,28 @@ def record_event(event: str, data: dict) -> None:
         log("写事件失败：%r" % (e,))
 
 
+JOBS = [
+    {"name": "heartbeat", "interval_sec": 60, "timeout": 10,
+     "description": "每分钟在数据目录里记一笔，演示后台任务"},
+]
+
+
 def handle(method: str, params: dict):
     if method == "hello":
-        return {"name": "echo_plugin", "version": "2.0", "protocol": 1,
-                "capabilities": ["tools", "events"],
+        return {"name": "echo_plugin", "version": "2.1", "protocol": 1,
+                "capabilities": ["tools", "events", "jobs"],
                 "events": ["message.received", "reply.sent"],
+                "jobs": JOBS,
                 "tools": TOOLS}
+    if method == "run_job":
+        job = str(params.get("job") or "")
+        if job == "heartbeat":
+            beat = os.path.join(DATA, "heartbeat.log")
+            os.makedirs(DATA, exist_ok=True)
+            with open(beat, "a", encoding="utf-8") as f:
+                f.write("%.0f\n" % time.time())
+            return {"ok": True, "data": {"wrote": beat}}
+        return {"ok": False, "error": "没有这个任务：%s" % job}
     if method == "ping":
         return {"pong": True, "uptime_sec": int(time.time() - START)}
     if method == "shutdown":

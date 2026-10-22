@@ -26,6 +26,10 @@ token = ""                        # 留空=不需要密码（回环访问）
 enabled = true                    # SSH 上去 chat.py 直接和运行中的核心聊
 path = "/tmp/deepsea.sock"
 
+[jobs]
+# 后台任务总开关（插件在 hello 里声明 jobs，这里可以整体关掉）
+enabled = true
+
 [turn]
 # 一次回复（回合）的硬上限：防止死循环/烧 token；被打断或超限就停
 max_tokens = 20000
@@ -49,6 +53,8 @@ allowed_groups = [1109525246]      # 先只在调试群跑；确认稳定后放�
 at_only_groups = [1109525246]
 private_owner_only = true
 merge_window_sec = 10
+typing_wait_sec = 8         # 每说一句就重新计时
+typing_max_wait_sec = 40    # 但一串话最多等这么久
 burst_suppress_sec = 30
 min_interval_sec = 8
 max_auto_per_hour = 30

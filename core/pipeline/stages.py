@@ -47,8 +47,9 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
         state.merge_ts = ctx.now
         merged = state.merge_buf
         waited = ctx.now - state.merge_first_ts
-        if looks_unfinished(text) and waited < cfg.typing_wait_sec:
-            return StageResult("defer", "她还在说，先等着", merged)
+        # 每来一句都重新计时（merge_ts 已更新）；这里只挡"一直不说完"的人
+        if looks_unfinished(text) and waited < cfg.typing_max_wait_sec:
+            return StageResult("defer", "她还在说，再等 %0.0fs" % cfg.typing_wait_sec, merged)
         return StageResult("pass", "合并后一起回", merged)
 
     # 新的一串

@@ -192,6 +192,43 @@ async def case_wait_recheck() -> None:
     ck("重判后说了话", ch.sent == ["在的"], str(ch.sent))
 
 
+async def case_timer_reset() -> None:
+    print()
+    print("== 每说一句都重新计时（不会 8 秒一到就抢话）==")
+    from core.pipeline import Pipeline
+
+    cfg = GateConfig.from_dict({"force_mode": "off", "allowed_groups": [1],
+                                "typing_wait_sec": 1.0, "typing_max_wait_sec": 30.0})
+    p = Pipeline(cfg)
+
+    def g(text):
+        return InboundMessage(chat=ChatRef.group(1), sender=Sender(9, "谁"),
+                              message=Message.from_text(text), message_id="1", at_me=True)
+
+    t = 0.0
+    r1 = p.run(g("我跟你"), t)          # 第 0 秒，没说完 → 等
+    r2 = p.run(g("说个事"), t + 0.9)     # 第 0.9 秒补一句，仍然没说完 → 继续等
+    r3 = p.run(g("关于那个"), t + 1.8)   # 第 1.8 秒又补 → 还在等（总时长已超 1 秒窗口）
+    r4 = p.run(g("就是那个事啊"), t + 2.7)  # 补完整了 → 立刻回整句
+    ck("第 1 句：等", r1.kind == "defer", r1.reason)
+    ck("第 2 句：重新计时继续等", r2.kind == "defer", r2.reason)
+    ck("第 3 句：总时长超窗口仍在等", r3.kind == "defer", r3.reason)
+    ck("补完整立刻回", r4.kind == "reply", r4.kind)
+    ck("回的是整串", r4.text == "我跟你 说个事 关于那个 就是那个事啊", r4.text)
+
+    # 硬上限：一直不说完，超过 typing_max_wait_sec 就不再等
+    p2 = Pipeline(GateConfig.from_dict({"force_mode": "off", "allowed_groups": [1],
+                                        "typing_wait_sec": 1.0,
+                                        "typing_max_wait_sec": 3.0}))
+    p2.run(g("我想"), 0.0)              # 第 0 秒
+    p2.run(g("再想想"), 0.9)            # 间隔 < 窗口 → 继续等（累计 0.9s）
+    p2.run(g("那个"), 1.8)              # 累计 1.8s
+    r = p2.run(g("关于"), 2.7)          # 累计 2.7s
+    r2 = p2.run(g("那个事"), 3.7)       # 累计 3.7s > 上限 3s → 不再等
+    ck("窗口内累计未超上限时仍然等", r.kind == "defer", r.reason)
+    ck("超过硬上限就不再等", r2.kind == "reply", r2.reason + " " + r2.kind)
+
+
 async def main() -> int:
     await case_interrupt()
     await case_budget()
@@ -199,6 +236,7 @@ async def main() -> int:
     await case_sends_limit()
     await case_merge_wait()
     await case_wait_recheck()
+    await case_timer_reset()
     print()
     if FAIL:
         print("FAILED: %s" % "、".join(FAIL))

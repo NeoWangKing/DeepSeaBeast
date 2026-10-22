@@ -217,6 +217,9 @@ class PluginProcess:
         finally:
             self._pending.pop(mid, None)
 
+    async def run_job(self, job: str, timeout: float | None = None) -> Any:
+        return await self.call("run_job", {"job": job}, timeout)
+
     async def call_tool(self, tool: str, arguments: dict[str, Any],
                         timeout: float | None = None,
                         turn: dict[str, Any] | None = None) -> Any:

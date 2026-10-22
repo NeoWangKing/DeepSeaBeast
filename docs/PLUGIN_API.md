@@ -126,7 +126,38 @@
 - 同一插件并发调用默认上限 4
 - 插件崩溃**不会**影响其它插件和核心
 
-## 6. 最小实现（Python，完整可跑）
+## 6. 后台任务（jobs）
+
+核心会在**没人说话的时候**按间隔调插件——这是"她主动做事"的唯一入口。
+
+在 `hello` 里声明：
+
+```json
+{"jobs": [
+  {"name": "refresh_impression", "interval_sec": 3600, "timeout": 120,
+   "description": "每小时重写本群印象"}
+]}
+```
+
+核心按时调用：
+
+```json
+{"id": 21, "method": "run_job", "params": {"job": "refresh_impression"}}
+// → {"id": 21, "result": {"ok": true, "data": {"updated": 3}}}
+```
+
+**核心保证的三件事**（插件不用自己处理）：
+
+| 保证 | 说明 |
+|---|---|
+| 不并发 | 同一 job 上一轮没跑完，这一轮直接跳过（日志有 warning） |
+| 有超时 | 超过 `timeout` 就取消这一轮，记一次失败 |
+| 会熔断 | 连续失败 3 次 → 该 job 停用并报 ERROR，不影响消息处理 |
+
+首次触发是「半个间隔 + 抖动」，避免多个插件在整点同时开跑。
+任务的结果建议写进 `$DEEPSEA_PLUGIN_DATA`，不要碰核心的 `data/memory`。
+
+## 7. 最小实现（Python，完整可跑）
 
 ```python
 import json, os, sys, time
@@ -158,9 +189,9 @@ for line in sys.stdin:
     sys.stdout.flush()
 ```
 
-## 7. 参考实现
+## 8. 参考实现
 
 | 插件 | 位置 | 演示了什么 |
 |---|---|---|
-| `echo_plugin` | `plugins/echo_plugin/` | 工具、事件订阅、数据目录、shutdown |
+| `echo_plugin` | `plugins/echo_plugin/` | 工具、事件订阅、**后台任务**、数据目录、shutdown |
 | `persona` | `plugins/persona/` | `context` 能力、按作用域选人格卡 |
