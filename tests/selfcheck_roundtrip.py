@@ -64,7 +64,7 @@ async def main() -> int:
     finally:
         try:
             await asyncio.wait_for(channel.stop(), timeout=5)
-        except Exception:
+        except BaseException:          # 包括 CancelledError：收工时被打断不算错
             pass
         ch_task.cancel()
         try:

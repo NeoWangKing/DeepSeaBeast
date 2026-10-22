@@ -53,9 +53,24 @@ class OneBotServer:
                  self.host, self.port)
 
     async def stop(self) -> None:
+        """收工：先踢掉活动连接，再关服务端。
+
+        顺序很重要——直接 wait_closed() 会等服务端的 handler 退出，
+        而 handler 卡在读循环里、客户端又在等关闭握手，就会互相等死。
+        """
+        ws = self._ws
+        self._ws = None
+        if ws is not None:
+            try:
+                await asyncio.wait_for(ws.close(), timeout=2)
+            except Exception:
+                pass
         if self._server is not None:
             self._server.close()
-            await self._server.wait_closed()
+            try:
+                await asyncio.wait_for(self._server.wait_closed(), timeout=3)
+            except Exception:
+                pass
 
     async def wait_connected(self, timeout: float | None = None) -> bool:
         try:
