@@ -27,7 +27,9 @@ ssh -i "$KEY" "$HOST" "sudo cp -a /tmp/deepsea_src/. $DEST/ && sudo chown -R ast
 
 PORT=$(ssh -i "$KEY" "$HOST" "grep -E '^port' $DEST/core.toml | head -1 || echo '（缺少 core.toml）'")
 KEYPATH=$(ssh -i "$KEY" "$HOST" "grep -E '^api_key_file' $DEST/core.toml | head -1 || echo '（未配置 key）'")
+PLUGINS=$(ssh -i "$KEY" "$HOST" "grep -E '^name = ' $DEST/core.toml | tr '\n' ' ' || echo '（没有插件）'")
 echo "→ 服务器配置：$PORT / $KEYPATH"
+echo "→ 已装插件：$PLUGINS"
 
 if [ "$RESTART" = "1" ]; then
   ssh -i "$KEY" "$HOST" "sudo systemctl restart deepsea-beast && sleep 7 && sudo journalctl -u deepsea-beast --since '1 minute ago' --no-pager | grep -E '监听|连接已建立|ERROR|Traceback' | tail -4"
