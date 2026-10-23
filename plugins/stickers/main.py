@@ -103,6 +103,25 @@ def pick(query: str, group: str = "") -> dict | None:
     return scored[0][1]
 
 
+def nearest(query: str, n: int = 5) -> list[str]:
+    """找不到时给几个相近的候选：按描述/标签的字符重叠排。"""
+    idx = load_index()
+    q = tokens(query)
+    if not q:
+        return []
+    now = time.time()
+    scored = []
+    for it in idx["items"]:
+        if not alive(it):
+            continue
+        base = tokens((it.get("desc") or "") + " " + " ".join(it.get("tags") or []))
+        overlap = len(q & base)
+        if overlap:
+            scored.append((overlap + math.log1p(float(it.get("used") or 0)) * 0.3, it))
+    scored.sort(key=lambda x: -x[0])
+    return [short(it.get("desc"), 18) for _s, it in scored[:n]]
+
+
 def mark_used(it: dict) -> None:
     idx = load_index()
     for x in idx["items"]:
@@ -126,6 +145,10 @@ def do_send_sticker(args: dict) -> dict:
     query = str(args.get("query") or args.get("name") or "").strip()
     it = pick(query)
     if it is None:
+        near = nearest(query, 5)
+        if near:
+            return {"ok": False, "error": "没找到「%s」的贴图。相近的有：%s（换个说法再试，或者用 list_stickers 看全部）"
+                    % (query, "、".join(near))}
         return {"ok": False, "error": "没找到合适的贴图（库里没有匹配 %r 的）" % query}
     mark_used(it)
     name = short(it.get("desc"))
