@@ -1,0 +1,5 @@
+name = "stickers"
+command = [".venv/bin/python", "plugins/stickers/main.py"]
+timeout = 20
+priority = 30
+max_concurrency = 2

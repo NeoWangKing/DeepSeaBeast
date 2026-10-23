@@ -19,15 +19,16 @@ QUOTE = "quote"
 IMAGE = "image"
 FILE = "file"
 FACE = "face"
+STICKER = "sticker"      # 表情包（贴图）——不是图片，语义是"情绪"
 POKE = "poke"
 VOICE = "voice"
 
-ALL_VERBS = (TEXT, AT, QUOTE, IMAGE, FILE, FACE, POKE, VOICE)
+ALL_VERBS = (TEXT, AT, QUOTE, IMAGE, FILE, FACE, STICKER, POKE, VOICE)
 
 # 给模型看的人话（英文动词它未必能对上"发文件"这种说法）
 VERB_NAMES = {
     TEXT: "发文字", AT: "@人", QUOTE: "引用回复", IMAGE: "发图片",
-    FILE: "发文件", FACE: "发表情", POKE: "戳一戳", VOICE: "发语音",
+    FILE: "发文件", FACE: "发表情", STICKER: "发贴图", POKE: "戳一戳", VOICE: "发语音",
 }
 
 
@@ -46,6 +47,7 @@ KIND_TO_VERB = {
     "image": IMAGE,
     "file": FILE,
     "face": FACE,
+    "sticker": STICKER,
     "poke": POKE,
     "voice": VOICE,
 }
@@ -62,6 +64,15 @@ FACE_TOKEN_RE = _re.compile(r"\[表情:([^\[\]:]{1,12})\]")
 
 def face_token(name: str) -> str:
     return FACE_TOKEN_TEMPLATE.format(name=str(name or "").strip())
+
+
+# 贴图在文字里的占位符（她看到别人发贴图时用这个表示）
+STICKER_TOKEN_TEMPLATE = "[贴图:{name}]"
+STICKER_TOKEN_RE = _re.compile(r"\[贴图:([^\[\]:]{1,16})\]")
+
+
+def sticker_token(name: str) -> str:
+    return STICKER_TOKEN_TEMPLATE.format(name=str(name or "").strip())
 
 
 class Unsupported(RuntimeError):

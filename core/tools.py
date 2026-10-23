@@ -271,6 +271,15 @@ class Turn:
                     if not r:
                         return "文件发送失败"
                     done.append("file")
+                elif kind == "sticker":
+                    seg = Segment("sticker", text="[贴图]",
+                                  data={"path": str(it.get("path") or ""),
+                                        "id": str(it.get("id") or ""),
+                                        "name": str(it.get("name") or "")})
+                    r = await self._send_message_out([seg])
+                    if not r:
+                        return "贴图发送失败"
+                    done.append("sticker")
                 elif kind == "image":
                     seg = Segment("image", text="[图片]",
                                   data={"path": str(it.get("path") or ""),

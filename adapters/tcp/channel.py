@@ -142,7 +142,7 @@ class TcpChannel:
     # ── 发 ──
     async def send(self, out: OutboundMessage) -> SendResult:
         for seg in out.message.segments:
-            if seg.kind in ("file", "image", "face", "poke", "voice"):
+            if seg.kind in ("file", "image", "sticker", "face", "poke", "voice"):
                 return SendResult(ok=False, error="这个通道发不了 %s" % seg.kind)
         w = self._writers.get(out.chat.key)
         if w is None:

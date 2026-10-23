@@ -19,7 +19,8 @@ log = logging.getLogger("onebot")
 class OneBotChannel:
     name = "onebot"
     # SnowLuma 这边支持得比较全；真正发的时候再按能力挑
-    abilities: set[str] = {"text", "at", "quote", "image", "file", "face", "poke", "voice"}
+    abilities: set[str] = {"text", "at", "quote", "image", "file", "face",
+                           "sticker", "poke", "voice"}
     supports: set[str] = {"group", "private"}
 
     def __init__(self, host: str = "127.0.0.1", port: int = 6200,
@@ -134,6 +135,15 @@ class OneBotChannel:
         segs = []
         for x in ev.get_messages():
             data = dict(x.data)
+            if x.type == "image" and _is_sticker_segment(data):
+                # 群里发的表情包 → 核心侧是 sticker（不是图片）
+                desc = str(data.get("summary") or "").strip("[]")
+                segs.append(Segment(kind="sticker",
+                                    text=qq_faces.sticker_token(desc or "贴图"),
+                                    data={"name": desc,
+                                          "url": str(data.get("url") or ""),
+                                          "file": str(data.get("file") or "")}))
+                continue
             if x.type == "face":
                 fid = str(data.get("id") or "")
                 data["name"] = qq_faces.name_of(fid)
@@ -187,6 +197,13 @@ class OneBotChannel:
             if s.kind == "text":
                 for kind, d in qq_faces.split_text(s.text):
                     raw.append({"type": kind, "data": d})
+                continue
+            if s.kind == "sticker":
+                st = dict(s.data)
+                f = st.get("path") or st.get("url") or st.get("file")
+                if f:
+                    raw.append({"type": "image", "data": {"file": f if "://" in str(f)
+                                                          else "file://" + str(f)}})
                 continue
             if s.kind == "face":
                 fid = str(data.get("id") or "") or qq_faces.id_of(str(data.get("name") or ""))
@@ -249,3 +266,17 @@ class OneBotChannel:
         except Exception as e:                     # 发送失败不能把调用方带崩
             log.warning("发送失败：%r", e)
             return SendResult(ok=False, error=repr(e))
+
+
+def _is_sticker_segment(data: dict) -> bool:
+    """OneBot 的图片段里，哪些其实是"表情包"。
+
+    常见判据：sub_type == 1（QQ 的"动画表情"），或 summary 里带「动画表情」字样。
+    """
+    try:
+        if str(data.get("sub_type") or "") == "1":
+            return True
+    except Exception:
+        pass
+    summary = str(data.get("summary") or "")
+    return "动画表情" in summary or "表情" in summary

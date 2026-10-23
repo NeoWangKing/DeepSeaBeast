@@ -91,3 +91,10 @@ command = [".venv/bin/python", "plugins/memory/main.py"]
 timeout = 30
 priority = 10
 max_concurrency = 2
+
+[[plugins]]
+name = "stickers"
+command = [".venv/bin/python", "plugins/stickers/main.py"]
+timeout = 20
+priority = 30
+max_concurrency = 2
