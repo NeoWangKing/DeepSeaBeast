@@ -73,12 +73,14 @@ SEND_MESSAGE = ToolSpec(
 )
 
 ADD_TODO = ToolSpec(
-    name="add_todo", label="记待办", kind="control",
-    description="把答应要做的事记下来（跨回合、跨重启都在）。做不完/要等会儿做/要提醒，"
-                "都用它记一条，别只靠嘴说。",
+    name="add_todo", label="记待办/定时提醒", kind="action",
+    description="把答应要做的事记下来，到点会自己开口（跨回合、跨重启都在）。"
+                "对方说「等会儿」「十分钟后」「到 X 点」都记成待办——**别说做不到**。",
     parameters={"type": "object", "properties": {
         "text": {"type": "string", "description": "要做什么，一句话"},
-        "due_minutes": {"type": "number", "description": "可选：多少分钟后提醒她（不填就不提醒）"},
+        "due_minutes": {"type": "number", "description": "可选：多少分钟后提醒"},
+        "due_time": {"type": "string",
+                     "description": "可选：具体时刻，写 HH:MM（今天）或 MM-DD HH:MM"},
     }, "required": ["text"]},
 )
 
@@ -424,12 +426,37 @@ class Turn:
         mins = args.get("due_minutes")
         if isinstance(mins, (int, float)) and mins > 0:
             due = time.time() + float(mins) * 60
+        spec = str(args.get("due_time") or "").strip()
+        if due is None and spec:
+            due = self._parse_due(spec)
         todo, note = self.todos.add(self.scope_key, str(args.get("text") or ""),
                                     due=due, source="她记的")
         if todo is None:
             return note or "记不下来"
         left = len(self.todos.open_items(self.scope_key))
         return "记下了（%s，手头共 %d 件）%s" % (todo.id, left, note)
+
+    @staticmethod
+    def _parse_due(spec: str) -> float | None:
+        """把 "14:53" / "10-24 08:00" 解析成时间戳（今天已过就顺延到明天）。"""
+        import datetime as _dt
+        now = _dt.datetime.now()
+        for fmt, guess in (("%H:%M", "today"), ("%H:%M:%S", "today"),
+                           ("%m-%d %H:%M", "year"), ("%Y-%m-%d %H:%M", None)):
+            try:
+                d = _dt.datetime.strptime(spec, fmt)
+            except ValueError:
+                continue
+            if guess == "today":
+                d = d.replace(year=now.year, month=now.month, day=now.day)
+                if d <= now:
+                    d += _dt.timedelta(days=1)
+            elif guess == "year":
+                d = d.replace(year=now.year)
+                if d <= now:
+                    d = d.replace(year=now.year + 1)
+            return d.timestamp()
+        return None
 
     def _do_list_todos(self, args: dict[str, Any]) -> str:
         if self.todos is None:

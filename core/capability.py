@@ -119,6 +119,9 @@ def glossary(actions: list[str]) -> list[str]:
     if "发图片" in have:
         lines.append("- 图片 / 照片 / 截图：要用「发图片」这个动作")
     lines.append("- 对方说「发个表情包」= 贴图；只说「表情」= emoji 或小表情，不是贴图")
+    if "记待办/定时提醒" in have:
+        lines.append("- 对方说「等会儿」「十分钟后」「到 X 点提醒我」→ 用「记待办/定时提醒」记下来，"
+                     "到点会自己开口；**别说做不到**")
     return lines
 
 

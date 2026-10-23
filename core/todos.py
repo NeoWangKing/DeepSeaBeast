@@ -167,6 +167,25 @@ class TodoStore:
                                            if k in Todo.__dataclass_fields__})))
         return out
 
+    def next_due_at(self) -> float | None:
+        """所有还没提醒过的待办里，最早的那个到期时间（没到期的也算）。"""
+        best: float | None = None
+        for p in self.root.glob("*.json"):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for it in d.get("items") or []:
+                if it.get("status") != OPEN or it.get("reminded_at"):
+                    continue
+                due = it.get("due")
+                if not due:
+                    continue
+                due = float(due)
+                if best is None or due < best:
+                    best = due
+        return best
+
     def mark_reminded(self, scope: str, tid: str) -> bool:
         """记下"已经提醒过"，同一条不会重复打扰；顺带数一下今天的次数。"""
         d = self.load(scope)

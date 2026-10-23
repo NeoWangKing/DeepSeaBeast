@@ -53,6 +53,7 @@ class Runtime:
                                remind_per_day=int(tc.get("remind_per_day", 3)))
         self.todo_tick_sec = float(tc.get("tick_sec", 60))
         self._chats: dict[str, object] = {}     # 不透明引用 → chat（到点唤醒要发回去）
+        self._last_said: dict[str, str] = {}    # 每个会话最近一轮她说了什么
         self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
         self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
@@ -119,6 +120,7 @@ class Runtime:
                 msg = replace(msg, message=Message.from_text(out.text))   # 用合并后的整体
             await self._notify("on_message", msg)
             said = await self._call_reply(msg, ctx)
+            self._last_said[key] = said or ""
             self._record_turn(msg, said)
             if said:
                 self.pipeline.note_replied(msg, time.time())
@@ -289,11 +291,16 @@ class Runtime:
 
     async def watch_todos(self) -> None:
         """后台盯着待办的到期时间：到点了主动开口提醒（每个会话每天有次数上限）。"""
-        log.info("待办提醒已启动（每 %.0fs 查一次，每会话每天最多 %d 次）",
+        log.info("待办提醒已启动（按最近到期时间精确唤醒，最长 %.0fs 查一次；每会话每天最多 %d 次）",
                  self.todo_tick_sec, self.todos.remind_per_day)
         while True:
             try:
-                await asyncio.sleep(max(5.0, self.todo_tick_sec))
+                # 有明确的到期时间就睡到那一刻（最多睡 tick_sec），否则按 tick 兜底
+                wait = max(1.0, self.todo_tick_sec)
+                nxt = self.todos.next_due_at()
+                if nxt is not None:
+                    wait = min(wait, max(0.5, nxt - time.time() + 0.2))
+                await asyncio.sleep(wait)
                 await self._fire_due_todos()
             except asyncio.CancelledError:
                 log.info("待办提醒已停止")
@@ -319,6 +326,11 @@ class Runtime:
                 raw={"_deepsea_reminder": "你之前记下要做：%s（%s）。现在到点了。"
                                           % (todo.text, todo.id)})
             await self.on_message(msg)
+            if self._last_said.get(scope):
+                # 提醒到了、她也说了 → 这件事就算办了，别让待办一直挂着占名额
+                ok, _msg = self.todos.done(scope, todo.id)
+                if ok:
+                    log.info("[%s] 提醒已送达，待办 %s 自动收掉", scope, todo.id)
 
     def _learn_faces(self, msg: InboundMessage) -> None:
         """统计群友用了哪些表情（只记别人发的，不记她自己发的）。"""
