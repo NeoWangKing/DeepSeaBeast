@@ -35,7 +35,7 @@ enabled = true
 # 一次回复（回合）的硬上限：防止死循环/烧 token；被打断或超限就停
 max_tokens = 3000          # 单回合**输出** token 上限
 max_seconds = 45
-max_rounds = 6
+max_rounds = 8
 max_sends = 4
 wait_recheck_sec = 5      # 她说"先等等"时，多久后再决定一次
 

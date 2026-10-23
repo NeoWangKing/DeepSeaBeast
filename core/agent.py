@@ -37,7 +37,7 @@ def _assistant_msg(resp) -> dict[str, Any]:
 
 
 async def run_turn(turn: Turn, messages: list[dict[str, Any]],
-                   max_rounds: int = 6, force_first: str = "decide") -> Turn:
+                   max_rounds: int = 8, force_first: str = "decide") -> Turn:
     """跑一轮：模型 → 工具 → 模型 → … 直到 finish / 说完 / 被打断 / 超预算。"""
     ctx = getattr(turn, "ctx", None)
     limit = int(getattr(ctx.cfg, "max_rounds", max_rounds)) if ctx is not None else max_rounds
@@ -88,6 +88,9 @@ async def run_turn(turn: Turn, messages: list[dict[str, Any]],
             messages.append({"role": "tool", "tool_call_id": call.id or "", "content": out})
         if turn.finished:
             break
+    if not turn.finished:
+        log.warning("%s 回合预算用完（%d 轮）还没收工——可能有该做的事没做完",
+                    getattr(ctx, "id", "?"), limit)
     return turn
 
 

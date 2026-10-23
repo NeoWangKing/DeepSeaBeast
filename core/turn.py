@@ -26,7 +26,7 @@ def new_turn_id() -> str:
 class TurnConfig:
     max_tokens: int = 3000         # 单回合**输出** token 上限（所有轮次累计）
     max_seconds: float = 45.0      # 单回合墙钟上限
-    max_rounds: int = 6            # 模型-工具循环上限
+    max_rounds: int = 8            # 模型-工具循环上限
     max_sends: int = 4             # 最多几条气泡
     wait_recheck_sec: float = 5.0  # 她说"先等等"时，多久后再决定一次
 
