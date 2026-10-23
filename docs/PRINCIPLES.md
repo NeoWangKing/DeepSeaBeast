@@ -62,6 +62,23 @@
 
 混在一起会被某个群的闲聊污染，变成"只记得最后说话那个人"的复读机。
 
+## 六点五、接入新通道：先摸清接口，再动手
+
+新接一个平台（QQ、Discord、Telegram…），**第一步不是写 adapter，而是把这个平台支持的
+所有接口列成文档**（`docs/<通道名>_API.md`）：动作名 / 用途 / 风险 / 我们用了没。
+
+理由：不先摸清，就会在 adapter 里自己造一层"通用抽象"去兼容想象中的差异——
+那层多余的东西以后每个平台都要维护一遍，而且大概率是错的。
+
+清单有了之后：
+1. 把接口按 transport / query / control 分三类
+2. transport 映射到**封闭动词表**（text/at/quote/image/file/face/poke/voice），不发明新动词
+3. control 类（踢人、禁言、退群）默认不做，要做先有权限模型
+4. 写 `describe` / `scope_info` / `profile` / `start` / `send` 五个东西就够
+5. 能力先标 `experimental`，真机验证后再 `ready`
+
+详细清单见 `docs/CHANNEL_ONBOARDING.md`。
+
 ## 七、开发与部署分离
 
 - 仓库里**不放任何服务器地址、密钥路径、个人数据**
