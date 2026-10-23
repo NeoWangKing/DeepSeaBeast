@@ -118,6 +118,10 @@ def nearest(query: str, n: int = 5) -> list[str]:
         overlap = len(q & base)
         if overlap:
             scored.append((overlap + math.log1p(float(it.get("used") or 0)) * 0.3, it))
+    if not scored:                      # 一个词都不重合，就给最常用的几张
+        items = [it for it in idx["items"] if alive(it)]
+        items.sort(key=lambda it: -int(it.get("used") or 0))
+        return [short(it.get("desc"), 18) for it in items[:n]]
     scored.sort(key=lambda x: -x[0])
     return [short(it.get("desc"), 18) for _s, it in scored[:n]]
 
