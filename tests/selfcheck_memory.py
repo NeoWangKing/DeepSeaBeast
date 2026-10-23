@@ -107,7 +107,7 @@ async def main() -> int:
             m2 = InboundMessage(chat=ChatRef.local(), sender=Sender(1, "灵其啊"),
                                 message=Message.from_text(t), message_id="1", at_me=True)
             await rt.on_message(m2)
-        rows2 = rt.recent.get("cli")
+        rows2 = rt.recent.get(m2.chat.ref)
         ck("顺序是 用户→我→用户→我",
            [r[1] for r in rows2] == ["第一句。", "答:第一句。", "第二句。", "答:第二句。"],
            str([r[1] for r in rows2]))

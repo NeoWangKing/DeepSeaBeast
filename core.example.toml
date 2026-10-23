@@ -17,6 +17,13 @@ level = "INFO"
 # 后台任务总开关（插件在 hello 里声明 jobs，这里可以整体关掉）
 enabled = true
 
+
+[todos]
+max_open = 12          # 每个会话最多压几件未完成的事（满了她会说"忙不过来"）
+stale_days = 7         # 完成/作废的条目留几天
+remind_per_day = 3     # 每个会话每天最多主动提醒几次
+tick_sec = 60          # 多久扫一次到点的待办
+
 [turn]
 # 一次回复（回合）的硬上限：防止死循环/烧 token；被打断或超限就停
 max_tokens = 3000          # 单回合**输出** token 上限

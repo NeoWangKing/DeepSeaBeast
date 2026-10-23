@@ -53,7 +53,8 @@ class Message:
 class ChatRef:
     kind: str                     # "group" | "private" | "local"
     id: int
-    key: str                      # 作用域目录名，如 g<群id> / p<用户id> / cli
+    key: str                      # 通道自己的原始 key（如 g<群id>）；**核心不拿它做存储**
+    ref: str = ""                 # 核心算的不透明引用（scope_ref）；存储只认它
 
     @staticmethod
     def group(gid: int) -> ChatRef:

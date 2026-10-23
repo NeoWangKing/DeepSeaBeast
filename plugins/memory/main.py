@@ -355,7 +355,7 @@ def save_state(d: dict) -> None:
 
 # ── 协议方法 ──────────────────────────────────────────
 def get_context(params: dict) -> dict:
-    scope = str((params.get("scope") or {}).get("key") or "unknown")
+    scope = str((params.get("scope") or {}).get("ref") or (params.get("scope") or {}).get("key") or "unknown")
     query = str(params.get("message") or "")
 
     gl = rank(load_space("global")["entries"], query)[:GLOBAL_TOP]
@@ -382,7 +382,7 @@ def get_context(params: dict) -> dict:
 def on_event(event: str, data: dict) -> None:
     if event != "message.received":
         return
-    scope = str((data.get("scope") or {}).get("key") or "unknown")
+    scope = str((data.get("scope") or {}).get("ref") or (data.get("scope") or {}).get("ref") or (data.get("scope") or {}).get("key") or "unknown")
     who = str((data.get("sender") or {}).get("name") or "?")
     append_buffer(scope, who, str(data.get("text") or ""), float(data.get("ts") or time.time()))
 

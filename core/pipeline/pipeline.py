@@ -27,6 +27,11 @@ class Outcome:
         return self.kind == "reply"
 
 
+def _skey(msg) -> str:
+    """会话标识：优先用核心算的不透明引用，退化为通道原始 key。"""
+    return str(getattr(msg.chat, "ref", "") or msg.chat.key)
+
+
 class Pipeline:
     def __init__(self, cfg: GateConfig, store: StateStore | None = None) -> None:
         self.cfg = cfg
@@ -38,7 +43,7 @@ class Pipeline:
     def run(self, msg, now: float, *, skip: tuple[str, ...] = ()) -> Outcome:
         """跑一遍管线。skip 用来在"重放合并文本"时跳过 merge 段。"""
         ctx = MessageCtx(msg=msg, now=now, text=msg.text)
-        state = self.state_for(msg.chat.key)
+        state = self.state_for(_skey(msg))
 
         steps = [
             ("allowlist", lambda: stages.stage_allowlist(ctx, self.cfg)),
@@ -72,4 +77,4 @@ class Pipeline:
     def note_replied(self, msg, now: float) -> None:
         """她真的发出去了之后调一次。"""
         ctx = MessageCtx(msg=msg, now=now, text=msg.text)
-        stages.note_replied(self.state_for(msg.chat.key), ctx)
+        stages.note_replied(self.state_for(_skey(msg)), ctx)

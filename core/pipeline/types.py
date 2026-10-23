@@ -50,7 +50,7 @@ class MessageCtx:
 
     @property
     def chat_key(self) -> str:
-        return self.msg.chat.key
+        return str(getattr(self.msg.chat, "ref", "") or self.msg.chat.key)
 
     @property
     def sender_id(self) -> int:

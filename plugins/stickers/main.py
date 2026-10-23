@@ -219,7 +219,7 @@ def on_event(event: str, data: dict) -> None:
         return
     name = str(data.get("sticker_name") or "")
     if name:
-        log("收到贴图：%s（%s）" % (name, (data.get("scope") or {}).get("key")))
+        log("收到贴图：%s（%s）" % (name, (data.get("scope") or {}).get("ref") or (data.get("scope") or {}).get("key")))
 
 
 def handle(method: str, params: dict):

@@ -61,6 +61,8 @@ class ContextBundle:
     markdown: bool = False
     max_chars: int = 4500
     budget_tokens: int = 6000
+    todos: list[tuple[str, str, float | None]] = field(default_factory=list)  # (id, text, due)
+    reminder: str = ""          # 系统提醒（到点唤醒时用），不是人说的话
 
     def add_knowledge(self, text: str, priority: int = 50) -> None:
         t = str(text or "").strip()

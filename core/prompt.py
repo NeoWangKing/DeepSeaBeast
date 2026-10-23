@@ -58,6 +58,21 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
         if bundle.max_chars:
             lines.append("一条最多 %d 字，超了要拆开" % bundle.max_chars)
         out.append({"role": "system", "content": "\n".join(lines)})
+    if bundle.todos:
+        lines = ["【你手头还没做完的事】"]
+        for tid, text, due in bundle.todos[:6]:
+            extra = ""
+            if due:
+                left = int(due - time.time())
+                extra = "（%s）" % ("已到点" if left <= 0 else "%d 分钟后提醒" % (left // 60 or 1))
+            lines.append("- %s %s%s" % (tid, text, extra))
+        lines.append("做完了用 done_todo 收掉；不做用 drop_todo 作废。")
+        out.append({"role": "system", "content": "\n".join(lines)})
+    if bundle.reminder:
+        out.append({"role": "system",
+                    "content": "【系统提醒】" + bundle.reminder
+                               + "\n这是到点提醒你自己答应过的事；该说就说，说完记得用 done_todo 或重新记一条。"})
+
     if bundle.scene:
         scene = bundle.scene
         if bundle.abilities:

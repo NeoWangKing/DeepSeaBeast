@@ -10,16 +10,18 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import os
 import time
 from dataclasses import replace
 from pathlib import Path
 
 from .agent import run_turn
-from .channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult
+from .channel import ChatRef, InboundMessage, Message, OutboundMessage, SendResult, Sender
 from .context import ContextBundle, ContextRegistry
 from .llm import LLMConfig
 from .memory import MemoryStore
 from .pipeline import GateConfig, Pipeline
+from .scoperef import ScopeRegistry, scope_ref
 from .prompt import build_scene, render
 from .scope import Scope
 from .face_stats import FaceStats
@@ -34,7 +36,8 @@ class Runtime:
     def __init__(self, channel, gate: GateConfig | None = None,
                  owner_ids: list[int] | None = None, llm: LLMConfig | None = None,
                  reply_fn=None, plugins=None, data_dir: str = "data",
-                 budget_tokens: int = 6000, turn_cfg: TurnConfig | None = None) -> None:
+                 budget_tokens: int = 6000, turn_cfg: TurnConfig | None = None,
+                 todo_cfg: dict | None = None) -> None:
         self.channel = channel
         self.owner_ids = set(owner_ids or [])
         self.pipeline = Pipeline(gate or GateConfig())
@@ -42,6 +45,15 @@ class Runtime:
         self.reply_fn = reply_fn or self._llm_reply
         self._reply_takes_ctx = _accepts_ctx(self.reply_fn)
         self.turn_cfg = turn_cfg or TurnConfig()
+        from .todos import TodoStore
+        tc = todo_cfg or {}
+        self.todos = TodoStore(os.path.join(data_dir, "todos"),
+                               max_open=int(tc.get("max_open", 12)),
+                               stale_days=int(tc.get("stale_days", 7)),
+                               remind_per_day=int(tc.get("remind_per_day", 3)))
+        self.todo_tick_sec = float(tc.get("tick_sec", 60))
+        self._chats: dict[str, object] = {}     # 不透明引用 → chat（到点唤醒要发回去）
+        self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
         self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
         self.plugins = plugins
@@ -70,11 +82,16 @@ class Runtime:
     async def on_message(self, msg: InboundMessage) -> None:
         now = time.time()
         self._learn_faces(msg)
+        key = self._ref_of(msg)
+        _info = (self.channel.scope_info(msg.chat)
+                 if hasattr(self.channel, "scope_info") else {})
         await self._emit("message.received", {
-            "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": msg.chat.key},
+            # 插件只拿不透明引用 + 人话标签，不拿平台 id
+            "scope": {"ref": key, "kind": msg.chat.kind,
+                      "label": str(_info.get("label") or ""),
+                      "name": str(_info.get("name") or "")},
             "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
             "text": msg.text, "at_me": bool(msg.at_me), "ts": now})
-        key = msg.chat.key
         # 同一个人又说话了：上一条"等着重放"的计时直接作废，由这条重新计时
         pending_flush = self._flush.get(key)
         if pending_flush is not None and not pending_flush.done():
@@ -121,9 +138,10 @@ class Runtime:
     # ── 上下文组装 ──
     async def build_context(self, msg: InboundMessage) -> ContextBundle:
         scope = Scope.from_chat(msg.chat)
+        ref = self._ref_of(msg)
         _info = (self.channel.scope_info(msg.chat)
                  if hasattr(self.channel, "scope_info") else {})
-        b = ContextBundle(scope_key=scope.key, persona=self.persona,
+        b = ContextBundle(scope_key=ref, persona=self.persona,
                           budget_tokens=self.budget_tokens, current=msg,
                           scope_kind=scope.kind, scope_id=scope.id,
                           sender_id=msg.sender.id,
@@ -140,7 +158,7 @@ class Runtime:
         b.markdown = bool(inline.get("markdown"))
         b.max_chars = int((prof.get("limits") or {}).get("max_chars", 4500) or 4500)
         if "face" in b.abilities:
-            b.faces_top = self.faces.top(scope.key, fallback=list(inline.get("faces") or [])[:12])
+            b.faces_top = self.faces.top(ref, fallback=list(inline.get("faces") or [])[:12])
         from .capability import describe_abilities
         _can, _cannot = describe_abilities(b.abilities)
         b.rules = list(self.rules)
@@ -162,8 +180,8 @@ class Runtime:
         b.markdown = bool(inline.get("markdown"))
         b.max_chars = int((prof.get("limits") or {}).get("max_chars", 4500) or 4500)
         if "face" in b.abilities:
-            b.faces_top = self.faces.top(scope.key, fallback=list(inline.get("faces") or [])[:12])
-        b.recent = self.recent.get(scope.key)
+            b.faces_top = self.faces.top(ref, fallback=list(inline.get("faces") or [])[:12])
+        b.recent = self.recent.get(ref)
         await self.registry.collect(b)
         b.trim()
         return b
@@ -180,6 +198,7 @@ class Runtime:
 
     async def _llm_reply(self, msg: InboundMessage, ctx: TurnContext | None = None) -> str:
         scope = Scope.from_chat(msg.chat)
+        ref = self._ref_of(msg)
         bundle = await self.build_context(msg)
         messages = render(bundle)
         if hasattr(self.channel, "reset_pacing"):
@@ -187,7 +206,8 @@ class Runtime:
         turn = Turn(self.channel, msg, self.llm, persona=bundle.persona,
                     plugins=self.plugins, ctx=ctx,
                     abilities=self.abilities_for(msg.chat),
-                    faces_catalog=self._face_catalog(msg.chat))
+                    faces_catalog=self._face_catalog(msg.chat),
+                    todos=self.todos, scope_key=self._ref_of(msg))
         line = turn.skill_text()
         if line:                       # 能力清单放在当前消息之前，紧贴着这轮
             messages.insert(len(messages) - 1, {"role": "system", "content": line})
@@ -220,7 +240,7 @@ class Runtime:
         只重判一次：第二次还是 wait 就当成"不说话"，避免无限等下去。
         """
         delay = float(getattr(self.turn_cfg, "wait_recheck_sec", 5.0))
-        key = msg.chat.key
+        key = self._ref_of(msg)
         log.info("[%s] 她说先等等，%.0fs 后再决定一次", key, delay)
 
         async def _later() -> None:
@@ -251,6 +271,55 @@ class Runtime:
     def _face_catalog(self, chat) -> list[str]:
         return list((self._channel_profile(chat).get("inline") or {}).get("faces") or [])
 
+    def _ref_of(self, msg: InboundMessage) -> str:
+        """给这条消息的会话打上不透明引用（核心内部只用它），并登记人话身份。"""
+        chat = msg.chat
+        channel_name = (self.channel.name_for(chat)
+                        if hasattr(self.channel, "name_for")
+                        else getattr(self.channel, "name", ""))
+        if not getattr(chat, "ref", ""):
+            chat.ref = scope_ref(channel_name, chat.key)
+        info = (self.channel.scope_info(chat)
+                if hasattr(self.channel, "scope_info") else {})
+        self.scopes.remember(chat.ref, channel_name, chat.key, kind=chat.kind,
+                             label=str(info.get("label") or ""),
+                             name=str(info.get("name") or ""))
+        self._chats[chat.ref] = chat
+        return chat.ref
+
+    async def watch_todos(self) -> None:
+        """后台盯着待办的到期时间：到点了主动开口提醒（每个会话每天有次数上限）。"""
+        log.info("待办提醒已启动（每 %.0fs 查一次，每会话每天最多 %d 次）",
+                 self.todo_tick_sec, self.todos.remind_per_day)
+        while True:
+            try:
+                await asyncio.sleep(max(5.0, self.todo_tick_sec))
+                await self._fire_due_todos()
+            except asyncio.CancelledError:
+                log.info("待办提醒已停止")
+                raise
+            except Exception as e:
+                log.warning("待办提醒出错：%r", e)
+
+    async def _fire_due_todos(self) -> None:
+        for scope, todo in self.todos.due_now():
+            chat = self._chats.get(scope)
+            if chat is None:
+                continue                      # 没见过的会话，不知道怎么发
+            active = self._active.get(scope)
+            if active is not None and not active.finished:
+                continue                      # 她正在说话，下一轮再说
+            if not self.todos.mark_reminded(scope, todo.id):
+                continue                      # 今天提醒次数用完了
+            log.info("[%s] 到点提醒：%s", scope, todo.text)
+            msg = InboundMessage(
+                chat=chat, sender=Sender(0, "系统提醒"),
+                message=Message.from_text(""), message_id="todo-" + todo.id,
+                at_me=True,
+                raw={"_deepsea_reminder": "你之前记下要做：%s（%s）。现在到点了。"
+                                          % (todo.text, todo.id)})
+            await self.on_message(msg)
+
     def _learn_faces(self, msg: InboundMessage) -> None:
         """统计群友用了哪些表情（只记别人发的，不记她自己发的）。"""
         try:
@@ -258,7 +327,7 @@ class Runtime:
                      if getattr(s, "kind", "") == "face"]
             names = [n for n in names if n]
             if names:
-                self.faces.count(msg.chat.key, names)
+                self.faces.count(self._ref_of(msg), names)
         except Exception:
             log.debug("表情统计失败", exc_info=True)
 
@@ -268,7 +337,7 @@ class Runtime:
         顺序反了的话，模型会以为"她说完用户才接话"，下一轮就把自己当主导者乱接
         （2026-10-23 实测：问"在吗"，她继续上一轮的"损人"）。
         """
-        key = msg.chat.key
+        key = self._ref_of(msg)
         who = msg.sender.name or "对方"
         self.recent.append(key, who, msg.text, msg.sender.id, time.time())
         for text in [x for x in (said or "").splitlines() if x.strip()]:
@@ -295,7 +364,7 @@ class Runtime:
 
     # ── 连发合并的延后重放 ──
     def _schedule_replay(self, msg: InboundMessage, merged: str, now: float) -> None:
-        key = msg.chat.key
+        key = self._ref_of(msg)
         old = self._flush.get(key)
         if old is not None and not old.done():
             old.cancel()

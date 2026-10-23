@@ -72,7 +72,8 @@ async def run(config_path: str, channel_name: str) -> None:
     runtime = Runtime(channel, gate, owner_ids, llm_cfg, plugins=plugins,
                       data_dir=cfg.data_dir,
                       budget_tokens=int(memory_cfg.get("budget_tokens", 6000)),
-                      turn_cfg=TurnConfig.from_dict(getattr(cfg, "turn", {}) or {}))
+                      turn_cfg=TurnConfig.from_dict(getattr(cfg, "turn", {}) or {}),
+                      todo_cfg=getattr(cfg, "todos", {}) or {})
     _p = cfg.persona or {}
     if _p.get("file"):
         try:
@@ -82,6 +83,7 @@ async def run(config_path: str, channel_name: str) -> None:
     elif _p.get("text"):
         runtime.persona = str(_p["text"]).strip()
 
+    todo_task = asyncio.create_task(runtime.watch_todos())
     stop = asyncio.Event()
 
     def _ask_stop(*_: object) -> None:

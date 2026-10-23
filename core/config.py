@@ -26,6 +26,7 @@ class CoreConfig:
     pacing: dict = field(default_factory=dict)    # [pacing] 发言节奏
     turn: dict = field(default_factory=dict)      # [turn] 回合预算
     jobs: dict = field(default_factory=dict)      # [jobs] 后台任务开关
+    todos: dict = field(default_factory=dict)     # [todos] 待办上限/提醒频率
 
 
 def load(path: str | Path = "core.toml") -> CoreConfig:

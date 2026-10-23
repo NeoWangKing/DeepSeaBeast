@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -71,6 +72,37 @@ SEND_MESSAGE = ToolSpec(
     }, "required": ["text"]},
 )
 
+ADD_TODO = ToolSpec(
+    name="add_todo", label="记待办", kind="control",
+    description="把答应要做的事记下来（跨回合、跨重启都在）。做不完/要等会儿做/要提醒，"
+                "都用它记一条，别只靠嘴说。",
+    parameters={"type": "object", "properties": {
+        "text": {"type": "string", "description": "要做什么，一句话"},
+        "due_minutes": {"type": "number", "description": "可选：多少分钟后提醒她（不填就不提醒）"},
+    }, "required": ["text"]},
+)
+
+LIST_TODOS = ToolSpec(
+    name="list_todos", label="看自己的待办", kind="query",
+    description="看看自己手头还压着哪些没做完的事。",
+    parameters={"type": "object", "properties": {}},
+)
+
+DONE_TODO = ToolSpec(
+    name="done_todo", label="待办收掉", kind="control",
+    description="做完了一件事就把它收掉。全部收完说明可以接新活了。",
+    parameters={"type": "object", "properties": {
+        "id": {"type": "string", "description": "待办 id（list_todos 里有）"}},
+        "required": ["id"]},
+)
+
+DROP_TODO = ToolSpec(
+    name="drop_todo", label="待办作废", kind="control",
+    description="这件事不做了/做不了，作废掉（别留着假装还在做）。",
+    parameters={"type": "object", "properties": {
+        "id": {"type": "string"}}, "required": ["id"]},
+)
+
 FINISH = ToolSpec(
     name="finish", label="收工",
     description="这轮说完了就调它收工，不要留话。",
@@ -119,7 +151,8 @@ LIST_FACES = ToolSpec(
     requires={"face"}, kind="query",
 )
 
-DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, SEND_FILE, SEND_IMAGE, FINISH]
+DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, SEND_FILE, SEND_IMAGE,
+                 ADD_TODO, LIST_TODOS, DONE_TODO, DROP_TODO, FINISH]
 
 
 def skill_line(specs: list[ToolSpec], abilities: set[str]) -> str:
@@ -147,7 +180,8 @@ class Turn:
     def __init__(self, channel, msg: InboundMessage, llm, persona: str = "",
                  specs: list[ToolSpec] | None = None, max_sends: int = 4,
                  plugins=None, abilities: set[str] | None = None,
-                 ctx=None, faces_catalog: list[str] | None = None) -> None:
+                 ctx=None, faces_catalog: list[str] | None = None,
+                 todos=None, scope_key: str = "") -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
@@ -165,6 +199,8 @@ class Turn:
         self.finished = False
         self.finish_reason = ""
         self.errors: list[str] = []
+        self.todos = todos                      # TodoStore（可选）
+        self.scope_key = scope_key or str(getattr(msg.chat, "key", "") or "")
         self._spec_by_name = {s.name: s for s in self.specs}
 
     def skill_text(self) -> str:
@@ -226,6 +262,14 @@ class Turn:
                 return await self._do_send_file(args)
             if name == "send_image":
                 return await self._do_send_image(args)
+            if name == "add_todo":
+                return self._do_add_todo(args)
+            if name == "list_todos":
+                return self._do_list_todos(args)
+            if name == "done_todo":
+                return self._do_done_todo(args)
+            if name == "drop_todo":
+                return self._do_drop_todo(args)
             if name == "finish":
                 self.finished = True
                 self.finish_reason = str(args.get("reason") or "")
@@ -371,6 +415,48 @@ class Turn:
         if not ok:
             log.warning("发送失败：%s", err or "未知原因")
         return ok, err
+
+    # ── 待办 ──────────────────────────────────────────
+    def _do_add_todo(self, args: dict[str, Any]) -> str:
+        if self.todos is None:
+            return "这个环境没开待办功能"
+        due = None
+        mins = args.get("due_minutes")
+        if isinstance(mins, (int, float)) and mins > 0:
+            due = time.time() + float(mins) * 60
+        todo, note = self.todos.add(self.scope_key, str(args.get("text") or ""),
+                                    due=due, source="她记的")
+        if todo is None:
+            return note or "记不下来"
+        left = len(self.todos.open_items(self.scope_key))
+        return "记下了（%s，手头共 %d 件）%s" % (todo.id, left, note)
+
+    def _do_list_todos(self, args: dict[str, Any]) -> str:
+        if self.todos is None:
+            return "这个环境没开待办功能"
+        items = self.todos.open_items(self.scope_key)
+        if not items:
+            return "手头没有没做完的事"
+        rows = []
+        for t in items:
+            when = ""
+            if t.due:
+                left = max(0, int(t.due - time.time()))
+                when = "（%d 分钟后提醒）" % (left // 60 or 1) if left else "（已到点）"
+            rows.append("%s  %s%s" % (t.id, t.text, when))
+        return "手头 %d 件：\n%s" % (len(items), "\n".join(rows))
+
+    def _do_done_todo(self, args: dict[str, Any]) -> str:
+        if self.todos is None:
+            return "这个环境没开待办功能"
+        ok, msg = self.todos.done(self.scope_key, str(args.get("id") or ""))
+        return msg if ok else "出错了：%s" % msg
+
+    def _do_drop_todo(self, args: dict[str, Any]) -> str:
+        if self.todos is None:
+            return "这个环境没开待办功能"
+        ok, msg = self.todos.drop(self.scope_key, str(args.get("id") or ""))
+        return msg if ok else "出错了：%s" % msg
 
     async def _do_send(self, args: dict[str, Any]) -> str:
         if self.ctx is not None:
