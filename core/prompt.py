@@ -44,8 +44,10 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
             lines.append(bundle.style)
         inline = []
         if bundle.faces_top:
-            inline.append("表情（写法 [表情:名字]，这条会话常用的 %d 个：%s）"
-                          % (len(bundle.faces_top), "、".join(bundle.faces_top)))
+            from .capability import face_token
+            inline.append("表情（写法 %s，这条会话常用的 %d 个：%s）"
+                          % (face_token("名字"), len(bundle.faces_top),
+                             "、".join(bundle.faces_top)))
         if bundle.mention:
             inline.append("@人")
         inline.append("Unicode 表情（😂）和颜文字（(｡•ᴗ•｡)）——两者不是一回事，看对方要哪种再给")

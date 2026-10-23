@@ -15,7 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from .capability import KIND_TO_VERB, TEXT, Unsupported, supports
+from .capability import KIND_TO_VERB, TEXT, Unsupported, face_token, supports
 from .channel import InboundMessage, Message, Segment
 
 log = logging.getLogger("tools")
@@ -292,7 +292,7 @@ class Turn:
         if not name:
             return "name 不能为空"
         # 行内写法交给通道去替换成原生表情；这里单独发一条
-        r = await self._do_send({"text": "[表情:%s]" % name})
+        r = await self._do_send({"text": face_token(name)})
         if "已发出" not in r:
             return "表情没发出去：%s" % r
         return "表情已发出"

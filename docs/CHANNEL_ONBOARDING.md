@@ -50,6 +50,22 @@ text / at / quote / image / file / face / poke / voice
 
 **不要**为了"兼容"而在 adapter 里发明新动词——需要新动词就是改核心，要评审。
 
+## 第 2.5 步：行内占位符（核心协议，别自己发明）
+
+文字里夹"平台自带表情"这件事，用的是**核心定义的占位符**（`core/capability.py`）：
+
+```python
+face_token("坏笑")     # → "[表情:坏笑]"
+FACE_TOKEN_RE          # 解析用
+```
+
+- 核心负责**生成和教模型**这个写法；
+- adapter 负责**翻译**：QQ → `face` 段；没有表情能力的通道不会看到它（工具不出现）；
+- **adapter 不许自己拼这个字符串**——`tests/selfcheck_layering.py` 会拦。
+
+同理，以后要加"行内贴图/行内链接"之类的新占位符，也先加在 `core/capability.py`，
+再让 adapter 翻译。
+
 ## 第 3 步：实现 Channel 的四个声明
 
 ```python

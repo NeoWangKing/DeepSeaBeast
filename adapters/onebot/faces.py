@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from pathlib import Path
+
+from core.capability import FACE_TOKEN_RE, face_token
 
 log = logging.getLogger("onebot.faces")
 
 _PATH = Path(__file__).with_name("faces.json")
-_TOKEN_RE = re.compile(r"\[表情:([^\[\]:]{1,12})\]")
 
 _names: dict[str, str] | None = None      # id → 名字
 _ids: dict[str, str] | None = None        # 名字 → id
@@ -52,7 +52,7 @@ def id_of(name: str) -> str:
 def to_token(face_id: str) -> str:
     """收进来的 face id → 核心看到的文本。"""
     n = name_of(face_id)
-    return "[表情:%s]" % (n or face_id)
+    return face_token(n or face_id)
 
 
 def split_text(text: str) -> list[tuple[str, dict]]:
@@ -63,7 +63,7 @@ def split_text(text: str) -> list[tuple[str, dict]]:
     _load()
     out: list[tuple[str, dict]] = []
     pos = 0
-    for m in _TOKEN_RE.finditer(text or ""):
+    for m in FACE_TOKEN_RE.finditer(text or ""):
         name = m.group(1)
         fid = id_of(name)
         if not fid:

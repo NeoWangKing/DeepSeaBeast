@@ -51,6 +51,19 @@ KIND_TO_VERB = {
 }
 
 
+# 行内占位符：文字里夹"平台自带表情"的写法。
+# **这是核心协议**，不是某个平台的习惯——adapter 负责把它翻译成自己的形状
+# （QQ → face 段；没有表情能力的通道压根不会看到它，因为相关工具不会出现）。
+FACE_TOKEN_TEMPLATE = "[表情:{name}]"
+
+import re as _re
+FACE_TOKEN_RE = _re.compile(r"\[表情:([^\[\]:]{1,12})\]")
+
+
+def face_token(name: str) -> str:
+    return FACE_TOKEN_TEMPLATE.format(name=str(name or "").strip())
+
+
 class Unsupported(RuntimeError):
     """通道做不了这个动作。"""
 

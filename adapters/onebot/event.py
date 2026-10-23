@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.capability import face_token
+
 
 # ── 消息段 ──────────────────────────────────────────────────────────
 @dataclass(slots=True)
@@ -35,7 +37,7 @@ class Segment:
         if t == "file":
             return f"[文件:{d.get('file') or d.get('name') or ''}]"
         if t == "face":
-            return f"[表情:{d.get('id')}]"
+            return face_token(d.get("id"))
         if t == "reply":
             return ""
         return f"<{t}>"

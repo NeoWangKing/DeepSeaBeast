@@ -77,6 +77,21 @@ def main() -> int:
     ck("除 main.py 外 core 没有反向依赖", not deps, "；".join(deps[:3]))
 
     print()
+    print("== 行内占位符只有一个来源 ==")
+    import re as _re
+    defs = []
+    for p in sorted((ROOT / "core").rglob("*.py")):
+        if "FACE_TOKEN_TEMPLATE" in p.read_text(encoding="utf-8"):
+            defs.append(p.name)
+    ck("核心只在一处定义表情占位符", defs == ["capability.py"], str(defs))
+    hard = []
+    for p in sorted((ROOT / "adapters").rglob("*.py")):
+        src = p.read_text(encoding="utf-8")
+        if "[表情:" in src and "face_token" not in src and "FACE_TOKEN_RE" not in src:
+            hard.append(p.name)
+    ck("adapter 复用核心的占位符，不自己拼", not hard, str(hard))
+
+    print()
     print("== 场景由 adapter 提供 ==")
     from core.channel import ChatRef, InboundMessage, Message, Sender
     from core.channel_manager import ChannelManager
