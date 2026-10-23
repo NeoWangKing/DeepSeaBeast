@@ -101,7 +101,9 @@ SEND_IMAGE = ToolSpec(
 
 SEND_FACE = ToolSpec(
     name="send_face", label="发表情",
-    description="发一个平台自带的表情（不是 Unicode 表情）。名字必须是这个平台真有的，不确定就先 list_faces 查。",
+    description="发一个平台自带的**小表情**（QQ 那种小黄脸）。"
+                "**不是表情包/贴图**——对方要「表情包」「贴图」时用 send_sticker。"
+                "名字必须是平台真有的，不确定就先 list_faces 查。",
     parameters={"type": "object", "properties": {
         "name": {"type": "string", "description": "表情名字，如「坏笑」「托腮」"}},
         "required": ["name"]},

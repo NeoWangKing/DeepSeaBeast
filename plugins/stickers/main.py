@@ -165,7 +165,9 @@ def do_note_sticker(args: dict) -> dict:
 
 
 TOOLS = [
-    {"name": "send_sticker", "description": "发一张表情包（贴图），按情绪/意思挑，例如「笑死」「无语」「点赞」",
+    {"name": "send_sticker", "description": "发一张**表情包/贴图**（一张图），按情绪挑，"
+                                          "例如「笑死」「无语」「点赞」。"
+                                          "**不是小表情**——对方只说「表情」时用 send_face。",
      "parameters": {"type": "object", "properties": {
          "query": {"type": "string", "description": "想要的情绪或意思，用中文短语"}},
          "required": ["query"]},
