@@ -49,6 +49,9 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
         inline.append("Unicode 表情（😂 这种）和颜文字（(｡•ᴗ•｡) 这种）——两者不是一回事，看对方要哪种再给")
         lines.append("能混在文字里发的：" + "；".join(inline))
         lines.append("要单独发的：图片、文件、语音、戳一戳（有对应工具才发得出去）")
+        if "image" in bundle.abilities:
+            lines.append("注意：\"能发图片\"只是能把现成的图发出去，"
+                         "不等于会画图、会生成图片——没有生成工具就说做不到。")
         if bundle.max_chars:
             lines.append("一条最多 %d 字，超了要拆开" % bundle.max_chars)
         out.append({"role": "system", "content": "\n".join(lines)})
