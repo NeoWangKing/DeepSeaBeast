@@ -46,7 +46,10 @@ class Runtime:
         self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
         self.plugins = plugins
         self.persona = ""
-        self.rules = ["一次最多说 4 条消息，别刷屏", "别把代码整段贴进聊天"]
+        self.rules = ["一次最多说 4 条消息，别刷屏",
+                      "别把代码整段贴进聊天",
+                      "你会做什么只看给你的工具；工具里没有的事（画图、生图、搜索、写文件…）"
+                      "就是做不到，直接说做不到，别答应、别假装做了"]
         self.budget_tokens = int(budget_tokens)
         self.memory = MemoryStore(Path(data_dir) / "memory")
         self.recent = RecentStore(Path(data_dir) / "recent")

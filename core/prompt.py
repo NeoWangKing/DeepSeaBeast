@@ -37,7 +37,9 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
         out.append({"role": "system",
                     "content": "【这里的记忆】\n" + "\n".join(scope_texts)})
     if bundle.style or bundle.faces_top:
-        lines = ["【你在这个媒介上说话】"]
+        # 这一段只说"通道能送来送去什么"，**不说她能做什么**——
+        # 她的能力只看工具清单（工具里没有的，就是做不到）。
+        lines = ["【这个通道能送什么】"]
         if bundle.style:
             lines.append(bundle.style)
         inline = []
@@ -46,12 +48,11 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
                           % (len(bundle.faces_top), "、".join(bundle.faces_top)))
         if bundle.mention:
             inline.append("@人")
-        inline.append("Unicode 表情（😂 这种）和颜文字（(｡•ᴗ•｡) 这种）——两者不是一回事，看对方要哪种再给")
-        lines.append("能混在文字里发的：" + "；".join(inline))
-        lines.append("要单独发的：图片、文件、语音、戳一戳（有对应工具才发得出去）")
-        if "image" in bundle.abilities:
-            lines.append("注意：\"能发图片\"只是能把现成的图发出去，"
-                         "不等于会画图、会生成图片——没有生成工具就说做不到。")
+        inline.append("Unicode 表情（😂）和颜文字（(｡•ᴗ•｡)）——两者不是一回事，看对方要哪种再给")
+        lines.append("可以混在文字里发：" + "；".join(inline))
+        lines.append("只能单独发：图片、文件、语音、戳一戳")
+        lines.append("注意：这里说的是**通道送得出去什么**，不是你会做什么。"
+                     "能送图片 ≠ 会画图；能送文件 ≠ 会写文件。")
         if bundle.max_chars:
             lines.append("一条最多 %d 字，超了要拆开" % bundle.max_chars)
         out.append({"role": "system", "content": "\n".join(lines)})
