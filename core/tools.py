@@ -171,7 +171,8 @@ class Turn:
             for t in getattr(self.plugins, "tools", {}).values():
                 specs.append(ToolSpec(name=t.name, description=t.description,
                                       parameters={}, requires=set(t.requires),
-                                      label=t.name, kind="action"))
+                                      label=getattr(t, "label", "") or t.name,
+                                      kind=getattr(t, "kind", "action")))
         return skill_line(specs, self.abilities)
 
     @property

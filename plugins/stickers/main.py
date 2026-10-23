@@ -169,18 +169,18 @@ TOOLS = [
      "parameters": {"type": "object", "properties": {
          "query": {"type": "string", "description": "想要的情绪或意思，用中文短语"}},
          "required": ["query"]},
-     "requires": ["sticker"]},
+     "requires": ["sticker"], "label": "发贴图", "kind": "action"},
     {"name": "list_stickers", "description": "看看有哪些表情包可用（可按关键词过滤）",
      "parameters": {"type": "object", "properties": {
          "keyword": {"type": "string", "description": "可选关键词"}}},
-     "requires": ["sticker"]},
+     "requires": ["sticker"], "label": "看贴图", "kind": "query"},
     {"name": "note_sticker", "description": "改某张表情包的备注或分类标签（管理用）",
      "parameters": {"type": "object", "properties": {
          "id": {"type": "string"},
          "desc": {"type": "string", "description": "新的描述"},
          "tags": {"type": "array", "items": {"type": "string"}, "description": "新的标签列表"}},
          "required": ["id"]},
-     "requires": ["sticker"]},
+     "requires": ["sticker"], "label": "改贴图备注", "kind": "control"},
 ]
 
 

@@ -21,6 +21,8 @@ class PluginTool:
     parameters: dict[str, Any]
     plugin: str
     requires: set[str] = field(default_factory=set)
+    label: str = ""          # 中文名（能力清单里用）
+    kind: str = "action"     # action / query / control
 
     def to_schema(self, abilities: set[str]) -> dict[str, Any] | None:
         if self.requires and not self.requires <= abilities:
@@ -64,7 +66,9 @@ class PluginManager:
             tool = PluginTool(name=str(t.get("name")), description=str(t.get("description") or ""),
                               parameters=t.get("parameters") or {"type": "object", "properties": {}},
                               plugin=name,
-                              requires={str(x) for x in (t.get("requires") or [])})
+                              requires={str(x) for x in (t.get("requires") or [])},
+                              label=str(t.get("label") or ""),
+                              kind=str(t.get("kind") or "action"))
             if tool.name in ("decide", "send_message", "finish"):
                 log.warning("插件 %s 想注册内置工具名 %s，已忽略（内置工具不可覆盖）",
                             name, tool.name)
