@@ -187,6 +187,9 @@ class Runtime:
                     plugins=self.plugins, ctx=ctx,
                     abilities=self.abilities_for(msg.chat),
                     faces_catalog=self._face_catalog(msg.chat))
+        line = turn.skill_text()
+        if line:                       # 能力清单放在当前消息之前，紧贴着这轮
+            messages.insert(len(messages) - 1, {"role": "system", "content": line})
         await run_turn(turn, messages)
         self._last_decision = dict(turn.decision) if turn.decision else None
         if turn.decision:

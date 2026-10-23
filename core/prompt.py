@@ -50,9 +50,9 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
             inline.append("@人")
         inline.append("Unicode 表情（😂）和颜文字（(｡•ᴗ•｡)）——两者不是一回事，看对方要哪种再给")
         lines.append("可以混在文字里发：" + "；".join(inline))
-        lines.append("只能单独发：图片、文件、语音、戳一戳")
-        lines.append("注意：这里说的是**通道送得出去什么**，不是你会做什么。"
-                     "能送图片 ≠ 会画图；能送文件 ≠ 会写文件。")
+        lines.append("这个通道能送出去：文字、图片、文件、语音、戳一戳（但**有没有对应工具**看下面清单）")
+        lines.append("注意：以上是通道的运输能力，不是你会做什么。"
+                     "你真能做哪些事，只以「你手上现在能做」那份清单为准。")
         if bundle.max_chars:
             lines.append("一条最多 %d 字，超了要拆开" % bundle.max_chars)
         out.append({"role": "system", "content": "\n".join(lines)})

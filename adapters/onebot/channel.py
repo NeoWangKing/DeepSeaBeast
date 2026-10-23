@@ -162,6 +162,31 @@ class OneBotChannel:
             raw.append({"type": s.kind, "data": data})
         return raw
 
+    async def _send_file(self, out: OutboundMessage, seg) -> SendResult:
+        """文件走 upload_* 接口，不是 send_*_msg。
+
+        注意：这条路**还没在真机上验证过**，所以工具侧把 send_file 标成 experimental，
+        默认不给模型。验证通过后再把 status 改成 ready。
+        """
+        path = str(seg.data.get("path") or "")
+        name = str(seg.data.get("name") or "") or (path.rsplit("/", 1)[-1] if path else "")
+        if not path:
+            return SendResult(ok=False, error="文件路径为空")
+        if out.chat.kind == "group":
+            action, params = "upload_group_file", {"group_id": out.chat.id,
+                                                   "file": path, "name": name}
+        else:
+            action, params = "upload_private_file", {"user_id": out.chat.id,
+                                                     "file": path, "name": name}
+        try:
+            resp = await self._server.call_action(action, params, timeout=60)
+        except Exception as e:
+            log.warning("文件上传失败：%r", e)
+            return SendResult(ok=False, error=repr(e))
+        if int(resp.get("retcode", 0)) != 0:
+            return SendResult(ok=False, error=str(resp.get("wording") or resp.get("retcode")))
+        return SendResult(ok=True)
+
     async def send(self, out: OutboundMessage) -> SendResult:
         try:
             # 文件走独立的上传接口，不是 send_*_msg

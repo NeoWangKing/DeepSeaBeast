@@ -28,12 +28,19 @@ class ToolSpec:
     parameters: dict[str, Any]
     # 需要的 adapter 能力，比如 {"face"}；空 = 任何渠道都能用
     requires: set[str] = field(default_factory=set)
+    # action=对外动作（算"她会做什么"）；query=查询辅助；control=内部控制流（decide/finish）
+    label: str = ""          # 中文名（给模型看的清单里用）
+    kind: str = "action"
+    # ready=已验证可用；experimental=写了但没真机验证（不给模型）；planned=只有想法
+    status: str = "ready"
 
 
 def schema(specs: list[ToolSpec], abilities: set[str]) -> list[dict[str, Any]]:
-    """按渠道能力过滤后，转成 OpenAI function schema。"""
+    """按渠道能力 + 验证状态过滤后，转成 OpenAI function schema。"""
     out: list[dict[str, Any]] = []
     for s in specs:
+        if s.status != "ready":
+            continue
         if s.requires and not s.requires <= abilities:
             continue
         out.append({"type": "function", "function": {
@@ -42,7 +49,7 @@ def schema(specs: list[ToolSpec], abilities: set[str]) -> list[dict[str, Any]]:
 
 
 DECIDE = ToolSpec(
-    name="decide",
+    name="decide", label="判断接不接",
     description="**每轮第一件事**：先决定这条要不要接。不想接就 action=silence，一句都不发。",
     parameters={"type": "object", "properties": {
         "action": {"type": "string", "enum": ["reply", "wait", "silence"],
@@ -50,10 +57,11 @@ DECIDE = ToolSpec(
         "target": {"type": "string", "description": "在接谁的话（可选）"},
         "intent": {"type": "string", "description": "一句话说你想表达什么（可选）"},
     }, "required": ["action"]},
+    kind="control",
 )
 
 SEND_MESSAGE = ToolSpec(
-    name="send_message",
+    name="send_message", label="说话",
     description="发言：**你写的正文不会发出去，说话只能调这个工具**。想发几条就调几次。",
     parameters={"type": "object", "properties": {
         "text": {"type": "string", "description": "要说的话"},
@@ -63,35 +71,36 @@ SEND_MESSAGE = ToolSpec(
 )
 
 FINISH = ToolSpec(
-    name="finish",
+    name="finish", label="收工",
     description="这轮说完了就调它收工，不要留话。",
     parameters={"type": "object", "properties": {
         "reason": {"type": "string", "description": "为什么收工（可选）"}}},
+    kind="control",
 )
 
 SEND_FILE = ToolSpec(
-    name="send_file",
+    name="send_file", label="发文件",
     description="把本机上的一个文件发到当前会话（**只有支持文件的通道才有这个工具**）",
     parameters={"type": "object", "properties": {
         "path": {"type": "string", "description": "文件的绝对路径"},
         "name": {"type": "string", "description": "可选：显示的文件名"},
     }, "required": ["path"]},
-    requires={"file"},
+    requires={"file"}, status="experimental",
 )
 
 SEND_IMAGE = ToolSpec(
-    name="send_image",
+    name="send_image", label="发图片",
     description="发一张图片（本地路径或直链 URL；**只有支持图片的通道才有**）",
     parameters={"type": "object", "properties": {
         "path": {"type": "string", "description": "本地图片路径"},
         "url": {"type": "string", "description": "图片直链"},
         "caption": {"type": "string", "description": "可选：配一句话"},
     }},
-    requires={"image"},
+    requires={"image"}, status="experimental",
 )
 
 SEND_FACE = ToolSpec(
-    name="send_face",
+    name="send_face", label="发表情",
     description="发一个平台自带的表情（不是 Unicode 表情）。名字必须是这个平台真有的，不确定就先 list_faces 查。",
     parameters={"type": "object", "properties": {
         "name": {"type": "string", "description": "表情名字，如「坏笑」「托腮」"}},
@@ -100,14 +109,33 @@ SEND_FACE = ToolSpec(
 )
 
 LIST_FACES = ToolSpec(
-    name="list_faces",
+    name="list_faces", label="查表情名",
     description="查这个平台有哪些表情可用（可按关键词过滤）。名字不记得时先查再发。",
     parameters={"type": "object", "properties": {
         "keyword": {"type": "string", "description": "可选：按关键词过滤，如「狗」「笑哭」"}}},
-    requires={"face"},
+    requires={"face"}, kind="query",
 )
 
 DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, SEND_FILE, SEND_IMAGE, FINISH]
+
+
+def skill_line(specs: list[ToolSpec], abilities: set[str]) -> str:
+    """给模型看的"你手上现在能做什么"。
+
+    只列**对外动作**（action）和**查询辅助**（query）；
+    内部控制流（decide/finish）不是能力，永远不出现。
+    """
+    ready = [s for s in specs if s.status == "ready"
+             and (not s.requires or s.requires <= abilities)]
+    actions = [s.label or s.name for s in ready if s.kind == "action"]
+    queries = [s.label or s.name for s in ready if s.kind == "query"]
+    if not actions and not queries:
+        return ""
+    parts = ["你手上现在能做：" + "、".join(actions) + "。"]
+    if queries:
+        parts.append("另外还能查：" + "、".join(queries) + "。")
+    parts.append("没列出来的就是做不到——直接说做不到，别答应、别假装做了。")
+    return "".join(parts)
 
 
 class Turn:
@@ -135,6 +163,16 @@ class Turn:
         self.finish_reason = ""
         self.errors: list[str] = []
         self._spec_by_name = {s.name: s for s in self.specs}
+
+    def skill_text(self) -> str:
+        """合并核心工具和插件工具，渲染成"你手上现在能做"那一行。"""
+        specs = list(self.specs)
+        if self.plugins is not None:
+            for t in getattr(self.plugins, "tools", {}).values():
+                specs.append(ToolSpec(name=t.name, description=t.description,
+                                      parameters={}, requires=set(t.requires),
+                                      label=t.name, kind="action"))
+        return skill_line(specs, self.abilities)
 
     @property
     def schemas(self) -> list[dict[str, Any]]:
