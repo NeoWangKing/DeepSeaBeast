@@ -14,7 +14,8 @@ import json
 import os
 import shutil
 
-OLD = "/opt/astrbot/data/plugins/qq_peak_gate/data/stickers"
+# 旧插件（已停用的 AstrBot 版本）的贴图库；**只用于一次性导入**，之后可以删
+OLD_DEFAULT = "/opt/astrbot/data/plugins/qq_peak_gate/data/stickers"
 NEW = "/opt/deepsea/data/plugins/stickers"
 LIB = os.path.join(NEW, "library")
 INDEX = os.path.join(NEW, "index.json")
@@ -24,8 +25,10 @@ SKIP = {"_rejected", "review.html", "index.json"}
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--source", default=OLD_DEFAULT, help="旧贴图库目录")
     a = ap.parse_args()
 
+    OLD = a.source
     if not os.path.isdir(OLD):
         print("找不到旧库：%s" % OLD)
         return 1

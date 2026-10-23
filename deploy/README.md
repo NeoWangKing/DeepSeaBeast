@@ -17,7 +17,7 @@
 服务器配置模板在 `deploy/server.core.toml`（不含密钥明文）。**它不会被 sync.sh 覆盖**：
 
 ```bash
-sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
+sudo -u deepsea cp deploy/server.core.toml /opt/deepsea/core.toml
 ```
 
 关键项：
@@ -34,14 +34,14 @@ sudo -u astrbot cp deploy/server.core.toml /opt/deepsea/core.toml
 DEEPSEA_HOST=<user>@<服务器> DEEPSEA_KEY=<你的私钥> ./deploy/sync.sh
 
 # 2. 依赖
-sudo -u astrbot uv venv --python 3.11 /opt/deepsea/.venv
-sudo -u astrbot uv pip install --python /opt/deepsea/.venv/bin/python websockets
+sudo -u deepsea uv venv --python 3.11 /opt/deepsea/.venv
+sudo -u deepsea uv pip install --python /opt/deepsea/.venv/bin/python websockets
 
 # 3. 配置 + key
-sudo -u astrbot cp /opt/deepsea/core.example.toml /opt/deepsea/core.toml   # 再按需改
-sudo install -d -m700 -o astrbot -g astrbot /opt/deepsea/.secrets
+sudo -u deepsea cp /opt/deepsea/core.example.toml /opt/deepsea/core.toml   # 再按需改
+sudo install -d -m700 -o deepsea -g deepsea /opt/deepsea/.secrets
 echo '<deepseek key>' | sudo tee /opt/deepsea/.secrets/deepseek.key >/dev/null
-sudo chown astrbot:astrbot /opt/deepsea/.secrets/deepseek.key && sudo chmod 600 /opt/deepsea/.secrets/deepseek.key
+sudo chown deepsea:deepsea /opt/deepsea/.secrets/deepseek.key && sudo chmod 600 /opt/deepsea/.secrets/deepseek.key
 
 # 4. systemd
 sudo cp deploy/deepsea-beast.service /etc/systemd/system/
@@ -77,7 +77,7 @@ astrbot-<时间戳>/
 ## 自检
 
 ```bash
-sudo -u astrbot /opt/deepsea/.venv/bin/python -m core --channel cli   # 本地聊两句
+sudo -u deepsea /opt/deepsea/.venv/bin/python -m core --channel cli   # 本地聊两句
 journalctl -u deepsea-beast -f                                        # 看线上日志
 ```
 
@@ -123,3 +123,10 @@ telnet 127.0.0.1 4000      # 或 nc 127.0.0.1 4000
 | `tcp` | `127.0.0.1:4000` | telnet/nc 直接聊 |
 | `socket` | `/tmp/deepsea.sock` | 本机脚本接入（`deploy/chat.py`） |
 | `cli` | stdin | 本地开发（服务器上关闭） |
+
+## 运行用户
+
+服务以专用系统用户 **`deepsea`** 运行（`User=deepsea`），`/opt/deepsea` 整个目录归它所有。
+
+> 历史：最早沿用了旧 AstrBot 的 `astrbot` 用户，容易和"旧框架"混淆，已改名。
+> `astrbot.service`（旧框架）保留着只为了能一键回滚，它是 `disabled` 的，不参与日常运行。
