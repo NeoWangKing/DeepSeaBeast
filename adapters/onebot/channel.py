@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import os
 
 from core.channel import (ChatRef, InboundMessage, Message, OnMessage, OutboundMessage,
                           Segment, SendResult, Sender)
@@ -202,8 +204,7 @@ class OneBotChannel:
                 st = dict(s.data)
                 f = st.get("path") or st.get("url") or st.get("file")
                 if f:
-                    raw.append({"type": "image", "data": {"file": f if "://" in str(f)
-                                                          else "file://" + str(f)}})
+                    raw.append({"type": "image", "data": _image_file(f)})
                 continue
             if s.kind == "face":
                 fid = str(data.get("id") or "") or qq_faces.id_of(str(data.get("name") or ""))
@@ -213,11 +214,8 @@ class OneBotChannel:
                     raw.append({"type": "text", "data": {"text": s.text}})
                 continue
             elif s.kind == "image":
-                # QQ 收本地路径要 file:// 前缀；有 url 就直接用
-                if data.get("url"):
-                    data = {"file": data["url"]}
-                elif data.get("path"):
-                    data = {"file": "file://" + str(data["path"])}
+                f = data.get("url") or data.get("path") or data.get("file")
+                data = _image_file(f) if f else data
             raw.append({"type": s.kind, "data": data})
         return raw
 
@@ -280,3 +278,33 @@ def _is_sticker_segment(data: dict) -> bool:
         pass
     summary = str(data.get("summary") or "")
     return "动画表情" in summary or "表情" in summary
+
+
+MAX_IMAGE_BYTES = 4 * 1024 * 1024     # 再大就别 base64 了，直接报错比塞爆连接好
+
+
+def _image_file(src: str) -> dict:
+    """把"本地路径 / URL"变成 OneBot 能吃的 file 字段。
+
+    本地文件**必须用 base64**：SnowLuma 以另一个用户运行，读不到我们的数据目录
+    （实测 file:// 和绝对路径都报 EACCES，base64 才是通的）。
+    """
+    s = str(src or "")
+    if not s:
+        return {"file": ""}
+    if s.startswith(("http://", "https://", "base64://")):
+        return {"file": s}
+    try:
+        size = os.path.getsize(s)
+    except OSError as e:
+        log.warning("图片读不到：%s（%r）", s, e)
+        return {"file": s}
+    if size > MAX_IMAGE_BYTES:
+        log.warning("图片太大不发：%s（%.1f MB）", s, size / 1048576)
+        return {"file": s}
+    try:
+        with open(s, "rb") as f:
+            return {"file": "base64://" + base64.b64encode(f.read()).decode()}
+    except OSError as e:
+        log.warning("图片读取失败：%s（%r）", s, e)
+        return {"file": s}

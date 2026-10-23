@@ -277,17 +277,17 @@ class Turn:
                                   data={"path": str(it.get("path") or ""),
                                         "id": str(it.get("id") or ""),
                                         "name": str(it.get("name") or "")})
-                    r = await self._send_message_out([seg])
-                    if not r:
-                        return "贴图发送失败"
+                    ok, err = await self._send_message_out([seg])
+                    if not ok:
+                        return "贴图发送失败：%s" % (err or "未知原因")
                     done.append("sticker")
                 elif kind == "image":
                     seg = Segment("image", text="[图片]",
                                   data={"path": str(it.get("path") or ""),
                                         "url": str(it.get("url") or "")})
-                    r = await self._send_message_out([seg])
-                    if not r:
-                        return "图片发送失败"
+                    ok, err = await self._send_message_out([seg])
+                    if not ok:
+                        return "图片发送失败：%s" % (err or "未知原因")
                     done.append("image")
                 else:
                     return "不认识的发送动作：%s" % kind
@@ -324,9 +324,9 @@ class Turn:
             return "path 不能为空"
         seg = Segment("file", text="[文件]", data={"path": path,
                                                   "name": str(args.get("name") or "")})
-        ok = await self._send_message_out([seg])
+        ok, err = await self._send_message_out([seg])
         if not ok:
-            return "这个通道发不了文件（能力缺失），请用文字说明"
+            return "文件没发出去：%s" % (err or "通道不支持")
         self.sent.append("[文件]%s" % path.rsplit("/", 1)[-1])
         if self.ctx is not None:
             self.ctx.sends += 1
@@ -343,20 +343,25 @@ class Turn:
         if caption:
             await self._do_send({"text": caption})
         seg = Segment("image", text="[图片]", data={"path": path, "url": url})
-        ok = await self._send_message_out([seg])
+        ok, err = await self._send_message_out([seg])
         if not ok:
-            return "这个通道发不了图片（能力缺失），请用文字说明"
+            return "图片没发出去：%s" % (err or "通道不支持")
         self.sent.append("[图片]")
         if self.ctx is not None:
             self.ctx.sends += 1
         return "图片已发出"
 
-    async def _send_message_out(self, segments: list[Segment]) -> bool:
+    async def _send_message_out(self, segments: list[Segment]) -> tuple[bool, str]:
+        """发一条消息，返回（成功与否, 错误原因）。"""
         from .channel import OutboundMessage
         out = OutboundMessage(chat=self.msg.chat, message=Message(segments=segments),
                               quote_id="", at_user=0)
         res = await self.channel.send(out)
-        return bool(getattr(res, "ok", False))
+        ok = bool(getattr(res, "ok", False))
+        err = str(getattr(res, "error", "") or "")
+        if not ok:
+            log.warning("发送失败：%s", err or "未知原因")
+        return ok, err
 
     async def _do_send(self, args: dict[str, Any]) -> str:
         if self.ctx is not None:
