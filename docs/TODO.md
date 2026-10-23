@@ -33,6 +33,37 @@
 - **按群配置**：`reply_mode = auto | at_only | silent`，可每群覆盖
 - 相关：`typing.py` 的"话没说完"判断、`wait` 后的 5 秒重判，都属于这一层
 
+## 微信通道（长期想要，现在不做）
+
+**结论（2026-10-23）**：长期要做，但现在没有能常开的 Windows 机器，先挂着。
+
+难点：个人微信没有像 SnowLuma 之于 QQ 那样的现成网关。
+微信 4.x 客户端只有 Windows/macOS 版，主流接入方式是
+`version.dll` 代理注入（参考 [WeChatAgent](https://github.com/sourcepro5/WeChatAgent)
+用的 [aixed/WeChat-Hook](https://github.com/aixed/WeChat-Hook)）——
+必须在**真机桌面会话**里跑，Linux 服务器上没法起。
+
+### 三条候选路径
+
+| 路径 | 前提 | 评价 |
+|---|---|---|
+| 二手迷你主机常开 Windows（N100/N5105，8~16G，6~10W，¥400~800） | 家里有网有电 | **最现实**，一次性成本，长期电费极低 |
+| 云上 Windows VM | 另买 Windows 授权；2C7G 的服务器要再升级 | 每月 ¥50~150+，还和 QQ 抢 CPU |
+| 等微信 Linux 版出成熟 Hook | 无 | 目前没有，不可控 |
+| 企业微信 / 公众号 | 官方 API | **不是个人微信群**，不算达标 |
+| 付费协议库（padlocal 等） | 无硬件 | 封号风险高，不建议 |
+
+### 真到那天要做的事（架构已经留好口子）
+
+1. Windows 侧：微信 + Hook（本地 HTTP）→ 一个**小代理**把消息包成 WS 推给我们
+2. 服务器侧：`adapters/wechat/channel.py`，实现五件事
+   `describe / scope_info / profile / start / send`
+3. `scope_info()` 给原始 key（`wx:<wxid>`），核心自己哈希成引用——**核心不用改**，
+   人格、记忆、待办、工具全部原样复用
+
+借鉴点（来自 WeChatAgent）：发送后要**核对数据库回执**再算成功；未确认的投递要持久化，
+重启后先核对再决定是否重发。
+
 ## 记忆
 
 - **memory 插件与 core/memory.py 的旧印象并行**：插件已有自己的空间（`spaces/`），
