@@ -15,7 +15,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from .capability import KIND_TO_VERB, TEXT, Unsupported, face_token, supports
+from .capability import (KIND_TO_VERB, TEXT, Unsupported, face_token, glossary,
+                         supports)
 from .channel import InboundMessage, Message, Segment
 
 log = logging.getLogger("tools")
@@ -101,7 +102,7 @@ SEND_IMAGE = ToolSpec(
 
 SEND_FACE = ToolSpec(
     name="send_face", label="发表情",
-    description="发一个平台自带的**小表情**（QQ 那种小黄脸）。"
+    description="发一个平台自带的**小表情**（那种小圆脸/小黄脸）。"
                 "**不是表情包/贴图**——对方要「表情包」「贴图」时用 send_sticker。"
                 "名字必须是平台真有的，不确定就先 list_faces 查。",
     parameters={"type": "object", "properties": {
@@ -175,7 +176,13 @@ class Turn:
                                       parameters={}, requires=set(t.requires),
                                       label=getattr(t, "label", "") or t.name,
                                       kind=getattr(t, "kind", "action")))
-        return skill_line(specs, self.abilities)
+        line = skill_line(specs, self.abilities)
+        if not line:
+            return ""
+        ready = [s for s in specs if s.status == "ready"
+                 and (not s.requires or s.requires <= self.abilities)]
+        actions = [s.label or s.name for s in ready if s.kind == "action"]
+        return line + "\n" + "\n".join(glossary(actions))
 
     @property
     def schemas(self) -> list[dict[str, Any]]:

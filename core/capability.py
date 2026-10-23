@@ -105,6 +105,23 @@ class CapabilityReport:
         return out
 
 
+# 这几个词最容易混，按"当前通道实际有什么工具"给她一份对照表
+def glossary(actions: list[str]) -> list[str]:
+    """actions 是当前可用的对外动作名（label 或 name）。返回几行解释。"""
+    have = set(actions)
+    lines = ["【这几个词不一样，别混】",
+             "- 表情（emoji）：😂 🥺 这种，直接写在文字里就行",
+             "- 颜文字：(｡•ᴗ•｡) (￣▽￣) 这种，也是普通文字，直接写"]
+    if "发表情" in have:
+        lines.append("- 小表情：平台自带的那种小圆脸/小黄脸，要用「发表情」这个动作")
+    if "发贴图" in have:
+        lines.append("- 表情包 / 贴图：一张图那种（狗头、捂脸笑），要用「发贴图」这个动作")
+    if "发图片" in have:
+        lines.append("- 图片 / 照片 / 截图：要用「发图片」这个动作")
+    lines.append("- 对方说「发个表情包」= 贴图；只说「表情」= emoji 或小表情，不是贴图")
+    return lines
+
+
 def build_report(channels: list, tools: list) -> CapabilityReport:
     """channels: 有 name/abilities 的对象；tools: 有 name/requires 的对象。"""
     matrix: dict[str, list[str]] = {}

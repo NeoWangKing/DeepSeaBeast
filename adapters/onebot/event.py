@@ -31,9 +31,9 @@ class Segment:
             qq = str(d.get("qq") or "")
             return f"@{d.get('name') or qq}"
         if t == "image":
-            return "<图片>"
+            return "[图片]"
         if t == "record":
-            return "<语音>"
+            return "[语音]"
         if t == "file":
             return f"[文件:{d.get('file') or d.get('name') or ''}]"
         if t == "face":

@@ -9,6 +9,7 @@ set -euo pipefail
 HOST="${DEEPSEA_HOST:?请先设置 DEEPSEA_HOST=user@主机}"
 KEY="${DEEPSEA_KEY:?请先设置 DEEPSEA_KEY=/path/to/ssh_key}"
 DEST="${DEEPSEA_DEST:-/opt/deepsea}"
+RUN_USER="${DEEPSEA_USER:-deepsea}"      # 同步后统一交给运行用户
 RESTART=1
 [ "${1:-}" = "--no-restart" ] && RESTART=0
 
@@ -26,7 +27,7 @@ echo "→ 同步到 $HOST:$DEST"
 RTMP="/tmp/deepsea_src_$$"
 ssh -i "$KEY" "$HOST" "rm -rf $RTMP && mkdir -p $RTMP"      # 每次全新目录，杜绝旧文件混入
 rsync -az -e "ssh -i $KEY -o StrictHostKeyChecking=no" "$TMP"/ "$HOST:$RTMP/"
-ssh -i "$KEY" "$HOST" "sudo cp -a $RTMP/. $DEST/ && sudo chown -R astrbot:astrbot $DEST && rm -rf $RTMP"
+ssh -i "$KEY" "$HOST" "sudo cp -a $RTMP/. $DEST/ && sudo chown -R $RUN_USER:$RUN_USER $DEST && rm -rf $RTMP"
 
 PORT=$(ssh -i "$KEY" "$HOST" "grep -E '^port' $DEST/core.toml | head -1 || echo '（缺少 core.toml）'")
 KEYPATH=$(ssh -i "$KEY" "$HOST" "grep -E '^api_key_file' $DEST/core.toml | head -1 || echo '（未配置 key）'")
