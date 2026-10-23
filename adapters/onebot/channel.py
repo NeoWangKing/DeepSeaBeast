@@ -29,6 +29,7 @@ class OneBotChannel:
         self._owner_ids = set(owner_ids or [])
         self._scope_names: dict[str, str] = {}     # chat.key → 昵称（来自事件）
         self._group_names: dict[str, str] = {}     # chat.key → 群名（查 get_group_info）
+        self._bot_name: str = ""                   # 机器人昵称（连接时查 get_login_info）
         self.bot_id = int(bot_id)
         self._on_message: OnMessage | None = None
         self._stop: asyncio.Event | None = None
@@ -37,6 +38,34 @@ class OneBotChannel:
     @property
     def self_account(self) -> str:
         return str(getattr(self, "bot_id", "") or "")
+
+    def _text_mentions_me(self, text: str) -> bool:
+        """有些客户端/转发会把 @ 变成纯文本，没有 at 段。
+
+        这种情况按文本认：出现 "@机器人昵称" 或 "@机器人QQ" 就算叫她。
+        """
+        t = str(text or "")
+        if "@" not in t:
+            return False
+        if self._bot_name and ("@" + self._bot_name) in t:
+            return True
+        if self.bot_id and ("@%d" % int(self.bot_id)) in t:
+            return True
+        return False
+
+    async def _fetch_bot_name(self) -> None:
+        """查一次机器人自己的昵称：有些客户端 @ 只带名字不带 qq。"""
+        for _ in range(30):
+            try:
+                if self._server.connected:
+                    r = await self._server.call_action("get_login_info", {}, timeout=8)
+                    self._bot_name = str((r.get("data") or {}).get("nickname") or "")
+                    if self._bot_name:
+                        log.info("机器人昵称：%s", self._bot_name)
+                        return
+            except Exception:
+                pass
+            await asyncio.sleep(2)
 
     async def _fetch_group_name(self, chat) -> None:
         """群名不在 message 事件里，用 get_group_info 查一次；查不到就留着空。"""
@@ -81,6 +110,7 @@ class OneBotChannel:
         self._server.on_event(self._handle)
         await self._server.start()
         self._stop = asyncio.Event()
+        asyncio.create_task(self._fetch_bot_name())
         await self._stop.wait()          # 一直跑到 stop() 被调用
 
     async def stop(self) -> None:
@@ -115,7 +145,19 @@ class OneBotChannel:
             self._scope_names[chat.key] = name
         if ev.message_type == "group" and chat.key not in self._group_names:
             asyncio.create_task(self._fetch_group_name(chat))
-        at_me = bool(self.bot_id) and ev.is_at(self.bot_id)
+        text = str(ev.message.text or "")
+        at_by_seg = bool(self.bot_id) and ev.is_at(self.bot_id, self._bot_name)
+        at_by_text = (not at_by_seg) and self._text_mentions_me(text)
+        at_me = bool(self.bot_id) and (at_by_seg or at_by_text)
+        if at_by_text:
+            log.info("没有 at 段，但文字里认出了 @ 她：%r", text[:40])
+        if not at_me and "@" in text:
+            # 被 @ 了却没认出来 —— 把原始报文打出来，看客户端到底给了什么形状
+            log.info("疑似 @ 没认出来：at段=%s raw=%s",
+                     json.dumps([{"type": s.type, "data": s.data}
+                                 for s in ev.message.segments if s.type == "at"],
+                                ensure_ascii=False)[:120],
+                     json.dumps(ev.raw, ensure_ascii=False)[:400])
         msg = InboundMessage(
             chat=chat,
             sender=Sender(id=ev.user_id, name=ev.sender_name,

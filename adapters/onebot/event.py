@@ -166,10 +166,20 @@ class Event:
     def get_messages(self) -> list[Segment]:
         return self.message.segments
 
-    def is_at(self, qq: str | int) -> bool:
-        """这条消息里有没有真的 @ 某个人。"""
+    def is_at(self, qq: str | int, name: str = "") -> bool:
+        """这条消息里有没有真的 @ 某个人。
+
+        有的客户端 at 段只给名字不给 qq（或者 qq 是空的），所以名字也认。
+        """
         want = str(qq)
-        return any(s.type == "at" and str(s.data.get("qq")) == want for s in self.message.segments)
+        for s in self.message.segments:
+            if s.type != "at":
+                continue
+            if want and str(s.data.get("qq") or "") == want:
+                return True
+            if name and str(s.data.get("name") or "") == name:
+                return True
+        return False
 
     @property
     def chat_key(self) -> str:
