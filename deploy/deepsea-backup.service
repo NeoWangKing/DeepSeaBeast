@@ -1,0 +1,7 @@
+[Unit]
+Description=DeepSeaBeast 数据备份（记忆/上下文/待办）
+After=deepsea-beast.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/deepsea/deploy/backup-deepsea.sh

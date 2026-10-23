@@ -130,3 +130,21 @@ telnet 127.0.0.1 4000      # 或 nc 127.0.0.1 4000
 
 > 历史：最早沿用了旧 AstrBot 的 `astrbot` 用户，容易和"旧框架"混淆，已改名。
 > `astrbot.service`（旧框架）保留着只为了能一键回滚，它是 `disabled` 的，不参与日常运行。
+
+## 数据备份
+
+`deepsea-backup.timer` 每天 04:00（±10 分钟抖动）把 `data/` 打包到
+`/opt/backups/deepsea-data-<时间戳>.tgz`，保留最近 7 份。
+
+```bash
+# 装一次
+sudo install -m644 deploy/deepsea-backup.service deploy/deepsea-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now deepsea-backup.timer
+
+# 手动跑一次 / 看结果
+sudo systemctl start deepsea-backup.service
+sudo journalctl -u deepsea-backup -n 5
+```
+
+备份里装的是**不可再生的东西**：记忆空间、各群印象、会话上下文、待办、贴图索引。
+代码不备份（在 git 里）。`library_rejected/` 里的废弃贴图不备份，省空间。
