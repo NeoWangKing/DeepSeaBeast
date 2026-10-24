@@ -151,6 +151,21 @@ class OneBotChannel:
         segs = []
         for x in ev.get_messages():
             data = dict(x.data)
+            if x.type in ("mface", "marketface"):
+                # OneBot 的商城表情 / 收藏表情段（真正的"表情包"多半走这里）
+                desc = str(data.get("summary") or data.get("emoji_id") or "").strip("[]")
+                segs.append(Segment(kind="sticker",
+                                    text=qq_faces.sticker_token(desc or "贴图"),
+                                    data={"name": desc,
+                                          "url": str(data.get("url") or ""),
+                                          "file": str(data.get("file") or ""),
+                                          "emoji_id": str(data.get("emoji_id") or "")}))
+                continue
+            if x.type in ("image", "mface", "marketface"):
+                # 临时诊断：看清 SnowLuma 到底怎么送贴图/表情包
+                log.info("媒体段原始数据：type=%s data=%s", x.type,
+                         json.dumps({k: (str(v)[:40]) for k, v in data.items()},
+                                    ensure_ascii=False)[:300])
             if x.type == "image" and _is_sticker_segment(data):
                 # 群里发的表情包 → 核心侧是 sticker（不是图片）
                 desc = str(data.get("summary") or "").strip("[]")

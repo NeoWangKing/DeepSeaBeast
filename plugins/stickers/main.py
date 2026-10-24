@@ -130,6 +130,26 @@ def nearest(query: str, n: int = 5) -> list[str]:
     return [short(it.get("desc"), 18) for _s, it in scored[:n]]
 
 
+_RECENT: dict[str, list[dict]] = {}
+
+
+def _recent_media(scope: str) -> list[dict]:
+    return _RECENT.setdefault(scope, [])
+
+
+def do_collect_last(scope: str, args: dict) -> dict:
+    """把这个会话里最近的一张图收进表情包库（人说"这张收下"时用）。"""
+    buf = [x for x in _recent_media(scope) if x.get("url")]
+    if not buf:
+        return {"ok": False, "error": "我这儿没有最近的图片记录"}
+    idx = int(args.get("index") or 1)
+    pickit = buf[-idx] if idx <= len(buf) else None
+    if pickit is None:
+        return {"ok": False, "error": "没有倒数第 %d 张图" % idx}
+    msg = collect_sticker(pickit["url"], pickit.get("name") or "", force=True)
+    return {"ok": "收进来" in msg, "data": {"text": msg}, "error": "" if "收进来" in msg else msg}
+
+
 def _collect_state() -> dict:
     try:
         return json.load(open(os.path.join(DATA, "collect_state.json"), encoding="utf-8"))
@@ -147,7 +167,54 @@ def _collect_save(st: dict) -> None:
         pass
 
 
-def collect_sticker(url: str, name: str = "") -> str:
+def _image_info(data: bytes) -> tuple[str, int, int]:
+    """只看文件头判断格式和尺寸（GIF / PNG / JPEG），不依赖 Pillow。"""
+    try:
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            w = int.from_bytes(data[6:8], "little")
+            h = int.from_bytes(data[8:10], "little")
+            return "gif", w, h
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            w = int.from_bytes(data[16:20], "big")
+            h = int.from_bytes(data[20:24], "big")
+            return "png", w, h
+        if data[:2] == b"\xff\xd8":
+            i = 2
+            while i < len(data) - 9:
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if marker in (0xC0, 0xC1, 0xC2):        # SOF0/1/2
+                    h = int.from_bytes(data[i + 5:i + 7], "big")
+                    w = int.from_bytes(data[i + 7:i + 9], "big")
+                    return "jpg", w, h
+                seg = int.from_bytes(data[i + 2:i + 4], "big")
+                i += 2 + seg
+    except Exception:
+        pass
+    return "?", 0, 0
+
+
+def looks_like_sticker(data: bytes) -> tuple[bool, str]:
+    """猜这张图是不是表情包。
+
+    为什么靠猜：SnowLuma 把 QQ 表情包降级成了普通 image 段（实测原始数据只有
+    file/url 两个字段，没有 summary / sub_type / emoji_id），协议上分不出来。
+    判据只求"宁可漏收，不要错收"——收错了也只是躺在待打标里，不会发出去。
+    """
+    fmt, w, h = _image_info(data)
+    if fmt == "gif":
+        return True, "动图"
+    if not w or not h:
+        return False, ""
+    ratio = w / float(h)
+    if 0.72 <= ratio <= 1.4 and min(w, h) <= 320 and len(data) <= 512 * 1024:
+        return True, "小方图 %dx%d" % (w, h)
+    return False, "%dx%d" % (w, h)
+
+
+def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
     """下载别人发的贴图存进库里（标 pending，没打标之前用不上）。
 
     返回一句话说明结果，给日志用。
@@ -171,6 +238,10 @@ def collect_sticker(url: str, name: str = "") -> str:
         return "下载失败：%r" % (e,)
     if len(data) > COLLECT_MAX_BYTES:
         return "图太大（>%d KB）" % (COLLECT_MAX_BYTES // 1024)
+    if not force:
+        ok, why = looks_like_sticker(data)
+        if not ok:
+            return "看着不像表情包（%s），跳过" % (why or "尺寸不符")
     import hashlib
     md5 = hashlib.md5(data).hexdigest()
     if md5 in (st.get("md5") or []):
@@ -297,13 +368,28 @@ def on_event(event: str, data: dict) -> None:
         return
     if not COLLECT_ON:
         return
+    scope = scope_of(data)
     for m in (data.get("media") or []):
-        if str(m.get("kind") or "") != "sticker":
-            continue
         url = str(m.get("url") or "")
         if not url:
             continue
-        log("收集贴图：%s" % collect_sticker(url, str(m.get("name") or "")))
+        kind = str(m.get("kind") or "")
+        # 最近一张图记下来：她说"这张收下"时能精确收
+        _recent_media(scope)[:0] = []
+        buf = _recent_media(scope)
+        buf.append({"url": url, "kind": kind, "name": str(m.get("name") or ""),
+                    "ts": time.time()})
+        del buf[:-8]
+        if kind == "sticker":
+            log("收集贴图：%s" % collect_sticker(url, str(m.get("name") or ""), force=True))
+        elif kind == "image":
+            log("看到图片：%s" % collect_sticker(url, "", force=False))
+
+
+def scope_of(params: dict) -> str:
+    """会话引用：工具调用和事件里的 scope 结构一样。"""
+    sc = params.get("scope") or {}
+    return str(sc.get("ref") or sc.get("key") or "unknown")
 
 
 def handle(method: str, params: dict):
@@ -322,6 +408,8 @@ def handle(method: str, params: dict):
             return do_list_stickers(args)
         if name == "note_sticker":
             return do_note_sticker(args)
+        if name == "collect_last_image":
+            return do_collect_last(scope_of(params), args)
         return {"ok": False, "error": "没有这个工具：%s" % name}
     if method == "ping":
         return {"pong": True}

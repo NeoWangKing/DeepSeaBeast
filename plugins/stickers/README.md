@@ -56,6 +56,24 @@ index.json     {"items": [{id, file, desc, tags, group, used, last_used, size}]}
 | 去重 | md5（库里已有的跳过） | 同一张图反复发只存一份 |
 | 关掉 | `STICKER_COLLECT=0` | 环境变量 |
 
+### 为什么要"猜"
+
+SnowLuma **把 QQ 表情包降级成了普通 image 段**（实测原始数据只有 `file`/`url`，
+没有 `summary` / `sub_type` / `emoji_id`），协议上分不出表情包和照片。所以判据是启发式：
+
+| 判据 | 结论 |
+|---|---|
+| GIF（动图） | 算表情包 |
+| 小方图（比例 0.72~1.4 且短边 ≤ 320 且 ≤512KB） | 算（可能是贴图） |
+| 大图 / 横图 / 长图 | 不算，跳过 |
+
+原则是**宁可漏收，不要错收**：收错了也只是躺在待打标里，不会发出去。
+
+### 漏收怎么办：让她当场收
+
+说「这张收下」「存成表情包」→ 她调 `collect_last_image(index=1)`，
+把这个会话里**最近一张图**强制收进库（插件记着最近 8 张的地址）。
+
 打标用 `note_sticker(id, desc, tags)`，打过标 `status` 自动转 `ok`，就能被 `send_sticker` 挑中了。
 `list_stickers` 里待打标的会显示成「【待打标】文件名」。
 

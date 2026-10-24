@@ -135,6 +135,20 @@ def main() -> int:
     srv.shutdown()
 
     print()
+    print("== 启发式：猜图是不是表情包（SnowLuma 把表情包降级成图片了）==")
+    gif = b"GIF89a" + (240).to_bytes(2, "little") + (240).to_bytes(2, "little") + b"x" * 100
+    ok, why = m.looks_like_sticker(gif)
+    ck("动图算表情包", ok and why == "动图", "%s %s" % (ok, why))
+    big = (b"\xff\xd8" + b"\xff\xc0\x00\x11\x08" + (1200).to_bytes(2, "big")
+           + (1600).to_bytes(2, "big") + b"\x00" * 200)
+    ok2, why2 = m.looks_like_sticker(big)
+    ck("大尺寸横图不算", ok2 is False, why2)
+    sq = (b"\xff\xd8" + b"\xff\xc0\x00\x11\x08" + (200).to_bytes(2, "big")
+          + (200).to_bytes(2, "big") + b"\x00" * 200)
+    ok3, why3 = m.looks_like_sticker(sq)
+    ck("小方图算（可能是贴图）", ok3 is True, why3)
+
+    print()
     print("== 核心把贴图媒体信息交给插件 ==")
     from core.runtime import _media_of
     from core.channel import ChatRef, InboundMessage, Message, Segment, Sender
