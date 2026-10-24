@@ -107,3 +107,7 @@ command = [".venv/bin/python", "plugins/stickers/main.py"]
 timeout = 20
 priority = 30
 max_concurrency = 2
+
+[send]
+max_retries = 2          # 明确失败时最多重试几次（未确认的绝不重发）
+retry_backoff_sec = 0.8  # 首次重试前等多久，之后翻倍

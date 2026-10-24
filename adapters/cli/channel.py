@@ -73,7 +73,7 @@ class CliChannel:
     async def send(self, out: OutboundMessage) -> SendResult:
         for seg in out.message.segments:
             if seg.kind in ("file", "image", "sticker", "face", "poke", "voice"):
-                return SendResult(ok=False, error="这个通道发不了 %s" % seg.kind)
+                return SendResult(ok=False, retryable=False, error="这个通道发不了 %s" % seg.kind)
         print("鱼> %s" % out.message.text)
         return SendResult(ok=True)
 

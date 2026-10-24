@@ -143,14 +143,14 @@ class TcpChannel:
     async def send(self, out: OutboundMessage) -> SendResult:
         for seg in out.message.segments:
             if seg.kind in ("file", "image", "sticker", "face", "poke", "voice"):
-                return SendResult(ok=False, error="这个通道发不了 %s" % seg.kind)
+                return SendResult(ok=False, retryable=False, error="这个通道发不了 %s" % seg.kind)
         w = self._writers.get(out.chat.key)
         if w is None:
-            return SendResult(ok=False, error="没有已连接的终端")
+            return SendResult(ok=False, retryable=False, error="没有已连接的终端")
         try:
             for line in str(out.message.text).splitlines() or [""]:
                 w.write((line + "\n").encode())
             await w.drain()
             return SendResult(ok=True, confirmed=False, error="终端没有回执，无法确认")
         except Exception as e:
-            return SendResult(ok=False, error=repr(e))
+            return SendResult(ok=False, retryable=False, error=repr(e))

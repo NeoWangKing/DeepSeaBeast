@@ -21,8 +21,11 @@ log = logging.getLogger("channels")
 
 
 class ChannelManager:
-    def __init__(self, pacing: PacingConfig | None = None) -> None:
+    def __init__(self, pacing: PacingConfig | None = None,
+                 max_retries: int = 2, retry_backoff_sec: float = 0.8) -> None:
         self.pacer = Pacer(pacing)
+        self.max_retries = int(max_retries)
+        self.retry_backoff_sec = float(retry_backoff_sec)
         self._channels: list = []
         self._tasks: list[asyncio.Task] = []
         self._last: dict[str, object] = {}      # 会话 key → 最近一次收到消息的通道
@@ -161,6 +164,23 @@ class ChannelManager:
     async def send(self, out: OutboundMessage) -> SendResult:
         c = self.route(out.chat)
         if c is None:
-            return SendResult(ok=False, error="没有可用的通道")
-        await self.pacer.before_send(out.chat.key, out.message.text)   # 节奏在这里统一生效
-        return await c.send(out)
+            return SendResult(ok=False, error="没有可用的通道", retryable=False)
+
+        max_tries = max(1, int(getattr(self, "max_retries", 2)) + 1)
+        backoff = float(getattr(self, "retry_backoff_sec", 0.8))
+        last: SendResult | None = None
+        for attempt in range(1, max_tries + 1):
+            await self.pacer.before_send(out.chat.key, out.message.text)  # 节奏在这里统一生效
+            res = await c.send(out)
+            if res.ok:
+                return res
+            last = res
+            # 只重试"明确失败 + 通道说值得再试"的；未确认的绝不重发（可能重复）
+            if not getattr(res, "confirmed", True) or not getattr(res, "retryable", True):
+                return res
+            if attempt < max_tries:
+                log.warning("发送失败（第 %d/%d 次），%.1fs 后重试：%s",
+                            attempt, max_tries - 1, backoff, res.error or "未知原因")
+                await asyncio.sleep(backoff)
+                backoff *= 2
+        return last or SendResult(ok=False, error="发送失败")

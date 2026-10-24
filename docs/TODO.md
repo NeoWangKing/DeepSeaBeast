@@ -88,7 +88,9 @@
   "接口收下了"）。对方不支持 `get_msg` 时自动关闭核对并警告一次，不误报。
   文件上传（`upload_group_file`）没有 message_id，暂无法核对。
 - **统一的发送结果三态**：`SendResult.confirmed` 已加（True=确认到 / False=没法确认 / ok=False=明确失败），
-  核心已记录"未确认"的发送；**重试策略还没做**（只重试 ok=False，不碰 confirmed=False）。
+  核心已记录"未确认"的发送。
+- ~~**重试策略**~~ ✅ 2026-10-24：`ChannelManager.send` 统一重试——最多 2 次、退避翻倍；
+  **只重试 `ok=False && retryable=True`**，未确认的（`confirmed=False`）绝不重发。
 
 ## 能力
 

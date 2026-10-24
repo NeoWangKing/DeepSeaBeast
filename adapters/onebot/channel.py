@@ -281,7 +281,8 @@ class OneBotChannel:
             log.warning("文件上传失败：%r", e)
             return SendResult(ok=False, error=repr(e))
         if int(resp.get("retcode", 0)) != 0:
-            return SendResult(ok=False, error=str(resp.get("wording") or resp.get("retcode")))
+            return SendResult(ok=False, error=str(resp.get("wording") or resp.get("retcode")),
+                              retryable=False)
         return SendResult(ok=True, confirmed=False, error="文件上传没有回执，无法确认")
 
     async def send(self, out: OutboundMessage) -> SendResult:
@@ -298,7 +299,11 @@ class OneBotChannel:
                 r = await self._server.send_private_msg(out.chat.id, raw)
             log.debug("回包 ← %s", json.dumps(r, ensure_ascii=False)[:200])
             if int(r.get("retcode", 0)) != 0:
-                return SendResult(ok=False, error=str(r.get("wording") or r.get("retcode")))
+                code = int(r.get("retcode") or 0)
+                # 1xx 多为参数/目标不存在这类硬错误，重试没意义；其它当瞬时故障
+                permanent = 100 <= code < 200
+                return SendResult(ok=False, error=str(r.get("wording") or code),
+                                  retryable=not permanent)
             mid = (r.get("data") or {}).get("message_id")
             if mid is None:
                 # 没有 message_id 就没法回读，只能说"接口收下了"
@@ -307,12 +312,12 @@ class OneBotChannel:
             if self._verify:
                 ok, err, checked = await self._verify_sent(mid, out.chat)
                 if not ok:
-                    return SendResult(ok=False, error=err)      # 明确失败，可重试
+                    return SendResult(ok=False, error=err, retryable=True)   # 回读不到，可重试
                 return SendResult(ok=True, message_id=str(mid), confirmed=checked)
             return SendResult(ok=True, message_id=str(mid), confirmed=False)
         except Exception as e:                     # 发送失败不能把调用方带崩
             log.warning("发送失败：%r", e)
-            return SendResult(ok=False, error=repr(e))
+            return SendResult(ok=False, error=repr(e), retryable=True)   # 连接类问题，值得重试
 
 
 def _is_sticker_segment(data: dict) -> bool:

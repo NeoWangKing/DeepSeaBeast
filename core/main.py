@@ -47,7 +47,10 @@ async def run(config_path: str, channel_name: str) -> None:
         raise SystemExit(2)
     channels = build_channels(cfg, owner_ids, only=channel_name)
     pacing_cfg = PacingConfig.from_dict(getattr(cfg, "pacing", {}) or {})
-    channel = ChannelManager(pacing_cfg)
+    _send_cfg = getattr(cfg, "send", {}) or {}
+    channel = ChannelManager(pacing_cfg,
+                             max_retries=int(_send_cfg.get("max_retries", 2)),
+                             retry_backoff_sec=float(_send_cfg.get("retry_backoff_sec", 0.8)))
     log.info("发言节奏：%s（基础 %.1fs + %.3fs/字，封顶 %.1fs）",
              "开" if pacing_cfg.enabled else "关",
              pacing_cfg.base_sec, pacing_cfg.sec_per_char, pacing_cfg.max_sec)

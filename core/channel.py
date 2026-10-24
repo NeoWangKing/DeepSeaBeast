@@ -120,6 +120,8 @@ class SendResult:
     message_id: str = ""
     error: str = ""
     confirmed: bool = True
+    # 这次失败"再试一次有没有意义"：通道最清楚（连接断了=可重试；参数错=别试了）
+    retryable: bool = True
 
 
 OnMessage = Callable[[InboundMessage], Awaitable[None]]
