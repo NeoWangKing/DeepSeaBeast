@@ -131,3 +131,6 @@ voice_port = 9987             # 哪个虚拟服务器
 channels = []                 # 要接的频道 id，空 = 全部
 nickname = "大肥鱼"
 room_prefix = "ts"
+follow_humans = true          # TS 频道文字只投给"在频道里"的客户端 → 跟着人走
+follow_interval = 15          # 多久看一次该待在哪个频道
+

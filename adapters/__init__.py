@@ -78,7 +78,9 @@ def build_channels(cfg: Any, owner_ids: list[int], only: str = "") -> list:
                                     voice_port=int(ts.get("voice_port", 9987)),
                                     channels=[int(x) for x in (ts.get("channels") or [])],
                                     nickname=str(ts.get("nickname", "大肥鱼")),
-                                    room_prefix=str(ts.get("room_prefix", "ts"))))
+                                    room_prefix=str(ts.get("room_prefix", "ts")),
+                                    follow_humans=bool(ts.get("follow_humans", True)),
+                                    follow_interval=float(ts.get("follow_interval", 15))))
 
     ob = ad.get("onebot") or {}
     if ob.get("enabled"):

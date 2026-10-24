@@ -66,7 +66,8 @@ class TeamSpeakChannel:
     def __init__(self, host: str = "127.0.0.1", port: int = 10022,
                  username: str = "serveradmin", password: str = "",
                  voice_port: int = 9987, channels: list[int] | None = None,
-                 nickname: str = "大肥鱼", room_prefix: str = "ts") -> None:
+                 nickname: str = "大肥鱼", room_prefix: str = "ts",
+                 follow_humans: bool = True, follow_interval: float = 15.0) -> None:
         self.host = str(host)
         self.port = int(port)
         self.username = str(username)
@@ -83,6 +84,11 @@ class TeamSpeakChannel:
         self._self_id = ""
         self._names: dict[int, str] = {}
         self._nick_actual = self.nickname
+        # TS 的频道文字只投递给"在该频道里"的客户端，所以她要跟着人走
+        self.follow_humans = bool(follow_humans)
+        self.follow_interval = max(5.0, float(follow_interval))
+        self._cur_cid = 0
+        self._last_clientlist = ""
 
     # ── 通道契约 ────────────────────────────────────────
     def describe(self, chat) -> str:
@@ -137,8 +143,11 @@ class TeamSpeakChannel:
         if p is None:
             return SendResult(ok=False, error="还没连上 TS 查询接口", retryable=True)
         cid = int(getattr(out.chat, "id", 0) or 0)
-        line = "sendtextmessage targetmode=2 target=%d msg=%s" % (
-            cid, escape(text.replace("\n", " ")))
+        # ⚠️ targetmode=2 时 TS **忽略 target**，消息发给"自己当前所在频道"。
+        # 所以要先确保自己在目标频道里（踩过：消息发到了别的频道）
+        if cid and cid != self._cur_cid:
+            await self._move_to(proc, cid)
+        line = "sendtextmessage targetmode=2 msg=%s" % escape(text.replace("\n", " "))
         async with self._lock:
             try:
                 err = await self._cmd(p, line, timeout=5.0)
@@ -165,7 +174,10 @@ class TeamSpeakChannel:
                 await self._learn_self_id(proc)
                 await self._clean_stale(proc)
                 await self._set_nickname(proc)
+                await self._join_initial(proc)
                 await self._subscribe(proc)
+                if self.follow_humans:
+                    asyncio.create_task(self._follow_loop(proc))
                 log.info("teamspeak 已接入：频道 %s，昵称 %s",
                          self.channels or "全部", self._nick_actual)
                 await reader
@@ -270,6 +282,19 @@ class TeamSpeakChannel:
             log.info("清掉 %d 个自己遗留的查询会话", killed)
             await asyncio.sleep(0.4)
 
+    async def _move_to(self, proc, cid: int) -> bool:
+        me = await self._raw_cmd(proc, "whoami")
+        m = re.search(r"client_id=(\d+)", me)
+        if not m:
+            return False
+        e = await self._cmd(proc, "clientmove clid=%s cid=%d" % (m.group(1), cid))
+        if "id=0" not in e:
+            log.warning("切到频道 %d 失败：%s", cid, e[:50])
+            return False
+        self._cur_cid = cid
+        await self._cmd(proc, "servernotifyregister event=textchannel id=%d" % cid)
+        return True
+
     async def _set_nickname(self, proc) -> None:
         if not self.nickname:
             return
@@ -285,6 +310,71 @@ class TeamSpeakChannel:
                 log.info("昵称 %s 被占用，改用 %s", self.nickname, alt)
                 return
         log.info("设昵称没成功（%s），先用当前昵称", err[:40] or "超时")
+
+    async def _join_initial(self, proc) -> None:
+        """先进一个频道：优先配置的频道，其次"人最多的那个"。
+
+        为什么必须进：TS 只把频道文字投递给**在该频道里的**客户端（实测：在外面订阅收不到）。
+        """
+        info = await self._raw_cmd(proc, "channellist")
+        for m in re.finditer(r"cid=(\d+)[^|]*?channel_name=([^\s|]+)", info):
+            self._names[int(m.group(1))] = unescape(m.group(2))
+        cl = await self._raw_cmd(proc, "clientlist")
+        self._last_clientlist = cl
+        target = self.channels[0] if self.channels else self._busiest_human_channel()
+        if not target:
+            return
+        me = await self._raw_cmd(proc, "whoami")
+        m = re.search(r"client_id=(\d+)", me)
+        my_clid = m.group(1) if m else "0"
+        e = await self._cmd(proc, "clientmove clid=%s cid=%d" % (my_clid, target))
+        if "id=0" in e:
+            self._cur_cid = target
+            log.info("进入频道 %d（%s）", target, self._names.get(target, "?"))
+
+    def _humans_per_channel(self, clientlist: str) -> dict[int, int]:
+        """每个频道里"真人客户端"的数量（client_type=0）。"""
+        out: dict[int, int] = {}
+        for m in re.finditer(r"cid=(\d+)[^|]*?client_type=(\d)", clientlist):
+            cid, ctype = int(m.group(1)), int(m.group(2))
+            if ctype == 0:
+                out[cid] = out.get(cid, 0) + 1
+        return out
+
+    def _busiest_human_channel(self) -> int:
+        humans = self._humans_per_channel(self._last_clientlist)
+        if not humans:
+            return 0
+        return max(humans.items(), key=lambda kv: kv[1])[0]
+
+    async def _follow_loop(self, proc) -> None:
+        """定期看该待在哪个频道：有人说话就过去，避免来回跳。"""
+        while not self._stop.is_set():
+            await asyncio.sleep(self.follow_interval)
+            try:
+                info = await self._raw_cmd(proc, "clientlist")
+                self._last_clientlist = info
+                humans = self._humans_per_channel(info)
+                if not humans:
+                    continue
+                here = humans.get(self._cur_cid, 0)
+                best_cid, best_n = max(humans.items(), key=lambda kv: kv[1])
+                if here > 0:
+                    continue                       # 当前频道已经有人，别乱动
+                me = await self._raw_cmd(proc, "whoami")
+                m = re.search(r"client_id=(\d+)", me)
+                if not m:
+                    continue
+                e = await self._cmd(proc, "clientmove clid=%s cid=%d" % (m.group(1), best_cid))
+                if "id=0" in e:
+                    self._cur_cid = best_cid
+                    await self._cmd(proc, "servernotifyregister event=textchannel id=%d" % best_cid)
+                    log.info("跟着人去频道 %d（%s，%d 人）",
+                             best_cid, self._names.get(best_cid, "?"), best_n)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.debug("跟随频道出错：%r", e)
 
     async def _subscribe(self, proc) -> None:
         info = await self._raw_cmd(proc, "channellist")
