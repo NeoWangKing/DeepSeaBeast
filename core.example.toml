@@ -134,3 +134,9 @@ room_prefix = "ts"
 follow_humans = true          # TS 频道文字只投给"在频道里"的客户端 → 跟着人走
 follow_interval = 15          # 多久看一次该待在哪个频道
 
+[[plugins]]
+name = "jargon"
+command = [".venv/bin/python", "plugins/jargon/main.py"]
+timeout = 15
+priority = 20
+max_concurrency = 2

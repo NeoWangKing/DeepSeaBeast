@@ -1,0 +1,5 @@
+name = "jargon"
+command = [".venv/bin/python", "plugins/jargon/main.py"]
+timeout = 15
+priority = 20
+max_concurrency = 2
