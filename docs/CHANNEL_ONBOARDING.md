@@ -81,6 +81,16 @@ class MyChannel:
     async def send(self, out) -> SendResult:   # 发
 ```
 
+`send()` 要返回 `SendResult(ok, error, confirmed)`：**`confirmed` 说的是结论确定不确定**。
+
+| ok | confirmed | 含义 |
+|---|---|---|
+| True | True | 真的确认到了（回读/回执核对通过） |
+| True | False | 接口收下了但没法确认（无回执）——**重试可能重复** |
+| False | True | 明确失败，可以放心重试 |
+
+通道自己决定怎么核对（QQ 用 `get_msg` 回读，微信类回读数据库）；**核心不需要知道细节**。
+
 四条铁律：
 
 1. **名字只能来自平台**（事件/接口），代码里不许写死任何群号、昵称、用户 id

@@ -414,8 +414,12 @@ class Turn:
         res = await self.channel.send(out)
         ok = bool(getattr(res, "ok", False))
         err = str(getattr(res, "error", "") or "")
+        confirmed = bool(getattr(res, "confirmed", True))
         if not ok:
             log.warning("发送失败：%s", err or "未知原因")
+        elif not confirmed:
+            # 发出去了但没法确认：重试可能重复，所以只记录、不重试
+            log.info("发送未确认（可重试性：不安全）：%s", err or "通道无回执")
         return ok, err
 
     # ── 待办 ──────────────────────────────────────────

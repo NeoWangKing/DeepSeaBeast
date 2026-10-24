@@ -87,6 +87,8 @@
 - ~~**发送回执核对**~~ ✅ 2026-10-24：发完调 `get_msg` 回读，查不到就判失败（`retcode=0` 只代表
   "接口收下了"）。对方不支持 `get_msg` 时自动关闭核对并警告一次，不误报。
   文件上传（`upload_group_file`）没有 message_id，暂无法核对。
+- **统一的发送结果三态**：`SendResult.confirmed` 已加（True=确认到 / False=没法确认 / ok=False=明确失败），
+  核心已记录"未确认"的发送；**重试策略还没做**（只重试 ok=False，不碰 confirmed=False）。
 
 ## 能力
 

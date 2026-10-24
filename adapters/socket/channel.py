@@ -135,6 +135,6 @@ class SocketChannel:
         try:
             w.write((json.dumps({"text": out.message.text}, ensure_ascii=False) + "\n").encode())
             await w.drain()
-            return SendResult(ok=True)
+            return SendResult(ok=True, confirmed=False, error="终端没有回执，无法确认")
         except Exception as e:
             return SendResult(ok=False, error=repr(e))

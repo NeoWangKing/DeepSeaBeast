@@ -223,7 +223,7 @@ class OneBotChannel:
             raw.append({"type": s.kind, "data": data})
         return raw
 
-    async def _verify_sent(self, message_id, chat) -> tuple[bool, str]:
+    async def _verify_sent(self, message_id, chat) -> tuple[bool, str, bool]:
         """发送后回读：确认这条消息真的在服务端存在。
 
         retcode=0 只代表"发消息接口收下了"；回读能让"发出去但没落地"这类
@@ -245,19 +245,19 @@ class OneBotChannel:
                     if chat.kind == "group":
                         gid = data.get("group_id")
                         if gid is not None and int(gid) != int(chat.id):
-                            return False, "回读到的是别的群的消息（%s ≠ %s）" % (gid, chat.id)
-                    return True, ""
+                            return False, "回读到的是别的群的消息（%s ≠ %s）" % (gid, chat.id), True
+                    return True, "", True
                 if code in (100, 1404) and "not found" in str(r.get("wording") or "").lower():
                     last_err = "服务端查不到这条消息（%s）" % (r.get("wording") or code)
                 elif code == 1404 or "unknown" in str(r.get("wording") or "").lower():
                     # 这个实现不支持 get_msg：别让核对变成误报，直接关掉
                     self._verify = False
                     log.warning("对方不支持 get_msg，已关闭发送回执核对")
-                    return True, ""
+                    return True, "", False
                 else:
                     last_err = "回读失败：%s %s" % (code, r.get("wording") or "")
             await asyncio.sleep(0.2)      # 服务端可能晚一点才可查
-        return False, last_err or "回读失败"
+        return False, last_err or "回读失败", True
 
     async def _send_file(self, out: OutboundMessage, seg) -> SendResult:
         """文件走 upload_* 接口，不是 send_*_msg。
@@ -282,7 +282,7 @@ class OneBotChannel:
             return SendResult(ok=False, error=repr(e))
         if int(resp.get("retcode", 0)) != 0:
             return SendResult(ok=False, error=str(resp.get("wording") or resp.get("retcode")))
-        return SendResult(ok=True)
+        return SendResult(ok=True, confirmed=False, error="文件上传没有回执，无法确认")
 
     async def send(self, out: OutboundMessage) -> SendResult:
         try:
@@ -300,11 +300,16 @@ class OneBotChannel:
             if int(r.get("retcode", 0)) != 0:
                 return SendResult(ok=False, error=str(r.get("wording") or r.get("retcode")))
             mid = (r.get("data") or {}).get("message_id")
-            if self._verify and mid is not None:
-                ok, err = await self._verify_sent(mid, out.chat)
+            if mid is None:
+                # 没有 message_id 就没法回读，只能说"接口收下了"
+                return SendResult(ok=True, confirmed=False,
+                                  error="没有 message_id，无法回读确认")
+            if self._verify:
+                ok, err, checked = await self._verify_sent(mid, out.chat)
                 if not ok:
-                    return SendResult(ok=False, error=err)
-            return SendResult(ok=True, message_id=str(mid or ""))
+                    return SendResult(ok=False, error=err)      # 明确失败，可重试
+                return SendResult(ok=True, message_id=str(mid), confirmed=checked)
+            return SendResult(ok=True, message_id=str(mid), confirmed=False)
         except Exception as e:                     # 发送失败不能把调用方带崩
             log.warning("发送失败：%r", e)
             return SendResult(ok=False, error=repr(e))

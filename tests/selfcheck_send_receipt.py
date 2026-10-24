@@ -67,7 +67,8 @@ async def fake_client(port: int, get_msg_reply: dict, sent: list) -> None:
             pass
 
 
-async def one_case(name: str, get_msg_reply: dict, expect_ok: bool) -> list:
+async def one_case(name: str, get_msg_reply: dict, expect_ok: bool,
+                   expect_confirmed: bool = True) -> list:
     port = free_port()
     ch = OneBotChannel(host="127.0.0.1", port=port, allow_self_ids=[1], bot_id=1,
                        verify_send=True, verify_timeout_ms=800)
@@ -77,9 +78,12 @@ async def one_case(name: str, get_msg_reply: dict, expect_ok: bool) -> list:
     await asyncio.sleep(0.8)
     res = await ch.send(OutboundMessage(chat=ChatRef.group(1),
                                         message=Message.from_text("测试一下")))
-    print("  [%s] ok=%s error=%r actions=%s" % (name, res.ok, res.error, sent))
+    print("  [%s] ok=%s confirmed=%s error=%r actions=%s"
+          % (name, res.ok, res.confirmed, res.error, sent))
     ck("%s → 发送结果 %s" % (name, "成功" if expect_ok else "失败"), res.ok is expect_ok,
        str(res.error)[:50])
+    ck("%s → 结论确定性 %s" % (name, expect_confirmed), res.confirmed is expect_confirmed,
+       str(res.confirmed))
     if not expect_ok:
         ck("%s → 错误信息说清原因" % name, bool(res.error), str(res.error)[:40])
     client.cancel()
@@ -107,7 +111,7 @@ async def main() -> int:
     print("== 对方不支持 get_msg → 关闭核对，不误报 ==")
     sent = await one_case("不支持回读",
                           {"status": "failed", "retcode": 1404, "wording": "unknown action"},
-                          expect_ok=True)
+                          expect_ok=True, expect_confirmed=False)
     ck("只尝试过回读", "get_msg" in sent, str(sent))
 
     print()

@@ -102,9 +102,24 @@ class OutboundMessage:
 
 @dataclass(slots=True)
 class SendResult:
+    """一次发送的结果。
+
+    `confirmed` 说的是**这个结论确定不确定**，不是"成功没成功"：
+
+    | ok | confirmed | 含义 |
+    |---|---|---|
+    | True  | True  | 真的确认到了（回读/回执核对通过） |
+    | True  | False | 接口收下了，但没法确认（通道不支持回读、文件上传没回执） |
+    | False | True  | 明确失败，可以放心重试 |
+
+    为什么要分开：`ok=True, confirmed=False` 的消息**重试可能造成重复**，
+    而 `ok=False` 的可以安全重试。核心的重试策略靠这个区分。
+    """
+
     ok: bool
     message_id: str = ""
     error: str = ""
+    confirmed: bool = True
 
 
 OnMessage = Callable[[InboundMessage], Awaitable[None]]
