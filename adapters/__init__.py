@@ -49,7 +49,9 @@ def build_channels(cfg: Any, owner_ids: list[int], only: str = "") -> list:
         out.append(OneBotChannel(host=str(ob.get("host", "127.0.0.1")),
                                  port=int(ob.get("port", 6199)),
                                  allow_self_ids=ids, owner_ids=owner_ids,
-                                 bot_id=int(ob.get("bot_id", 0) or (ids[0] if ids else 0))))
+                                 bot_id=int(ob.get("bot_id", 0) or (ids[0] if ids else 0)),
+                                 verify_send=bool(ob.get("verify_send", True)),
+                                 verify_timeout_ms=int(ob.get("verify_timeout_ms", 3000))))
 
     tc = ad.get("tcp") or {}
     if tc.get("enabled"):

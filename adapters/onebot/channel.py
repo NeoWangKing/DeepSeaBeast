@@ -27,7 +27,8 @@ class OneBotChannel:
 
     def __init__(self, host: str = "127.0.0.1", port: int = 6200,
                  allow_self_ids: list[int] | None = None, owner_ids: list[int] | None = None,
-                 bot_id: int = 0) -> None:
+                 bot_id: int = 0, verify_send: bool = True,
+                 verify_timeout_ms: int = 3000) -> None:
         self._server = OneBotServer(host, port, allow_self_ids)
         self._owner_ids = set(owner_ids or [])
         self._scope_names: dict[str, str] = {}     # chat.key → 昵称（来自事件）
@@ -37,6 +38,9 @@ class OneBotChannel:
         self._on_message: OnMessage | None = None
         self._stop: asyncio.Event | None = None
         self._locks: dict[str, asyncio.Lock] = {}
+        # 发送后回读核对：retcode=0 只说明"接口收下了"，不说明"消息真的存在"
+        self._verify = bool(verify_send)
+        self._verify_timeout = max(500, int(verify_timeout_ms)) / 1000.0
 
     @property
     def self_account(self) -> str:
@@ -219,6 +223,42 @@ class OneBotChannel:
             raw.append({"type": s.kind, "data": data})
         return raw
 
+    async def _verify_sent(self, message_id, chat) -> tuple[bool, str]:
+        """发送后回读：确认这条消息真的在服务端存在。
+
+        retcode=0 只代表"发消息接口收下了"；回读能让"发出去但没落地"这类
+        静默失败暴露出来（实测 get_msg 对不存在的 id 返回 100 message not found）。
+
+        协议不支持/接口不可用时**自动关掉核对**，只警告一次，不影响正常发送。
+        """
+        last_err = ""
+        for attempt in (1, 2):
+            try:
+                r = await self._server.call_action(
+                    "get_msg", {"message_id": message_id}, timeout=self._verify_timeout)
+            except Exception as e:
+                last_err = "回读异常：%r" % (e,)
+            else:
+                code = int(r.get("retcode") or 0)
+                if code == 0:
+                    data = r.get("data") or {}
+                    if chat.kind == "group":
+                        gid = data.get("group_id")
+                        if gid is not None and int(gid) != int(chat.id):
+                            return False, "回读到的是别的群的消息（%s ≠ %s）" % (gid, chat.id)
+                    return True, ""
+                if code in (100, 1404) and "not found" in str(r.get("wording") or "").lower():
+                    last_err = "服务端查不到这条消息（%s）" % (r.get("wording") or code)
+                elif code == 1404 or "unknown" in str(r.get("wording") or "").lower():
+                    # 这个实现不支持 get_msg：别让核对变成误报，直接关掉
+                    self._verify = False
+                    log.warning("对方不支持 get_msg，已关闭发送回执核对")
+                    return True, ""
+                else:
+                    last_err = "回读失败：%s %s" % (code, r.get("wording") or "")
+            await asyncio.sleep(0.2)      # 服务端可能晚一点才可查
+        return False, last_err or "回读失败"
+
     async def _send_file(self, out: OutboundMessage, seg) -> SendResult:
         """文件走 upload_* 接口，不是 send_*_msg。
 
@@ -260,6 +300,10 @@ class OneBotChannel:
             if int(r.get("retcode", 0)) != 0:
                 return SendResult(ok=False, error=str(r.get("wording") or r.get("retcode")))
             mid = (r.get("data") or {}).get("message_id")
+            if self._verify and mid is not None:
+                ok, err = await self._verify_sent(mid, out.chat)
+                if not ok:
+                    return SendResult(ok=False, error=err)
             return SendResult(ok=True, message_id=str(mid or ""))
         except Exception as e:                     # 发送失败不能把调用方带崩
             log.warning("发送失败：%r", e)

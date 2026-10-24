@@ -12,6 +12,9 @@ level = "INFO"
 enabled = false          # 服务器上不开 CLI（systemd 的 stdin 会立刻 EOF）
 
 [adapters.onebot]
+# 发送后回读核对：retcode=0 只代表"接口收下了"，回读才确认消息真的存在
+verify_send = true
+verify_timeout_ms = 3000
 enabled = true
 host = "127.0.0.1"
 port = 6199
