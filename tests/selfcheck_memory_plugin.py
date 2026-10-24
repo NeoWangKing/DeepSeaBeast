@@ -88,7 +88,7 @@ async def main() -> int:
             {"op": "add", "space": "session", "text": "本群某人在折腾 Rust 项目",
              "importance": 4, "tags": ["成员"]},
             {"op": "add", "space": "global", "text": "我不该在群里贴长代码",
-             "importance": 5, "tags": ["经验"]},
+             "importance": 5, "tags": ["经验"], "public": True},
         ]}, ensure_ascii=False))
         r = await mgr.run_job("memory", "consolidate")
         ck("consolidate 成功", r.get("ok") is True, str(r))
@@ -112,6 +112,39 @@ async def main() -> int:
         ck("全局记忆也被注入", "长代码" in text, text[:80])
 
         print()
+        print("== 硬约束：global 只收 public 条目 ==")
+        REPLIES.append(json.dumps({"ops": [
+            {"op": "add", "space": "global", "text": "灵其啊在写一个 Rust 项目", "importance": 5},
+            {"op": "add", "space": "global", "text": "私聊里听说某人要换工作", "importance": 4},
+            {"op": "add", "space": "session", "text": "灵其啊在写一个 Rust 项目", "importance": 5},
+        ]}, ensure_ascii=False))
+        await mgr.emit("message.received", {"scope": {"kind": "group", "id": 1, "key": "g1"},
+                                            "sender": {"id": 7, "name": "某人"},
+                                            "text": "我在写 Rust", "ts": 2100})
+        await asyncio.sleep(0.3)
+        await mgr.run_job("memory", "consolidate")
+        glob2 = json.loads((td / "data" / "spaces" / "global.json").read_text(encoding="utf-8"))
+        texts_global = [e["text"] for e in glob2["entries"]]
+        ck("关于具体人的事没进 global", "Rust 项目" not in " ".join(texts_global),
+           str(texts_global)[:70])
+        ck("私聊听来的事没进 global", "换工作" not in " ".join(texts_global))
+        ck("global 里仍然只有 pubic 的那条", len(glob2["entries"]) == 1, str(texts_global))
+        sess3 = json.loads((td / "data" / "spaces" / "g1.json").read_text(encoding="utf-8"))
+        ck("这类事留在本会话空间", any("Rust 项目" in e["text"] for e in sess3["entries"]),
+           str([e["text"] for e in sess3["entries"]])[:70])
+
+        print()
+        print("== 别的会话看不到本会话的记忆 ==")
+        other = await mgr._procs["memory"].call("get_context", {
+            "scope": {"kind": "group", "id": 2, "key": "g2"},
+            "sender": {"id": 9, "name": "别人"},
+            "channel": {"name": "onebot"},
+            "message": "Rust 项目"})
+        other_text = "\n".join(other.get("knowledge") or [])
+        ck("g2 拿不到 g1 的记忆", "Rust 项目" not in other_text, other_text[:60])
+        ck("g2 能拿到 public 的 global", "长代码" in other_text, other_text[:60])
+
+        print()
         print("== 去重：重复的 add 被跳过 ==")
         await mgr.emit("message.received", {"scope": {"kind": "group", "id": 1, "key": "g1"},
                                             "sender": {"id": 7, "name": "某人"},
@@ -122,7 +155,8 @@ async def main() -> int:
              "importance": 4}]}, ensure_ascii=False))
         await mgr.run_job("memory", "consolidate")
         sess2 = json.loads((td / "data" / "spaces" / "g1.json").read_text(encoding="utf-8"))
-        ck("重复条目没被写第二遍", len(sess2["entries"]) == 1, str(len(sess2["entries"])))
+        dup = [e["text"] for e in sess2["entries"] if e["text"] == "本群某人在折腾 Rust 项目"]
+        ck("重复条目没被写第二遍", len(dup) == 1, str(len(dup)))
 
         print()
         print("== 模型说没什么可记 → 不写 ==")
@@ -132,8 +166,9 @@ async def main() -> int:
         await asyncio.sleep(0.3)
         REPLIES.append('{"ops": []}')
         await mgr.run_job("memory", "consolidate")
-        sess3 = json.loads((td / "data" / "spaces" / "g1.json").read_text(encoding="utf-8"))
-        ck("空操作不写东西", len(sess3["entries"]) == 1, str(len(sess3["entries"])))
+        sess4 = json.loads((td / "data" / "spaces" / "g1.json").read_text(encoding="utf-8"))
+        ck("空操作不写东西", len(sess4["entries"]) == len(sess2["entries"]),
+           "%d → %d" % (len(sess2["entries"]), len(sess4["entries"])))
 
         await mgr.close()
     finally:

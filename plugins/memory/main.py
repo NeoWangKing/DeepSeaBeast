@@ -175,7 +175,12 @@ EXTRACT_PROMPT = """你在维护一个长期记忆库。下面是【已有记忆
 
 输出**严格 JSON**，不要解释、不要代码块围栏：
 {"ops": [
-  {"op": "add", "space": "global|session", "text": "一句话，具体、可检索", "importance": 1-5, "tags": ["偏好"]},
+  {"op": "add", "space": "global|session", "text": "一句话，具体、可检索", "importance": 1-5, "tags": ["偏好"], "public": true},
+
+- **只有 space=global 时才需要 `"public": true`**，而且必须真的是"谁看到都无所谓"的
+  （她的通用经验、群规、公共梗、项目背景）。凡涉及某个人、某个群的具体事情，
+  space 一律写 session，不要写 global。
+- 不写 `public` 却又指定 global 的操作会被程序**直接丢弃**（不是提示，是硬拒绝）。
   {"op": "update", "space": "...", "id": "m-0003", "text": "改写成完整的句子", "importance": 4},
   {"op": "delete", "space": "...", "id": "m-0005", "reason": "过时了"}
 ]}
@@ -217,6 +222,12 @@ def apply_ops(scope: str, ops: list[dict]) -> dict:
         text = str(op.get("text") or "").strip()[:ENTRY_MAX_CHARS]
         imp = max(1, min(5, int(op.get("importance") or 3)))
 
+        # global 空间只收"公开"条目：任何关于具体人/群的事都不许放进去
+        public = bool(op.get("public")) or target != "global"
+        if target == "global" and not public:
+            done["rejected_global"] = done.get("rejected_global", 0) + 1
+            continue
+
         if kind == "add" and text:
             # 简单的去重：已有相同/高度相似的就不再存
             if any(text == e.get("text") for e in data["entries"]):
@@ -226,10 +237,13 @@ def apply_ops(scope: str, ops: list[dict]) -> dict:
                 "id": next_id(data), "text": text, "importance": imp,
                 "tags": [str(t)[:12] for t in (op.get("tags") or [])][:5],
                 "created": time.time(), "updated": time.time(), "uses": 0,
-                "source": scope,
+                "source": scope, "public": public,
             })
             done["add"] += 1
         elif kind == "update":
+            if target == "global" and not public:
+                done["rejected_global"] = done.get("rejected_global", 0) + 1
+                continue
             for e in data["entries"]:
                 if e.get("id") == op.get("id"):
                     if text:
@@ -358,7 +372,8 @@ def get_context(params: dict) -> dict:
     scope = str((params.get("scope") or {}).get("ref") or (params.get("scope") or {}).get("key") or "unknown")
     query = str(params.get("message") or "")
 
-    gl = rank(load_space("global")["entries"], query)[:GLOBAL_TOP]
+    gl_all = [e for e in load_space("global")["entries"] if e.get("public", True)]
+    gl = rank(gl_all, query)[:GLOBAL_TOP]
     sc = rank(load_space(scope)["entries"], query)[:SCOPE_TOP]
 
     knowledge: list[str] = []
