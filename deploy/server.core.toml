@@ -112,3 +112,11 @@ max_concurrency = 2
 [send]
 max_retries = 2          # 明确失败时最多重试几次（未确认的绝不重发）
 retry_backoff_sec = 0.8  # 首次重试前等多久，之后翻倍
+
+[adapters.breamer]
+enabled = false              # 自己搭的 TCP 聊天室（breamer server）
+host = "127.0.0.1"
+port = 6969
+token_file = ".secrets/breamer.token"   # 口令文件，别写进仓库
+room_key = "breamer"
+room_name = "聊天室"

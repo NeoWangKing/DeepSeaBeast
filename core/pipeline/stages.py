@@ -23,6 +23,9 @@ def stage_allowlist(ctx: MessageCtx, cfg: GateConfig) -> StageResult:
         if cfg.private_owner_only and not msg.sender.is_owner:
             return StageResult("drop", "私聊只理主人")
         return StageResult("pass", "私聊")
+    if msg.chat.kind == "room":
+        # 房间没有"群白名单"的概念：连进哪个房间就是跟谁说话（由通道配置决定）
+        return StageResult("pass", "房间")
     if cfg.allowed_groups and msg.chat.id not in cfg.allowed_groups:
         return StageResult("drop", "群不在白名单")
     return StageResult("pass", "群在白名单")
@@ -89,6 +92,9 @@ def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision
         return Decision("reply", "私聊", "私聊里对主人一律回")
     if msg.at_me:
         return Decision("reply", "被叫到", "@她/点名")
+    if msg.chat.kind == "room":
+        # 房间没有 @ 机制，每条都交给模型判断要不要接（成本高，但房间小）
+        return Decision("reply", "房间里有人在说话", "房间不靠 @，交给模型判断")
     if cfg.force_mode == "off":
         return Decision("silence", "", "只认 @，这条不是叫她")
     if msg.chat.kind == "group" and msg.chat.id in cfg.at_only_groups:

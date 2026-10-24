@@ -42,6 +42,23 @@ def build_channels(cfg: Any, owner_ids: list[int], only: str = "") -> list:
         out.append(CliChannel(user_name="本地用户",
                               owner_id=(owner_ids[0] if owner_ids else 0)))
 
+    br = ad.get("breamer") or {}
+    if br.get("enabled"):
+        from .breamer import BreamerChannel
+        token = str(br.get("token") or "")
+        tf = str(br.get("token_file") or "")
+        if not token and tf:
+            try:
+                token = open(tf, encoding="utf-8").read().strip()
+            except Exception:
+                token = ""
+        out.append(BreamerChannel(host=str(br.get("host", "127.0.0.1")),
+                                  port=int(br.get("port", 6969)),
+                                  token=token,
+                                  room_key=str(br.get("room_key", "breamer")),
+                                  room_name=str(br.get("room_name", "聊天室")),
+                                  self_name=str(br.get("self_name", ""))))
+
     ob = ad.get("onebot") or {}
     if ob.get("enabled"):
         from .onebot import OneBotChannel

@@ -60,3 +60,12 @@ M0 收事件（已完成）→ M1 能回消息 → M2 管线骨架 → M3 LLM+�
    实测前缀缓存命中 71~83%。
 3. **记忆分三层**：self 极少写（只有主人明确要求或每日自省），scope 由后台任务写，
    recent 自动写。混在一起会被某个群的闲聊污染。
+
+## 通道清单（2026-10-24）
+
+| 通道 | 平台 | 能力 | 会话类型 |
+|---|---|---|---|
+| `onebot` | QQ（SnowLuma） | text/at/quote/image/file/face/sticker/poke/voice | group / private |
+| `breamer` | 自建 TCP 聊天室 | text | room |
+| `tcp` / `socket` | 本机终端 | text | local |
+| `cli` | 本机命令行 | text | local |

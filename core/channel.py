@@ -68,6 +68,11 @@ class ChatRef:
     def local() -> ChatRef:
         return ChatRef("local", 0, "cli")
 
+    @staticmethod
+    def room(rid: int, key: str) -> ChatRef:
+        """多人在场、但没有平台 @ 机制的"房间"（自建聊天室这类）。"""
+        return ChatRef("room", int(rid), str(key or ("r%d" % int(rid))))
+
 
 @dataclass(slots=True)
 class Sender:
