@@ -29,6 +29,10 @@ LIB = os.path.join(DATA, "library")
 INDEX = os.path.join(DATA, "index.json")
 
 MAX_LIST = 40
+COLLECT_ON = os.environ.get("STICKER_COLLECT", "1") not in ("0", "false", "False")
+# 自动收集：群里别人发的贴图，收进来先"待打标"，不直接能用
+COLLECT_MAX_BYTES = 2 * 1024 * 1024
+COLLECT_PER_HOUR = 20
 
 
 def log(msg: str) -> None:
@@ -126,6 +130,73 @@ def nearest(query: str, n: int = 5) -> list[str]:
     return [short(it.get("desc"), 18) for _s, it in scored[:n]]
 
 
+def _collect_state() -> dict:
+    try:
+        return json.load(open(os.path.join(DATA, "collect_state.json"), encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _collect_save(st: dict) -> None:
+    try:
+        tmp = os.path.join(DATA, "collect_state.json.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.replace(tmp, os.path.join(DATA, "collect_state.json"))
+    except Exception:
+        pass
+
+
+def collect_sticker(url: str, name: str = "") -> str:
+    """下载别人发的贴图存进库里（标 pending，没打标之前用不上）。
+
+    返回一句话说明结果，给日志用。
+    """
+    url = str(url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return "没有可下载的地址"
+    now = time.time()
+    st = _collect_state()
+    hour = int(now // 3600)
+    if int(st.get("hour") or 0) != hour:
+        st = {"hour": hour, "count": 0, "md5": st.get("md5") or []}
+    if int(st.get("count") or 0) >= COLLECT_PER_HOUR:
+        return "本小时收够了（%d 张）" % COLLECT_PER_HOUR
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "DeepSeaBeast/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = r.read(COLLECT_MAX_BYTES + 1)
+    except Exception as e:
+        return "下载失败：%r" % (e,)
+    if len(data) > COLLECT_MAX_BYTES:
+        return "图太大（>%d KB）" % (COLLECT_MAX_BYTES // 1024)
+    import hashlib
+    md5 = hashlib.md5(data).hexdigest()
+    if md5 in (st.get("md5") or []):
+        return "已经有了"
+    idx = load_index()
+    if any(it.get("md5") == md5 for it in idx["items"]):
+        return "库里已有"
+    ext = "gif" if data[:6] in (b"GIF87a", b"GIF89a") else (
+        "png" if data[:8] == b"\x89PNG\r\n\x1a\n" else "jpg")
+    sid = "c%d" % int(now * 1000)
+    fn = "%s.%s" % (sid, ext)
+    _ensure()
+    with open(os.path.join(LIB, fn), "wb") as f:
+        f.write(data)
+    idx["items"].append({"id": sid, "file": fn, "desc": "", "tags": [],
+                         "name": str(name or "")[:40], "md5": md5,
+                         "size": len(data), "group": "", "added_at": now,
+                         "used": 0, "last_used": 0, "status": "pending"})
+    save_index(idx)
+    st["count"] = int(st.get("count") or 0) + 1
+    st.setdefault("md5", []).append(md5)
+    st["md5"] = st["md5"][-200:]
+    _collect_save(st)
+    return "收进来了：%s" % fn
+
+
 def mark_used(it: dict) -> None:
     idx = load_index()
     for x in idx["items"]:
@@ -168,8 +239,13 @@ def do_list_stickers(args: dict) -> dict:
         q = tokens(kw)
         items = [it for it in items if score(it, q, time.time()) > 0]
     items.sort(key=lambda it: -int(it.get("used") or 0))
-    rows = ["%s  %s  #%s" % (it.get("id"), short(it.get("desc"), 30),
-                             "/".join((it.get("tags") or [])[:3])) for it in items[:MAX_LIST]]
+    rows = []
+    for it in items[:MAX_LIST]:
+        if not it.get("desc"):
+            rows.append("%s  【待打标】%s" % (it.get("id"), it.get("name") or it.get("file")))
+        else:
+            rows.append("%s  %s  #%s" % (it.get("id"), short(it.get("desc"), 30),
+                                         "/".join((it.get("tags") or [])[:3])))
     if not rows:
         return {"ok": True, "data": {"text": "没有匹配的贴图"}}
     return {"ok": True, "data": {"text": "贴图（%d 张）：\n%s" % (len(items), "\n".join(rows))}}
@@ -187,6 +263,8 @@ def do_note_sticker(args: dict) -> dict:
         tags = args["tags"]
         target["tags"] = [str(t)[:12] for t in (tags if isinstance(tags, list) else [tags])][:8]
     target["updated"] = time.time()
+    if target.get("desc"):
+        target["status"] = "ok"          # 打过标就能用了
     save_index(idx)
     return {"ok": True, "data": {"text": "已更新 %s" % sid}}
 
@@ -214,12 +292,18 @@ TOOLS = [
 
 
 def on_event(event: str, data: dict) -> None:
-    """群里有人发贴图：先只记日志，以后可以按群统计偏好 / 自动收进库。"""
+    """群里有人发贴图 → 收进库（待打标，打标前她发不出去）。"""
     if event != "message.received":
         return
-    name = str(data.get("sticker_name") or "")
-    if name:
-        log("收到贴图：%s（%s）" % (name, (data.get("scope") or {}).get("ref") or (data.get("scope") or {}).get("key")))
+    if not COLLECT_ON:
+        return
+    for m in (data.get("media") or []):
+        if str(m.get("kind") or "") != "sticker":
+            continue
+        url = str(m.get("url") or "")
+        if not url:
+            continue
+        log("收集贴图：%s" % collect_sticker(url, str(m.get("name") or "")))
 
 
 def handle(method: str, params: dict):

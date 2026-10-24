@@ -92,7 +92,9 @@ class Runtime:
                       "label": str(_info.get("label") or ""),
                       "name": str(_info.get("name") or "")},
             "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
-            "text": msg.text, "addressed": bool(msg.addressed), "ts": now})
+            "text": msg.text, "addressed": bool(msg.addressed), "ts": now,
+            # 带媒体清单（贴图/图片等）：插件想收就收，核心不判断用途
+            "media": _media_of(msg)})
         # 同一个人又说话了：上一条"等着重放"的计时直接作废，由这条重新计时
         pending_flush = self._flush.get(key)
         if pending_flush is not None and not pending_flush.done():
@@ -435,6 +437,28 @@ class Runtime:
         if not res.ok:
             log.warning("发送失败：%s", res.error)
         return res
+
+
+def _media_of(msg) -> list[dict]:
+    """把消息里的媒体段整理成给插件的清单。
+
+    只给"引用/地址"，不给字节：插件自己去取，核心不碰二进制。
+    """
+    out: list[dict] = []
+    try:
+        segs = getattr(getattr(msg, "message", None), "segments", []) or []
+    except Exception:
+        return out
+    for seg in segs:
+        kind = str(getattr(seg, "kind", "") or "")
+        if kind not in ("sticker", "image"):
+            continue
+        data = dict(getattr(seg, "data", {}) or {})
+        out.append({"kind": kind,
+                    "name": str(data.get("name") or ""),
+                    "url": str(data.get("url") or ""),
+                    "file": str(data.get("file") or "")})
+    return out
 
 
 def _accepts_ctx(fn) -> bool:

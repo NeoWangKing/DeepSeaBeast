@@ -37,6 +37,28 @@ index.json     {"items": [{id, file, desc, tags, group, used, last_used, size}]}
  "group": "869622030", "used": 114, "last_used": 1792677629}
 ```
 
+## 自动收集：群里别人发的贴图
+
+她**从群里学新贴图**：有人发贴图 → 下回来存进库，标成「待打标」。
+
+```
+核心事件 message.received 带上 media: [{kind, name, url, file}]
+   ↓
+插件 collect_sticker(url)  →  md5 去重 → 存 library/ → 索引里标 status=pending
+   ↓
+待打标的**挑不中**（desc 空的匹配不到），打标之后才真正能用
+```
+
+| 限制 | 值 | 为什么 |
+|---|---|---|
+| 单张大小 | ≤ 2 MB | 大图没必要，且要 base64 发出去 |
+| 每小时 | ≤ 20 张 | 防止有人刷图把库存塞爆 |
+| 去重 | md5（库里已有的跳过） | 同一张图反复发只存一份 |
+| 关掉 | `STICKER_COLLECT=0` | 环境变量 |
+
+打标用 `note_sticker(id, desc, tags)`，打过标 `status` 自动转 `ok`，就能被 `send_sticker` 挑中了。
+`list_stickers` 里待打标的会显示成「【待打标】文件名」。
+
 ## 三个工具（都要求通道有 `sticker` 能力）
 
 | 工具 | 作用 |
