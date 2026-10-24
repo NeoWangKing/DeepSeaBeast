@@ -99,7 +99,7 @@ async def main() -> int:
         ck("发送者 id 正确", m.sender.id == 3, str(m.sender.id))
         ck("文本正确", m.text == "你们好啊", m.text)
         ck("会话类型是 room", m.chat.kind == "room", m.chat.kind)
-        ck("不是 @（房间没有 @ 机制）", m.at_me is False, str(m.at_me))
+        ck("不是 @（房间没有 @ 机制）", m.addressed is False, str(m.addressed))
 
     print()
     print("== 发：核心要说话 → 写进连接 ==")

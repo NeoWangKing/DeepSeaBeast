@@ -102,6 +102,25 @@ class ChannelManager:
             return {"kind": chat.kind, "id": chat.id, "key": chat.key,
                     "label": "", "name": ""}
 
+    def identity(self, chat: ChatRef) -> dict:
+        """她在这个会话里叫什么（name / aliases / account）——由通道说了算。
+
+        真人在不同圈子有不同的称呼，这里就是那个"圈子里的名字"。
+        """
+        c = self.route(chat)
+        fn = getattr(c, "identity", None) if c is not None else None
+        if callable(fn):
+            try:
+                d = fn(chat)
+                if isinstance(d, dict):
+                    return {"name": str(d.get("name") or ""),
+                            "aliases": [str(x) for x in (d.get("aliases") or [])][:8],
+                            "account": str(d.get("account") or "")}
+            except Exception as e:
+                log.warning("通道 identity 出错：%r", e)
+        acc = str(getattr(c, "self_account", "") or "") if c is not None else ""
+        return {"name": acc, "aliases": [], "account": acc}
+
     def name_for(self, chat: ChatRef) -> str:
         c = self.route(chat)
         return str(getattr(c, "name", "")) if c is not None else ""

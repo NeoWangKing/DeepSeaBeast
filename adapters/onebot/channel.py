@@ -46,6 +46,16 @@ class OneBotChannel:
     def self_account(self) -> str:
         return str(getattr(self, "bot_id", "") or "")
 
+    def identity(self, chat) -> dict:
+        """在这个群里她叫什么：群名片 > 昵称 > QQ 号。"""
+        name = self._scope_names.get(chat.key) or self._bot_name
+        aliases: list[str] = []
+        for x in (self._bot_name, name, str(self.bot_id or "")):
+            if x and x not in aliases:
+                aliases.append(x)
+        return {"name": name or str(self.bot_id or ""),
+                "aliases": aliases, "account": str(self.bot_id or "")}
+
     def _text_mentions_me(self, text: str) -> bool:
         """有些客户端/转发会把 @ 变成纯文本，没有 at 段。
 
@@ -164,10 +174,11 @@ class OneBotChannel:
         text = str(ev.message.text or "")
         at_by_seg = bool(self.bot_id) and ev.is_at(self.bot_id, self._bot_name)
         at_by_text = (not at_by_seg) and self._text_mentions_me(text)
-        at_me = bool(self.bot_id) and (at_by_seg or at_by_text)
+        addressed = bool(self.bot_id) and (at_by_seg or at_by_text)
+        how = "at" if at_by_seg else ("name" if at_by_text else "")
         if at_by_text:
             log.info("没有 at 段，但文字里认出了 @ 她：%r", text[:40])
-        if not at_me and "@" in text:
+        if not addressed and "@" in text:
             # 被 @ 了却没认出来 —— 把原始报文打出来，看客户端到底给了什么形状
             log.info("疑似 @ 没认出来：at段=%s raw=%s",
                      json.dumps([{"type": s.type, "data": s.data}
@@ -180,7 +191,7 @@ class OneBotChannel:
                           is_owner=ev.user_id in self._owner_ids),
             message=Message(segments=segs, raw=ev.raw),
             message_id=str(ev.message_id),
-            at_me=at_me,
+            addressed=addressed, addressed_by=how,
             raw=ev.raw,
         )
         # 同一个会话串行处理（避免两条消息同时跑管线），不同会话互不影响

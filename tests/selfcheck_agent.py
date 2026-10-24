@@ -58,7 +58,7 @@ def script(*rounds: list[ToolCall]) -> callable:
 
 def mk_msg(text: str = "在吗") -> InboundMessage:
     return InboundMessage(chat=ChatRef.local(), sender=Sender(1, "测试"),
-                          message=Message.from_text(text), message_id="m0", at_me=True)
+                          message=Message.from_text(text), message_id="m0", addressed=True)
 
 
 async def case(name: str, rounds: list[list[ToolCall]]) -> Turn:

@@ -66,6 +66,18 @@ FACE_TOKEN_RE          # 解析用
 同理，以后要加"行内贴图/行内链接"之类的新占位符，也先加在 `core/capability.py`，
 再让 adapter 翻译。
 
+## 第 2.7 步：通道要回答的三件"平台知识"
+
+核心不许知道平台细节，所以这三件事必须由通道回答：
+
+| 问题 | 接口 | 例子 |
+|---|---|---|
+| **这条消息是不是冲我来的？** | 填 `InboundMessage.addressed` / `addressed_by` | QQ：at 段 / 文字 @ / 引用我的消息；聊天室：叫名字；终端：always |
+| **我在这儿叫什么？** | `identity(chat) -> {name, aliases, account}` | 群名片 > 昵称 > 账号；不同圈子不同称呼 |
+| **这是什么会话？** | `scope_info(chat)["kind"]` | group / private / room / local（形态的行为见 `core/kinds.py`） |
+
+`addressed` 是**结论**不是平台名词：核心只读它，不认识"@"是什么。
+
 ## 第 3 步：实现 Channel 的四个声明
 
 ```python

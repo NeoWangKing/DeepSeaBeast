@@ -39,8 +39,10 @@ def build_channels(cfg: Any, owner_ids: list[int], only: str = "") -> list:
 
     if (ad.get("cli") or {}).get("enabled"):
         from .cli import CliChannel
-        out.append(CliChannel(user_name="本地用户",
-                              owner_id=(owner_ids[0] if owner_ids else 0)))
+        cli_ch = CliChannel(user_name="本地用户",
+                            owner_id=(owner_ids[0] if owner_ids else 0))
+        cli_ch.self_name = str((ad.get("cli") or {}).get("self_name", ""))
+        out.append(cli_ch)
 
     br = ad.get("breamer") or {}
     if br.get("enabled"):
@@ -73,14 +75,18 @@ def build_channels(cfg: Any, owner_ids: list[int], only: str = "") -> list:
     tc = ad.get("tcp") or {}
     if tc.get("enabled"):
         from .tcp import TcpChannel
-        out.append(TcpChannel(host=str(tc.get("host", "127.0.0.1")),
-                              port=int(tc.get("port", 4000)),
-                              token=str(tc.get("token", ""))))
+        tcp_ch = TcpChannel(host=str(tc.get("host", "127.0.0.1")),
+                            port=int(tc.get("port", 4000)),
+                            token=str(tc.get("token", "")))
+        tcp_ch.self_name = str(tc.get("self_name", ""))
+        out.append(tcp_ch)
 
     sk = ad.get("socket") or {}
     if sk.get("enabled"):
         from .socket import SocketChannel
-        out.append(SocketChannel(path=str(sk.get("path", "/tmp/deepsea.sock"))))
+        sock_ch = SocketChannel(path=str(sk.get("path", "/tmp/deepsea.sock")))
+        sock_ch.self_name = str(sk.get("self_name", ""))
+        out.append(sock_ch)
 
     if not out:
         raise SystemExit("没有启用任何通道，检查 [adapters.*] 配置（可选：%s）"

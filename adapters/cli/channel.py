@@ -31,6 +31,11 @@ class CliChannel:
         return {"kind": chat.kind, "id": chat.id, "key": chat.key,
                 "label": "命令行", "name": ""}
 
+    def identity(self, chat) -> dict:
+        name = getattr(self, "self_name", "") or ""
+        return {"name": name, "aliases": [name] if name else [],
+                "account": name}
+
     def profile(self) -> dict:
         return {"style": "这是命令行。纯文本，别用表情符号和 markdown，可以把话说完整。",
                 "inline": {"faces": [], "mention": False, "markdown": False},
@@ -59,7 +64,7 @@ class CliChannel:
                 sender=Sender(id=self._owner_id, name=self.user_name, is_owner=True),
                 message=Message.from_text(text),
                 message_id="",
-                at_me=True,          # 命令行里说话就是冲她说的
+                addressed=True, addressed_by="always",          # 命令行里说话就是冲她说的
             )
             if self._on_message is not None:
                 pending.append(spawn(self._on_message(msg)))

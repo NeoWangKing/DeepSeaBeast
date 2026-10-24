@@ -87,7 +87,7 @@ def main() -> int:
 
         ch = Ch()
         t = Turn(ch, InboundMessage(chat=ChatRef.group(1), sender=Sender(1, "谁"),
-                                    message=Message.from_text("笑一个"), message_id="1", at_me=True),
+                                    message=Message.from_text("笑一个"), message_id="1", addressed=True),
                  None, abilities=qq_ab, faces_catalog=names)
         t.decision = {"action": "reply", "intent": ""}
         r = await_send = None

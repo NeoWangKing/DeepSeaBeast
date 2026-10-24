@@ -53,6 +53,10 @@ class BreamerChannel:
         return {"kind": "room", "id": 0, "key": self.room_key,
                 "label": "聊天室", "name": self.room_name}
 
+    def identity(self, chat) -> dict:
+        name = self.self_name or ""
+        return {"name": name, "aliases": [name] if name else [], "account": name}
+
     def profile(self) -> dict:
         return {
             "style": "这是一个纯文本聊天室：只能用文字，没有图片、表情包、@、引用。"
@@ -143,7 +147,9 @@ class BreamerChannel:
         uid, text = int(m.group(1)), m.group(2)
         if not text.strip():
             return
+        # "被叫到"的判断也归通道：文字里出现她的名字就算叫她
+        called = bool(self.self_name) and self.self_name in text
         msg = InboundMessage(chat=self._chat, sender=Sender(uid, "user%d" % uid),
                              message=Message.from_text(text), message_id="",
-                             at_me=False)   # 房间没有 @ 机制，门控按 room 规则处理
+                             addressed=called, addressed_by="name" if called else "")
         await on_message(msg)

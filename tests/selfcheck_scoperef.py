@@ -70,7 +70,7 @@ def main() -> int:
         rt = Runtime(Ch(), GateConfig.from_dict({"force_mode": "peak", "reply_probability": 1.0}),
                      [1], reply_fn=lambda m, c=None: _ans(), data_dir=d)
         m = InboundMessage(chat=ChatRef.group(1109525246), sender=Sender(1, "灵其啊"),
-                           message=Message.from_text("在吗。"), message_id="1", at_me=True)
+                           message=Message.from_text("在吗。"), message_id="1", addressed=True)
         await rt.on_message(m)
         return d
 

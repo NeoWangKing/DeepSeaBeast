@@ -47,7 +47,7 @@ class Provider:
 
 def mk(msg_text: str = "在吗", gid: int = 1109525246) -> InboundMessage:
     return InboundMessage(chat=ChatRef.group(gid), sender=Sender(1, "灵其啊"),
-                          message=Message.from_text(msg_text), message_id="1", at_me=True)
+                          message=Message.from_text(msg_text), message_id="1", addressed=True)
 
 
 async def main() -> int:
@@ -105,7 +105,7 @@ async def main() -> int:
                      [1], reply_fn=_echo, data_dir=str(td / "rt"))
         for t in ("第一句。", "第二句。"):
             m2 = InboundMessage(chat=ChatRef.local(), sender=Sender(1, "灵其啊"),
-                                message=Message.from_text(t), message_id="1", at_me=True)
+                                message=Message.from_text(t), message_id="1", addressed=True)
             await rt.on_message(m2)
         rows2 = rt.recent.get(m2.chat.ref)
         ck("顺序是 用户→我→用户→我",

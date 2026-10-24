@@ -27,7 +27,7 @@ def ck(name: str, cond: bool, extra: str = "") -> None:
 def mk(kind: str = "group", cid: int = 1109525246, uid: int = 3245938285) -> InboundMessage:
     chat = {"group": ChatRef.group, "private": ChatRef.private}.get(kind, lambda x: ChatRef.local())(cid)
     return InboundMessage(chat=chat, sender=Sender(uid, "灵其啊"),
-                          message=Message.from_text("在吗"), message_id="1", at_me=True)
+                          message=Message.from_text("在吗"), message_id="1", addressed=True)
 
 
 async def main() -> int:

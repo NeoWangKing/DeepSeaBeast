@@ -12,7 +12,8 @@ class GateConfig:
     # 白名单：留空 = 所有群都管
     allowed_groups: list[int] = field(default_factory=list)
     # 只认 @ 的群（其余群允许按概率接话）
-    at_only_groups: list[int] = field(default_factory=list)
+    # 这些会话只在"被叫到"时才考虑回话（按通道给的会话 id 配，不是平台专用概念）
+    only_when_addressed: list[int] = field(default_factory=list)
     # 私聊是否只回主人（默认 false：私聊都理，靠频率限制防刷）
     private_owner_only: bool = False
 
@@ -50,7 +51,8 @@ class GateConfig:
 
         return cls(
             allowed_groups=[int(x) for x in (d.get("allowed_groups") or [])],
-            at_only_groups=[int(x) for x in (d.get("at_only_groups") or [])],
+            only_when_addressed=[int(x) for x in (d.get("only_when_addressed")
+                                                  or d.get("at_only_groups") or [])],
             private_owner_only=bool(d.get("private_owner_only", False)),
             merge_window_sec=_f("merge_window_sec", 10.0),
             typing_wait_sec=_f("typing_wait_sec", 8.0),

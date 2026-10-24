@@ -119,11 +119,12 @@ def main() -> int:
     mgr.add(Ch())
     where = mgr.describe(ChatRef.group(7))
     ck("manager 转发 describe", "某个奇怪的地方 7" in where, where)
-    ck("manager 暴露 self_account", mgr.self_account == "42", mgr.self_account)
+    ident = mgr.identity(ChatRef.local())
+    ck("manager 能从通道拿到'我在这儿叫什么'", ident.get("account") == "42", str(ident))
 
     msg = InboundMessage(chat=ChatRef.group(7), sender=Sender(9, "某人"),
-                         message=Message.from_text("在吗"), message_id="1", at_me=True)
-    scene = build_scene(msg, where=where, self_account=mgr.self_account)
+                         message=Message.from_text("在吗"), message_id="1", addressed=True)
+    scene = build_scene(msg, where=where, self_name="测试名字", aliases=["小名"])
     ck("场景里用的是 adapter 给的位置", "某个奇怪的地方 7" in scene, scene)
     ck("没有硬编码平台名", "QQ" not in scene)
 

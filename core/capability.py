@@ -131,13 +131,19 @@ def build_report(channels: list, tools: list) -> CapabilityReport:
     for c in channels:
         matrix[str(getattr(c, "name", "?"))] = sorted(getattr(c, "abilities", set()))
 
+    # 按通道汇总成一行（以前是"通道 × 工具"每对一行，5 个通道就刷 9 行噪音）
     missing: list[str] = []
     for c in channels:
         name = str(getattr(c, "name", "?"))
         ab = set(getattr(c, "abilities", set()))
+        lacks: dict[str, list[str]] = {}
         for t in tools:
             req = set(getattr(t, "requires", set()) or set())
-            if req and not req <= ab:
-                missing.append("%s 缺 %s（工具 %s 需要）"
-                               % (name, "、".join(sorted(req - ab)), getattr(t, "name", "?")))
+            gap = req - ab
+            if gap:
+                for verb in sorted(gap):
+                    lacks.setdefault(verb, []).append(str(getattr(t, "name", "?")))
+        for verb, names in sorted(lacks.items()):
+            missing.append("%s 缺 %s：%d 个工具用不上（%s）"
+                           % (name, verb, len(names), "、".join(names[:4])))
     return CapabilityReport(channels=matrix, unavailable=missing)

@@ -113,6 +113,7 @@ max_retries = 2          # 明确失败时最多重试几次（未确认的绝�
 retry_backoff_sec = 0.8  # 首次重试前等多久，之后翻倍
 
 [adapters.breamer]
+self_name = "大肥鱼"          # 房间里别人这么叫她
 enabled = false              # 自己搭的 TCP 聊天室（breamer server）
 host = "127.0.0.1"
 port = 6969

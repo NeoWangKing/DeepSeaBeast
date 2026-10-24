@@ -92,7 +92,7 @@ class Runtime:
                       "label": str(_info.get("label") or ""),
                       "name": str(_info.get("name") or "")},
             "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
-            "text": msg.text, "at_me": bool(msg.at_me), "ts": now})
+            "text": msg.text, "addressed": bool(msg.addressed), "ts": now})
         # 同一个人又说话了：上一条"等着重放"的计时直接作废，由这条重新计时
         pending_flush = self._flush.get(key)
         if pending_flush is not None and not pending_flush.done():
@@ -172,8 +172,11 @@ class Runtime:
         for text in self.memory.scope_parts(scope).values():
             b.add_knowledge(text, 20)
         where = self.channel.describe(msg.chat) if hasattr(self.channel, "describe") else ""
+        _ident = (self.channel.identity(msg.chat)
+                  if hasattr(self.channel, "identity") else {})
         b.scene = build_scene(msg, where=where,
-                              self_account=str(getattr(self.channel, "self_account", "") or ""))
+                              self_name=str(_ident.get("name") or ""),
+                              aliases=list(_ident.get("aliases") or []))
         b.abilities = sorted(self.abilities_for(msg.chat))
         prof = self._channel_profile(msg.chat)
         b.style = str(prof.get("style") or "")
@@ -322,7 +325,7 @@ class Runtime:
             msg = InboundMessage(
                 chat=chat, sender=Sender(0, "系统提醒"),
                 message=Message.from_text(""), message_id="todo-" + todo.id,
-                at_me=True,
+                addressed=True, addressed_by="reminder",
                 raw={"_deepsea_reminder": "你之前记下要做：%s（%s）。现在到点了。"
                                           % (todo.text, todo.id)})
             await self.on_message(msg)
@@ -389,7 +392,9 @@ class Runtime:
                     return
                 replay = InboundMessage(chat=msg.chat, sender=msg.sender,
                                         message=Message.from_text(state.merge_buf),
-                                        message_id=msg.message_id, at_me=msg.at_me, raw=msg.raw)
+                                        message_id=msg.message_id,
+                                        addressed=msg.addressed,
+                                        addressed_by=msg.addressed_by, raw=msg.raw)
                 state.merge_buf = ""
                 out = self.pipeline.run(replay, time.time(), skip=("merge",))
                 log.info("重放合并 [%s] %r → %s（%s）", key, replay.text[:30],

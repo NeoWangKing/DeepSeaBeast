@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .channel import ChatRef
+from .kinds import is_personal
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +29,7 @@ class Scope:
     @property
     def is_personal(self) -> bool:
         """私人作用域（命令行 / 私聊主人）——可以用全部工具。"""
-        return self.kind in ("local", "private")
+        return is_personal(self.kind)
 
     @property
     def dirname(self) -> str:

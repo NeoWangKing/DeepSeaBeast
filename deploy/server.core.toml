@@ -21,6 +21,7 @@ port = 6199
 allow_self_ids = [3237702352]
 
 [adapters.tcp]
+self_name = "大肥鱼"          # 在这儿她叫什么（提示词里会用）
 enabled = true                    # telnet 127.0.0.1:4000（只绑回环，不开公网）
 host = "127.0.0.1"
 port = 4000
@@ -114,6 +115,7 @@ max_retries = 2          # 明确失败时最多重试几次（未确认的绝�
 retry_backoff_sec = 0.8  # 首次重试前等多久，之后翻倍
 
 [adapters.breamer]
+self_name = "大肥鱼"          # 房间里别人这么叫她
 enabled = false              # 自己搭的 TCP 聊天室（breamer server）
 host = "127.0.0.1"
 port = 6969

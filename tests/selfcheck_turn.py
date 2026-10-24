@@ -53,7 +53,7 @@ class Ch:
 
 def mk(text: str, uid: int = 1) -> InboundMessage:
     return InboundMessage(chat=ChatRef.local(), sender=Sender(uid, "灵其啊"),
-                          message=Message.from_text(text), message_id="1", at_me=True)
+                          message=Message.from_text(text), message_id="1", addressed=True)
 
 
 CFG = GateConfig.from_dict({"force_mode": "peak", "reply_probability": 1.0,
@@ -138,7 +138,7 @@ async def case_merge_wait() -> None:
 
     def g(text):
         m = InboundMessage(chat=ChatRef.group(1), sender=Sender(9, "谁"),
-                           message=Message.from_text(text), message_id="1", at_me=True)
+                           message=Message.from_text(text), message_id="1", addressed=True)
         return m
 
     t0 = time.time()
@@ -203,7 +203,7 @@ async def case_timer_reset() -> None:
 
     def g(text):
         return InboundMessage(chat=ChatRef.group(1), sender=Sender(9, "谁"),
-                              message=Message.from_text(text), message_id="1", at_me=True)
+                              message=Message.from_text(text), message_id="1", addressed=True)
 
     t = 0.0
     r1 = p.run(g("我跟你"), t)          # 第 0 秒，没说完 → 等

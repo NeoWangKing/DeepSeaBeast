@@ -55,7 +55,7 @@ class Plugins:
 
 def mk_turn(ch, result, specs):
     msg = InboundMessage(chat=ChatRef.group(1), sender=Sender(9, "谁"),
-                         message=Message.from_text("发个文件"), message_id="1", at_me=True)
+                         message=Message.from_text("发个文件"), message_id="1", addressed=True)
     t = Turn(ch, msg, None, abilities=ch.abilities, specs=specs, plugins=Plugins(result))
     t.decision = {"action": "reply", "intent": ""}
     return t

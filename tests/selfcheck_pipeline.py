@@ -29,7 +29,7 @@ def mk(text: str, *, gid: int = 1109525246, uid: int = 111, at: bool = False,
        owner: bool = False, private: bool = False) -> InboundMessage:
     chat = ChatRef.private(uid) if private else ChatRef.group(gid)
     return InboundMessage(chat=chat, sender=Sender(uid, "测试", is_owner=owner),
-                          message=Message.from_text(text), message_id="1", at_me=at)
+                          message=Message.from_text(text), message_id="1", addressed=at)
 
 
 CFG = GateConfig.from_dict({

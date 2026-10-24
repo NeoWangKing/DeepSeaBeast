@@ -42,6 +42,11 @@ class TcpChannel:
         return {"kind": chat.kind, "id": chat.id, "key": chat.key,
                 "label": "终端", "name": ""}
 
+    def identity(self, chat) -> dict:
+        name = getattr(self, "self_name", "") or ""
+        return {"name": name, "aliases": [name] if name else [],
+                "account": name}
+
     def profile(self) -> dict:
         return {"style": "这是终端（telnet）。纯文本，别用表情符号和 markdown。",
                 "inline": {"faces": [], "mention": False, "markdown": False},
@@ -111,7 +116,7 @@ class TcpChannel:
                 if text in ("/quit", "/exit", "quit", "exit"):
                     break
                 msg = InboundMessage(chat=ChatRef.local(), sender=Sender(0, "终端"),
-                                     message=Message.from_text(text), message_id="", at_me=True)
+                                     message=Message.from_text(text), message_id="", addressed=True, addressed_by="always")
                 pending.append(spawn(on_message(msg)))
         except asyncio.CancelledError:
             pass
