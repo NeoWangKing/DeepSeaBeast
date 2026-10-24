@@ -120,7 +120,7 @@ SEND_FILE = ToolSpec(
         "path": {"type": "string", "description": "文件的绝对路径"},
         "name": {"type": "string", "description": "可选：显示的文件名"},
     }, "required": ["path"]},
-    requires={"file"}, status="experimental",
+    requires={"file"},
 )
 
 SEND_IMAGE = ToolSpec(

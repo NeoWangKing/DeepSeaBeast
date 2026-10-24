@@ -32,9 +32,12 @@ def main() -> int:
     print()
     print("== 未验证的工具不出现 ==")
     names_qq = [x["function"]["name"] for x in schema(DEFAULT_SPECS, QQ)]
-    ck("send_file 未给模型", "send_file" not in names_qq, str(names_qq))
+    # send_file 已经在真机验证过（upload_group_file + base64），转正
+    ck("send_file 已给模型", "send_file" in names_qq, str(names_qq))
+    ck("清单里有发文件", "发文件" in line_qq, line_qq)
+    # send_image 仍未真机验证，继续不给
     ck("send_image 未给模型", "send_image" not in names_qq, str(names_qq))
-    ck("清单里也没有发文件/发图片", "发文件" not in line_qq and "发图片" not in line_qq, line_qq)
+    ck("清单里没有发图片", "发图片" not in line_qq, line_qq)
     ck("已验证的仍在", {"send_message", "send_face"} <= set(names_qq), str(names_qq))
 
     print()

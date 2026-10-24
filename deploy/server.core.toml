@@ -142,3 +142,10 @@ command = [".venv/bin/python", "plugins/jargon/main.py"]
 timeout = 15
 priority = 20
 max_concurrency = 2
+
+[[plugins]]
+name = "files"
+command = [".venv/bin/python", "plugins/files/main.py"]
+timeout = 20
+priority = 25
+max_concurrency = 2

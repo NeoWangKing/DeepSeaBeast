@@ -295,12 +295,29 @@ class OneBotChannel:
         name = str(seg.data.get("name") or "") or (path.rsplit("/", 1)[-1] if path else "")
         if not path:
             return SendResult(ok=False, error="文件路径为空")
+        # 本地文件同样必须走 base64：SnowLuma 以另一个用户运行，读不到我们的目录
+        # （实测 file:// 和绝对路径都是 EACCES，base64 才 return retcode=0）
+        if not os.path.isfile(path):
+            return SendResult(ok=False, error="文件不存在：%s" % path, retryable=False)
+        try:
+            size = os.path.getsize(path)
+        except OSError as e:
+            return SendResult(ok=False, error="读不到文件：%r" % (e,), retryable=False)
+        if size > MAX_FILE_BYTES:
+            return SendResult(ok=False, retryable=False,
+                              error="文件太大（%.1f MB > %.0f MB）"
+                                    % (size / 1048576, MAX_FILE_BYTES / 1048576))
+        try:
+            with open(path, "rb") as f:
+                payload = "base64://" + base64.b64encode(f.read()).decode()
+        except OSError as e:
+            return SendResult(ok=False, error="读取失败：%r" % (e,), retryable=False)
         if out.chat.kind == "group":
             action, params = "upload_group_file", {"group_id": out.chat.id,
-                                                   "file": path, "name": name}
+                                                   "file": payload, "name": name}
         else:
             action, params = "upload_private_file", {"user_id": out.chat.id,
-                                                     "file": path, "name": name}
+                                                     "file": payload, "name": name}
         try:
             resp = await self._server.call_action(action, params, timeout=60)
         except Exception as e:
@@ -360,7 +377,8 @@ def _is_sticker_segment(data: dict) -> bool:
     return "动画表情" in summary or "表情" in summary
 
 
-MAX_IMAGE_BYTES = 4 * 1024 * 1024     # 再大就别 base64 了，直接报错比塞爆连接好
+MAX_IMAGE_BYTES = 4 * 1024 * 1024
+MAX_FILE_BYTES = 8 * 1024 * 1024     # 再大就别 base64 了，直接报错比塞爆连接好
 
 
 def _image_file(src: str) -> dict:
