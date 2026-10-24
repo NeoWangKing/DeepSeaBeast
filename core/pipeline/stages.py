@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 
-from ..kinds import exempt_from_rate, gate_mode
+from ..kinds import exempt_from_rate, gate_mode, policy
 from ..typing import looks_unfinished
 from .config import GateConfig
 from .state import ChatState
@@ -97,11 +97,16 @@ def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision
         # 没有"被叫"这回事的场合（聊天室/频道），每条都交给她自己判断
         return Decision("reply", "这里有人在说话", "这种会话不靠被叫，交给她判断")
     # addressed_or_sample：没被叫到时按策略抽样
-    if cfg.force_mode == "off":
-        return Decision("silence", "", "只理被叫到的消息")
-    if cfg.only_when_addressed and msg.chat.id in cfg.only_when_addressed:
-        return Decision("silence", "", "这个会话只理被叫到的消息")
-    p = cfg.offpeak_probability if cfg.force_mode == "offpeak" else cfg.reply_probability
+    sample = policy(msg.chat.kind).get("sample")
+    if sample is not None:
+        # 这种会话有自己的接话概率（房间这类），不看全局 force_mode
+        p = float(sample)
+    else:
+        if cfg.force_mode == "off":
+            return Decision("silence", "", "只理被叫到的消息")
+        if cfg.only_when_addressed and msg.chat.id in cfg.only_when_addressed:
+            return Decision("silence", "", "这个会话只理被叫到的消息")
+        p = cfg.offpeak_probability if cfg.force_mode == "offpeak" else cfg.reply_probability
     if random.random() < p:
         return Decision("reply", "", "抽中了（p=%.2f）" % p)
     return Decision("silence", "", "没抽中（p=%.2f）" % p)

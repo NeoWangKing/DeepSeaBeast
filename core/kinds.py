@@ -7,6 +7,7 @@
 字段说明：
   personal      是不是"私人场合"（可以用全部工具、记忆更私密）
   exempt_rate   免不免于最小间隔/连发抑制（人少的地方不该晾着对方）
+  sample        可选：没被叫到时接话的概率（gate=addressed_or_sample 时用）
   gate          门控策略：
                   always               一律交给她判断要不要说
                   addressed_or_sample  被叫到才一定考虑，否则按概率抽样
@@ -19,7 +20,10 @@ KINDS: dict[str, dict] = {
     "local": {"personal": True, "exempt_rate": True, "gate": "always"},
     "private": {"personal": True, "exempt_rate": True, "gate": "always"},
     "group": {"personal": False, "exempt_rate": False, "gate": "addressed_or_sample"},
-    "room": {"personal": False, "exempt_rate": True, "gate": "auto"},
+    # 房间：被叫到一定回；没被叫到按 sample 概率偶尔接一句
+    # （以前是 "auto" 每条都问模型，结果三个人聊天她每条都插嘴）
+    "room": {"personal": False, "exempt_rate": True,
+             "gate": "addressed_or_sample", "sample": 0.25},
 }
 
 # 未知形态按"群"处理：多人在场、要被打断才算叫她——最保守的默认

@@ -99,6 +99,30 @@ r = p_cap.run(mk("第三次，在吗", uid=777, at=True), t2 + 1)
 ck("每小时额度用完 → drop", r.kind == "drop" and "额度" in r.reason, r.reason)
 
 print()
+print("== 房间：被叫到一定回，没被叫到只偶尔接 ==")
+from core.channel import ChatRef as _CR
+
+def mk_room(text, addressed=False):
+    return InboundMessage(chat=_CR.room(0, "breamer"), sender=Sender(9, "user9"),
+                          message=Message.from_text(text), message_id="1",
+                          addressed=addressed, addressed_by="name" if addressed else "")
+
+cfg_room = GateConfig.from_dict({"force_mode": "off", "max_auto_per_hour": 999,
+                                 "merge_window_sec": 0})
+r_called = Pipeline(cfg_room).run(mk_room("大肥鱼 在吗", addressed=True), time.time())
+ck("房间里叫她名字一定回", r_called.kind == "reply", r_called.reason)
+
+# 抽样：每条都用一个全新 Pipeline（避免连发合并/额度干扰），统计比例
+replies = 0
+total = 60
+for i in range(total):
+    pr = Pipeline(cfg_room)
+    if pr.run(mk_room("你们俩先聊。"), time.time() + i).kind == "reply":
+        replies += 1
+ck("没叫她就不是每条都回", replies < total, "60 条里回了 %d 条" % replies)
+ck("但确实会偶尔接（抽样 ~25%%）", 0 < replies < total, "60 条里回了 %d 条" % replies)
+
+print()
 print("== 私聊 ==")
 p = Pipeline(CFG)
 ck("私聊陌生人默认也回", p.run(mk("你好", uid=444, private=True), time.time()).kind == "reply")
