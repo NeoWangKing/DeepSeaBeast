@@ -61,6 +61,25 @@ def build_channels(cfg: Any, owner_ids: list[int], only: str = "") -> list:
                                   room_name=str(br.get("room_name", "聊天室")),
                                   self_name=str(br.get("self_name", ""))))
 
+    ts = ad.get("teamspeak") or {}
+    if ts.get("enabled"):
+        from .teamspeak import TeamSpeakChannel
+        pw = str(ts.get("password") or "")
+        pf = str(ts.get("password_file") or "")
+        if not pw and pf:
+            try:
+                pw = open(pf, encoding="utf-8").read().strip()
+            except Exception:
+                pw = ""
+        out.append(TeamSpeakChannel(host=str(ts.get("host", "127.0.0.1")),
+                                    port=int(ts.get("port", 10022)),
+                                    username=str(ts.get("username", "serveradmin")),
+                                    password=pw,
+                                    voice_port=int(ts.get("voice_port", 9987)),
+                                    channels=[int(x) for x in (ts.get("channels") or [])],
+                                    nickname=str(ts.get("nickname", "大肥鱼")),
+                                    room_prefix=str(ts.get("room_prefix", "ts"))))
+
     ob = ad.get("onebot") or {}
     if ob.get("enabled"):
         from .onebot import OneBotChannel

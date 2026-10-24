@@ -122,3 +122,14 @@ port = 6969
 token_file = ".secrets/breamer.token"   # 口令文件，别写进仓库
 room_key = "breamer"
 room_name = "聊天室"
+
+[adapters.teamspeak]
+enabled = false               # TS6 的 SSH Query（10022，只绑回环）
+host = "127.0.0.1"
+port = 10022
+username = "serveradmin"
+password_file = ".secrets/teamspeak_query.pass"
+voice_port = 9987             # 哪个虚拟服务器
+channels = []                 # 要接的频道 id，空 = 全部
+nickname = "大肥鱼"
+room_prefix = "ts"

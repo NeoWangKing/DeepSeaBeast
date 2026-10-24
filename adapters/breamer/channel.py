@@ -152,4 +152,4 @@ class BreamerChannel:
         msg = InboundMessage(chat=self._chat, sender=Sender(uid, "user%d" % uid),
                              message=Message.from_text(text), message_id="",
                              addressed=called, addressed_by="name" if called else "")
-        await on_message(msg)
+        asyncio.create_task(on_message(msg))   # 同 teamspeak：别让回合堵住读循环

@@ -67,5 +67,6 @@ M0 收事件（已完成）→ M1 能回消息 → M2 管线骨架 → M3 LLM+�
 |---|---|---|---|
 | `onebot` | QQ（SnowLuma） | text/at/quote/image/file/face/sticker/poke/voice | group / private |
 | `breamer` | 自建 TCP 聊天室 | text | room |
+| `teamspeak` | TS6 SSH Query（频道文字） | text | room |
 | `tcp` / `socket` | 本机终端 | text | local |
 | `cli` | 本机命令行 | text | local |
