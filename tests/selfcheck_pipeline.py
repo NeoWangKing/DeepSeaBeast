@@ -143,6 +143,36 @@ p_strict = Pipeline(GateConfig.from_dict({"force_mode": "off", "private_owner_on
 ck("显式开启 owner_only 时才拦陌生人",
    p_strict.run(mk("你好", uid=444, private=True), time.time()).kind == "drop")
 
+
+print()
+print("== 连续对话 ==")
+CFG_D = dict(force_mode="off", allowed_groups=[1109525246], reply_probability=0.0,
+             min_interval_sec=8, burst_suppress_sec=30, max_auto_per_hour=99,
+             dialogue_window_sec=90, dialogue_min_interval_sec=3)
+t0 = time.time()
+pd = Pipeline(GateConfig.from_dict(CFG_D))
+base = mk("你好呀。")
+ck("（起点）没 @ 且概率 0 → 不接", pd.run(base, t0).kind == "silence")
+pd.note_replied(base, t0)                      # 模拟她刚刚开过口
+o = pd.run(mk("你叫什么。"), t0 + 10)
+ck("窗口内同一人 → 不抽样直接接", o.kind == "reply" and o.decision.intent == "对话进行中",
+   "%s / %s" % (o.reason, o.decision.intent))
+o = pd.run(mk("你叫什么。", uid=222), t0 + 12)
+ck("窗口内换个人 → 仍按抽样（p=0 不接）", o.kind == "silence")
+o = pd.run(mk("你叫什么。"), t0 + 200)
+ck("窗口过期 → 回到抽样", o.kind == "silence")
+p2 = Pipeline(GateConfig.from_dict(CFG_D))
+m2 = mk("在的。")
+p2.note_replied(m2, t0)
+o = p2.run(mk("嗯。"), t0 + 12)                # 12s < burst_suppress 30s
+ck("窗口内同一人连发不被连发抑制拦", o.kind == "reply", o.reason)
+p3 = Pipeline(GateConfig.from_dict({**CFG_D, "dialogue_window_sec": 0}))
+m3 = mk("在的。")
+p3.note_replied(m3, t0)
+o = p3.run(mk("你叫什么。", uid=333), t0 + 10)
+ck("窗口=0 时行为不变（仍抽样）", o.kind == "silence", o.reason)
+
+
 print()
 if FAIL:
     print("FAILED: %s" % "、".join(FAIL))

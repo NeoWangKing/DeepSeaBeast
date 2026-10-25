@@ -67,6 +67,12 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
     return StageResult("pass", "说完了")
 
 
+def in_dialogue(state: ChatState, ctx: MessageCtx) -> bool:
+    """她刚跟这个说话人聊过，且还在窗口内。"""
+    return bool(state.dialogue_until and ctx.now <= state.dialogue_until
+                and state.dialogue_peer == ctx.msg.sender.id)
+
+
 def stage_rate_limit(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:
     """频率：最小间隔 / 同一人连发抑制 / 每小时上限。@她 的消息不做连发抑制。"""
     state.roll_hour(ctx.now)
@@ -75,10 +81,12 @@ def stage_rate_limit(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Stag
     # 被叫到、主人说话、以及"人少的场合"（策略表决定）都不该被"刚说过话"挡住
     exempt = bool(ctx.msg.addressed or ctx.msg.sender.is_owner
                   or exempt_from_rate(ctx.msg.chat.kind))
+    talking = in_dialogue(state, ctx)          # 连续对话中：条件放宽
     gap = ctx.now - state.last_reply_ts
-    if state.last_reply_ts and gap < cfg.min_interval_sec and not exempt:
-        return StageResult("drop", "刚说过话（%.1fs < %.0fs）" % (gap, cfg.min_interval_sec))
-    if (not exempt and state.last_reply_to == ctx.msg.sender.id
+    min_gap = cfg.dialogue_min_interval_sec if talking else cfg.min_interval_sec
+    if state.last_reply_ts and gap < min_gap and not exempt:
+        return StageResult("drop", "刚说过话（%.1fs < %.0fs）" % (gap, min_gap))
+    if (not exempt and not talking and state.last_reply_to == ctx.msg.sender.id
             and state.last_reply_ts and gap < cfg.burst_suppress_sec):
         return StageResult("drop", "同一人连发，这轮只回一条")
     return StageResult("pass", "频率 OK")
@@ -93,6 +101,8 @@ def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision
         return Decision("reply", "私人场合", "这里一律回（%s）" % msg.chat.kind)
     if msg.addressed:
         return Decision("reply", "被叫到", msg.addressed_by or "被点名")
+    if in_dialogue(state, ctx):
+        return Decision("reply", "对话进行中", "刚接过话，继续说")
     if mode == "auto":
         # 没有"被叫"这回事的场合（聊天室/频道），每条都交给她自己判断
         return Decision("reply", "这里有人在说话", "这种会话不靠被叫，交给她判断")
@@ -114,7 +124,7 @@ def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision
     return Decision("silence", "", "没抽中（p=%.2f）" % p)
 
 
-def note_replied(state: ChatState, ctx: MessageCtx) -> None:
+def note_replied(state: ChatState, ctx: MessageCtx, cfg: GateConfig | None = None) -> None:
     """她开口之后更新状态（频率、连发抑制都用它）。"""
     state.last_reply_ts = ctx.now
     state.last_reply_to = ctx.msg.sender.id
@@ -123,3 +133,6 @@ def note_replied(state: ChatState, ctx: MessageCtx) -> None:
     state.merge_buf = ""
     state.merge_ts = 0.0
     state.merge_sender = 0
+    if cfg is not None and cfg.dialogue_window_sec > 0:
+        state.dialogue_peer = ctx.msg.sender.id
+        state.dialogue_until = ctx.now + cfg.dialogue_window_sec

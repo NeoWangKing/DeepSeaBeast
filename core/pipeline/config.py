@@ -36,6 +36,10 @@ class GateConfig:
     force_mode: str = "off"
     # 这些群即使 force_mode="off"、即使没被 @，也按 reply_probability 参与
     speak_groups: list[int] = field(default_factory=list)
+    # 连续对话：她开口后这么久内，跟"同一个人"继续聊不再抽样（0 = 关闭）
+    dialogue_window_sec: float = 0.0
+    # 连续对话中的最小间隔（比 min_interval_sec 松，多轮才接得上）
+    dialogue_min_interval_sec: float = 3.0
 
     @classmethod
     def from_dict(cls, d: dict) -> GateConfig:
@@ -56,6 +60,8 @@ class GateConfig:
             only_when_addressed=[int(x) for x in (d.get("only_when_addressed")
                                                   or d.get("at_only_groups") or [])],
             speak_groups=[int(x) for x in (d.get("speak_groups") or [])],
+            dialogue_window_sec=_f("dialogue_window_sec", 0.0),
+            dialogue_min_interval_sec=_f("dialogue_min_interval_sec", 3.0),
             private_owner_only=bool(d.get("private_owner_only", False)),
             merge_window_sec=_f("merge_window_sec", 10.0),
             typing_wait_sec=_f("typing_wait_sec", 8.0),

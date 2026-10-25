@@ -16,6 +16,8 @@ class ChatState:
 
     last_reply_ts: float = 0.0          # 她上次开口的时间
     last_reply_to: int = 0              # 上次回的是谁
+    dialogue_peer: int = 0              # 正在跟谁对话
+    dialogue_until: float = 0.0         # 连续对话窗口到什么时候
     last_msg_ts: float = 0.0            # 上一条群友消息时间
     last_sender: int = 0                # 上一条群友消息是谁
     hour_bucket: int = -1               # 当前小时桶

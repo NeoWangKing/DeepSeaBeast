@@ -77,4 +77,4 @@ class Pipeline:
     def note_replied(self, msg, now: float) -> None:
         """她真的发出去了之后调一次。"""
         ctx = MessageCtx(msg=msg, now=now, text=msg.text)
-        stages.note_replied(self.state_for(_skey(msg)), ctx)
+        stages.note_replied(self.state_for(_skey(msg)), ctx, self.cfg)
