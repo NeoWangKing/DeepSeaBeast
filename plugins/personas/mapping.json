@@ -24,5 +24,8 @@
     "private": "privates/{id}.md",
     "local": "channels/{channel}.md"
   },
-  "template": "_template.txt"
+  "template": "_template.txt",
+  "append_common_except": [
+    "1109525246.txt"
+  ]
 }

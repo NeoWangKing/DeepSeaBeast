@@ -109,7 +109,8 @@ def get_context(params: dict) -> dict:
 
     card = fill(read_card(name), scope, channel)
     parts = [card] if card else []
-    if mp.get("append_common"):
+    skip_common = name in (mp.get("append_common_except") or [])
+    if mp.get("append_common") and not skip_common:
         common = read_card("_common_patch.txt")
         if common:
             parts.append(common)

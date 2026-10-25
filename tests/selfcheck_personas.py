@@ -56,11 +56,12 @@ async def main() -> int:
     print("== 群人格 ==")
     p_dbg, msgs_dbg = await persona_for(mk("group", 1109525246))
     ck("调试群拿到专属卡", "调试" in p_dbg or "灵其啊" in p_dbg, p_dbg[:40])
-    ck("通用补丁也拼上了", "AI 味" in p_dbg or "矜持" in p_dbg)
+    ck("调试群不再拼通用补丁（append_common_except）", "AI 味" not in p_dbg and "矜持" not in p_dbg)
     ck("人格进了 messages[0]", p_dbg.splitlines()[0][:10] in msgs_dbg[0]["content"])
 
     p_light, _ = await persona_for(mk("group", 869622030))
     ck("闪电群人格不同", p_light != p_dbg, p_light[:30])
+    ck("别的群仍然拼通用补丁", "AI 味" in p_light or "矜持" in p_light)
 
     print()
     print("== 按通道选卡 ==")

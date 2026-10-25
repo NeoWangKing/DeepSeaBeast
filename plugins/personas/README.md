@@ -16,6 +16,8 @@ by_group[群号]  >  by_private[QQ号]  >  by_channel[通道名]  >  自动建�
 | `cards/`（仓库，只读） | 内置种子卡，跟着代码走 |
 | `$DEEPSEA_PLUGIN_DATA/cards/`（运行时，可写） | 自动建档、手工补充 |
 
+`append_common` 是全局开关；某张卡的人设与公共补丁冲突时，把它加进 `append_common_except`（卡片文件名列表），那张卡就不会被追加公共补丁。
+
 查找时**先运行时后内置**，所以手工改运行时那张就能覆盖内置。
 
 ## 自动建档
