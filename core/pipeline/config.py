@@ -34,6 +34,8 @@ class GateConfig:
     offpeak_probability: float = 0.25
     # "peak"/"offpeak"/"off"（off = 不按概率接话，只认 @）
     force_mode: str = "off"
+    # 这些群即使 force_mode="off"、即使没被 @，也按 reply_probability 参与
+    speak_groups: list[int] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> GateConfig:
@@ -53,6 +55,7 @@ class GateConfig:
             allowed_groups=[int(x) for x in (d.get("allowed_groups") or [])],
             only_when_addressed=[int(x) for x in (d.get("only_when_addressed")
                                                   or d.get("at_only_groups") or [])],
+            speak_groups=[int(x) for x in (d.get("speak_groups") or [])],
             private_owner_only=bool(d.get("private_owner_only", False)),
             merge_window_sec=_f("merge_window_sec", 10.0),
             typing_wait_sec=_f("typing_wait_sec", 8.0),

@@ -103,7 +103,9 @@ def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision
         p = float(sample)
     else:
         if cfg.force_mode == "off":
-            return Decision("silence", "", "只理被叫到的消息")
+            # 全局只认 @；但 speak_groups 里的群例外——不被叫也按概率参与
+            if msg.chat.id not in cfg.speak_groups:
+                return Decision("silence", "", "只理被叫到的消息")
         if cfg.only_when_addressed and msg.chat.id in cfg.only_when_addressed:
             return Decision("silence", "", "这个会话只理被叫到的消息")
         p = cfg.offpeak_probability if cfg.force_mode == "offpeak" else cfg.reply_probability

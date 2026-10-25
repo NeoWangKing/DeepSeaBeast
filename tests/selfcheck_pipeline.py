@@ -51,6 +51,18 @@ print()
 print("== 只认 @ / 概率 ==")
 p = Pipeline(CFG)
 ck("群里没 @ → silence", p.run(mk("今天天气不错。"), time.time()).kind == "silence")
+p_sp = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 1.0,
+                                      "speak_groups": [1109525246]}))
+ck("speak_groups 内的群：没 @ 也能接", p_sp.run(mk("今天天气不错。"), time.time()).kind == "reply")
+p_sp0 = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 0.0,
+                                       "speak_groups": [1109525246]}))
+ck("speak_groups 内但概率=0 → 不接", p_sp0.run(mk("今天天气不错。"), time.time()).kind == "silence")
+p_sp_other = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 1.0,
+                                            "speak_groups": [1109525246]}))
+ck("speak_groups 外的群：没 @ 仍然不接", p_sp_other.run(mk("今天天气不错。", gid=123456), time.time()).kind in ("drop", "silence"))
+p_sp_at = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 1.0,
+                                         "speak_groups": [1109525246], "at_only_groups": [1109525246]}))
+ck("at_only 优先于 speak_groups", p_sp_at.run(mk("今天天气不错。"), time.time()).kind == "silence")
 p2 = Pipeline(GateConfig.from_dict({"force_mode": "peak", "reply_probability": 1.0}))
 ck("概率=1 时非 @ 也回", p2.run(mk("今天天气不错。"), time.time()).kind == "reply")
 p3 = Pipeline(GateConfig.from_dict({"force_mode": "peak", "reply_probability": 0.0}))

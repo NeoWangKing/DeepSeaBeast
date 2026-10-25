@@ -44,7 +44,8 @@ jitter = 0.2
 [gate]
 force_mode = "off"              # off=只认 @；peak/offpeak=按概率接话
 allowed_groups = [1109525246]   # 留空 = 所有群都管
-at_only_groups = [1109525246]
+at_only_groups = []               # 写在里面的群只理被叫到的消息
+speak_groups = [1109525246]       # 这些群不用 @ 也按 reply_probability 参与
 private_owner_only = false   # false = 私聊都理（靠频率限制防刷）
 merge_window_sec = 10
 typing_wait_sec = 8         # 每说一句就重新计时
