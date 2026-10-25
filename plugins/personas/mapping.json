@@ -4,7 +4,7 @@
     "869622030": "system_prompt_friend.txt",
     "966812151": "system_prompt_tool.txt",
     "1105410423": "project_assistant.txt",
-    "1109525246": "1109525246.txt",
+    "1109525246": "1109525246",
     "866103773": "866103773.txt"
   },
   "by_private": {
@@ -26,6 +26,6 @@
   },
   "template": "_template.txt",
   "append_common_except": [
-    "1109525246.txt"
+    "1109525246"
   ]
 }

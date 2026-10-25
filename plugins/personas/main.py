@@ -41,13 +41,39 @@ def load_mapping() -> dict:
         return {}
 
 
+def _read_dir_card(path: str) -> str:
+    """目录卡：prompt.txt 作正文，其余 *.md 按固定顺序追加（memes → meme-mode → 其它）。"""
+    if not os.path.isdir(path):
+        return ""
+    parts = []
+    prompt = os.path.join(path, "prompt.txt")
+    if os.path.exists(prompt):
+        with open(prompt, encoding="utf-8") as f:
+            parts.append(f.read().strip())
+    preferred = ["memes.md", "meme-mode.md"]
+    rest = sorted(n for n in os.listdir(path)
+                  if n.endswith(".md") and n not in preferred)
+    for n in preferred + rest:
+        p = os.path.join(path, n)
+        if os.path.isfile(p):
+            with open(p, encoding="utf-8") as f:
+                parts.append(f.read().strip())
+    return "\n\n".join(p for p in parts if p)
+
+
 def read_card(name: str) -> str:
-    """先找运行时卡，再找仓库内置卡。"""
+    """先找运行时卡，再找仓库内置卡。目录卡与老的单文件卡都支持。"""
     if not name:
         return ""
     for base in (CARDS, BUILTIN_CARDS):
+        path = os.path.join(base, name)
+        if os.path.isdir(path):
+            card = _read_dir_card(path)
+            if card:
+                return card
+            continue
         try:
-            with open(os.path.join(base, name), encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return f.read().strip()
         except Exception:
             continue

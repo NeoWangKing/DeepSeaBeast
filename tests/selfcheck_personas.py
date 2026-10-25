@@ -57,6 +57,7 @@ async def main() -> int:
     p_dbg, msgs_dbg = await persona_for(mk("group", 1109525246))
     ck("调试群拿到专属卡", "调试" in p_dbg or "灵其啊" in p_dbg, p_dbg[:40])
     ck("调试群不再拼通用补丁（append_common_except）", "AI 味" not in p_dbg and "矜持" not in p_dbg)
+    ck("目录卡带上了梗库与梗模式", "蒂蒂" in p_dbg or "梗模式" in p_dbg)
     ck("人格进了 messages[0]", p_dbg.splitlines()[0][:10] in msgs_dbg[0]["content"])
 
     p_light, _ = await persona_for(mk("group", 869622030))
