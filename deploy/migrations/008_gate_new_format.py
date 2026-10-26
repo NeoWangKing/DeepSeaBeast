@@ -31,14 +31,10 @@ score_threshold = 2.0               # 场面分超过它才值得问模型
 max_decide_per_hour = 30            # 每小时最多问几次模型（成本硬上限）
 dialogue_window_sec = 120           # 连续对话窗口：这么久内同一个人继续说就不重新打分
 dialogue_max_turns = 6              # 一次对话最多几个来回
-dialogue_min_interval_sec = 2.5     # 对话中的最小间隔
 dialogue_refill_boost = 2.0         # 对话中额度回充加速
 private_owner_only = false
-merge_window_sec = 10
 typing_wait_sec = 8
 typing_max_wait_sec = 40
-burst_suppress_sec = 30
-min_interval_sec = 8
 max_auto_per_hour = 30
 
 # ── 按会话覆盖（键 = "通道种类:会话id"）──

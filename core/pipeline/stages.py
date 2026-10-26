@@ -14,7 +14,6 @@ import random
 import time
 
 from .. import signals as sig_mod
-from ..kinds import exempt_from_rate
 from ..policy import resolve
 from ..typing import looks_unfinished
 from .config import GateConfig

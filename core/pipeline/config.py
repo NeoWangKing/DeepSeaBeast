@@ -18,20 +18,14 @@ class GateConfig:
     private_owner_only: bool = False
 
     # 连发合并窗口（秒）
-    merge_window_sec: float = 10.0
     # "话没说完"时，每来一句就重新计时这么久（秒）
     typing_wait_sec: float = 8.0
     # 但总等待不能无限长：从这一串的第一句算起，超过就正常回
     typing_max_wait_sec: float = 40.0
     # 同一人连发抑制（秒）
-    burst_suppress_sec: float = 30.0
     # 两次发言最小间隔（秒）
-    min_interval_sec: float = 8.0
     # 每会话每小时最多回几条
     max_auto_per_hour: int = 30
-    # 非 @ 时的接话概率（0~1）；force_mode=offpeak 时用 offpeak_probability
-    reply_probability: float = 0.2
-    offpeak_probability: float = 0.25
     # "peak"/"offpeak"/"off"（off = 不按概率接话，只认 @）
     force_mode: str = "off"
     # 这些群即使 force_mode="off"、即使没被 @，也按 reply_probability 参与
@@ -53,8 +47,6 @@ class GateConfig:
     dialogue_refill_boost: float = 2.0
     # 连续对话：她开口后这么久内，跟"同一个人"继续聊不再抽样（0 = 关闭）
     dialogue_window_sec: float = 0.0
-    # 连续对话中的最小间隔（比 min_interval_sec 松，多轮才接得上）
-    dialogue_min_interval_sec: float = 3.0
 
     @classmethod
     def from_dict(cls, d: dict) -> GateConfig:
@@ -103,15 +95,9 @@ class GateConfig:
             dialogue_max_turns=_i("dialogue_max_turns", 6),
             dialogue_refill_boost=_f("dialogue_refill_boost", 2.0),
             dialogue_window_sec=_f("dialogue_window_sec", 0.0),
-            dialogue_min_interval_sec=_f("dialogue_min_interval_sec", 3.0),
             private_owner_only=bool(d.get("private_owner_only", False)),
-            merge_window_sec=_f("merge_window_sec", 10.0),
             typing_wait_sec=_f("typing_wait_sec", 8.0),
             typing_max_wait_sec=_f("typing_max_wait_sec", 40.0),
-            burst_suppress_sec=_f("burst_suppress_sec", 30.0),
-            min_interval_sec=_f("min_interval_sec", 8.0),
             max_auto_per_hour=_i("max_auto_per_hour", 30),
-            reply_probability=_f("reply_probability", 0.2),
-            offpeak_probability=_f("offpeak_probability", 0.25),
             force_mode=str(d.get("force_mode", "off")),
         )

@@ -62,7 +62,6 @@ max_decide_per_hour = 30
 # 连续对话：她开口后，同一个人继续说就不用重新打分
 dialogue_window_sec = 120
 dialogue_max_turns = 6
-dialogue_min_interval_sec = 2.5
 dialogue_refill_boost = 2.0
 
 # 按会话覆盖：键是 "通道种类:会话id"，可读、可注释
@@ -81,14 +80,9 @@ dialogue_refill_boost = 2.0
 
 allowed_groups = [100000001]   # 留空 = 所有群都管
 private_owner_only = false   # false = 私聊都理（靠频率限制防刷）
-merge_window_sec = 10
 typing_wait_sec = 8         # 每说一句就重新计时
 typing_max_wait_sec = 40    # 但一串话最多等这么久
-burst_suppress_sec = 30
-min_interval_sec = 8
 max_auto_per_hour = 30
-reply_probability = 0.2
-offpeak_probability = 0.25
 
 [llm]
 base_url = "https://api.deepseek.com/v1"
