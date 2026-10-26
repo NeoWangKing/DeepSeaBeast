@@ -168,7 +168,17 @@ LIST_FACES = ToolSpec(
     requires={"face"}, kind="query",
 )
 
-DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, SEND_FILE, SEND_IMAGE,
+POKE_BACK = ToolSpec(
+    name="poke_back", label="戳一戳",
+    description="戳一下对方（相当于「拍一拍」）。被戳时可以戳回去，"
+                "或者想引起某人注意时用。不是发消息——只会有一个戳的动作。",
+    parameters={"type": "object", "properties": {
+        "user": {"type": "number",
+                 "description": "戳谁；不填就是刚才跟你说话的那个人"}}},
+    requires={"poke"},
+)
+
+DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, POKE_BACK, SEND_FILE, SEND_IMAGE,
                  ADD_TODO, LIST_TODOS, DONE_TODO, DROP_TODO, FINISH]
 
 
@@ -276,6 +286,8 @@ class Turn:
                 return await self._do_send_face(args)
             if name == "list_faces":
                 return self._do_list_faces(args)
+            if name == "poke_back":
+                return await self._do_poke_back(args)
             if name == "send_file":
                 return await self._do_send_file(args)
             if name == "send_image":
@@ -377,6 +389,21 @@ class Turn:
         if "已发出" not in r:
             return "表情没发出去：%s" % r
         return "表情已发出"
+
+    async def _do_poke_back(self, args: dict[str, Any]) -> str:
+        if self.ctx is not None and self.ctx.should_stop():
+            return "这一轮已经结束了，不要再戳"
+        try:
+            target = int(args.get("user") or self.msg.sender.id or 0)
+        except Exception:
+            target = int(self.msg.sender.id or 0)
+        if not target:
+            return "不知道该戳谁"
+        seg = Segment("poke", text="[戳一戳]", data={"user": target})
+        ok, err = await self._send_message_out([seg])
+        if not ok:
+            return "没戳出去：%s" % (err or "通道不支持")
+        return "戳了一下"
 
     def _do_list_faces(self, args: dict[str, Any]) -> str:
         names = self.faces_catalog or []

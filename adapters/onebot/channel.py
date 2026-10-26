@@ -31,6 +31,7 @@ class OneBotChannel:
                  verify_timeout_ms: int = 3000) -> None:
         self._server = OneBotServer(host, port, allow_self_ids)
         self._owner_ids = set(owner_ids or [])
+        self._seen_notices: set[tuple[str, str]] = set()   # 已见过的 notice 形状
         self._my_names: dict[str, str] = {}        # chat.key → 她自己在这个群的名片
         self._scope_names: dict[str, str] = {}     # chat.key → 群名（给 scope_info 用）
         self._group_names: dict[str, str] = {}     # chat.key → 群名（查 get_group_info）
@@ -159,7 +160,21 @@ class OneBotChannel:
 
     # ── 收：OneBot Event → InboundMessage ──
     async def _handle(self, ev: Event, _server: OneBotServer) -> None:
-        if ev.post_type != "message" or self._on_message is None:
+        if self._on_message is None:
+            return
+        if ev.post_type == "notice":
+            # 没见过的 notice 形状打一次日志，方便排查（每种只打一次，不刷屏）
+            raw = ev.raw or {}
+            shape = (str(raw.get("notice_type") or ""), str(raw.get("sub_type") or ""))
+            if shape not in self._seen_notices:
+                self._seen_notices.add(shape)
+                log.info("[onebot] notice 形状：%s", json.dumps(
+                    {k: raw.get(k) for k in ("notice_type", "sub_type", "user_id",
+                                             "target_id", "group_id")},
+                    ensure_ascii=False))
+            await self._handle_notice(ev)
+            return
+        if ev.post_type != "message":
             return
         if ev.message_type == "group":
             chat = ChatRef.group(ev.group_id)
@@ -239,6 +254,33 @@ class OneBotChannel:
         async with lock:
             await self._on_message(msg)
 
+    async def _handle_notice(self, ev: Event) -> None:
+        """戳一戳 / 拍一拍：OneBot 走 notice 事件，不是 message。
+
+        被别人戳 = 被"叫到"（和 @ 一样是通道层的机制），所以直接标 addressed。
+        戳的不是她就不管——她不该看见别人之间的互动。
+        """
+        raw = ev.raw or {}
+        if str(raw.get("notice_type") or "") not in ("notify", "poke"):
+            return
+        if str(raw.get("sub_type") or "") not in ("poke", "Poke"):
+            return
+        target = int(raw.get("target_id") or 0)
+        if not self.bot_id or target != int(self.bot_id):
+            return
+        poker = int(raw.get("user_id") or 0)
+        gid = int(raw.get("group_id") or 0)
+        chat = ChatRef.group(gid) if gid else ChatRef.private(poker)
+        sender_raw = raw.get("sender") or {}
+        name = str(sender_raw.get("card") or sender_raw.get("nickname") or "")
+        log.info("[onebot] 被戳了一下：%s 在 %s", poker, chat.key)
+        msg = InboundMessage(
+            chat=chat, sender=Sender(id=poker, name=name),
+            message=Message(segments=[Segment(kind="poke", text="[戳了你一下]")],
+                            raw=raw),
+            message_id="", addressed=True, addressed_by="poke", raw=raw)
+        asyncio.create_task(self._on_message(msg))
+
     # ── 发：OutboundMessage → OneBot 动作 ──
     @staticmethod
     def _to_raw(out: OutboundMessage) -> list[dict]:
@@ -310,6 +352,21 @@ class OneBotChannel:
             await asyncio.sleep(0.2)      # 服务端可能晚一点才可查
         return False, last_err or "回读失败", True
 
+    async def _send_poke(self, out: OutboundMessage, seg) -> SendResult:
+        """戳一戳：接口没有 message_id，所以只能算"接口收下了"。"""
+        target = int((getattr(seg, "data", {}) or {}).get("user") or out.chat.id or 0)
+        params = {"user_id": target}
+        if out.chat.kind == "group":
+            params["group_id"] = out.chat.id
+        try:
+            r = await self._server.call_action("send_poke", params, timeout=10)
+        except Exception as e:
+            return SendResult(ok=False, error=repr(e), retryable=True)
+        if int(r.get("retcode", 0)) != 0:
+            return SendResult(ok=False, error=str(r.get("wording") or r.get("retcode")),
+                              retryable=False)
+        return SendResult(ok=True, confirmed=False, error="戳一戳没有回执")
+
     async def _send_file(self, out: OutboundMessage, seg) -> SendResult:
         """文件走 upload_* 接口，不是 send_*_msg。
 
@@ -359,6 +416,8 @@ class OneBotChannel:
             for seg in out.message.segments:
                 if seg.kind == "file":
                     return await self._send_file(out, seg)
+                if seg.kind == "poke":
+                    return await self._send_poke(out, seg)
             raw = self._to_raw(out)
             log.debug("发送 → chat=%s %s", out.chat.key, json.dumps(raw, ensure_ascii=False)[:200])
             if out.chat.kind == "group":
