@@ -94,7 +94,7 @@ def main() -> int:
 
     print()
     print("== 自动收集：群里别人发的贴图收进库（待打标）==")
-    import http.server, threading
+    import http.server, threading, time as _time
     payload = b"GIF89a" + b"x" * 40          # 假装是一张 GIF
 
     class _H(http.server.BaseHTTPRequestHandler):
@@ -113,6 +113,12 @@ def main() -> int:
     before = len(json.loads((td / "index.json").read_text(encoding="utf-8"))["items"])
     m.on_event("message.received", {"scope": {"ref": "g1"},
                                     "media": [{"kind": "sticker", "url": url, "name": "狗头"}]})
+    _time.sleep(0.8)
+    # 收集跑在后台线程（不能阻塞插件主循环），这里等一下
+    for _ in range(60):
+        _time.sleep(0.1)
+        if len(json.loads((td / "index.json").read_text(encoding="utf-8"))["items"]) > before:
+            break
     after_items = json.loads((td / "index.json").read_text(encoding="utf-8"))["items"]
     ck("收进来一条", len(after_items) == before + 1, "%d → %d" % (before, len(after_items)))
     newbie = after_items[-1]

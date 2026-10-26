@@ -262,10 +262,10 @@ def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
     import urllib.request
     last_err = None
     data = b""
-    for attempt in range(3):          # QQ 图床偶尔 SSL 握手超时，重试两次基本能过
+    for attempt in range(2):          # QQ 图床偶尔 SSL 握手超时，重试一次基本能过
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "DeepSeaBeast/1.0"})
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with urllib.request.urlopen(req, timeout=8) as r:
                 data = r.read(COLLECT_MAX_BYTES + 1)
             last_err = None
             break
@@ -273,7 +273,7 @@ def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
             last_err = e
             time.sleep(1.0 + attempt)
     if last_err is not None:
-        return "下载失败（试了 3 次）：%r" % (last_err,)
+        return "下载失败（试了 2 次）：%r" % (last_err,)
     return _store_bytes(data, name, force)
 
 
@@ -526,6 +526,30 @@ TOOLS = [
 ]
 
 
+_COLLECT_THREADS: list = []
+
+
+def collect_async(url: str, name: str, force: bool, tag: str = "") -> None:
+    """后台线程收集。**绝不能在主循环里同步下载**——
+    踩过：QQ 图床一次握手卡住，插件整个卡死，后面的消息和工具调用全都不响应。
+    """
+    import threading
+    _COLLECT_THREADS[:] = [t for t in _COLLECT_THREADS if t.is_alive()]
+    if len(_COLLECT_THREADS) >= 3:      # 同时在收的不超过 3 个
+        log("收够并发数了，这张先跳过：%s" % tag)
+        return
+
+    def _run() -> None:
+        try:
+            log("%s：%s" % (tag, collect_sticker(url, name, force=force)))
+        except Exception as e:
+            log("%s 收集出错：%r" % (tag, e))
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    _COLLECT_THREADS.append(t)
+
+
 def on_event(event: str, data: dict) -> None:
     """群里有人发贴图 → 收进库（待打标，打标前她发不出去）。"""
     if event != "message.received":
@@ -545,9 +569,9 @@ def on_event(event: str, data: dict) -> None:
                     "ts": time.time()})
         del buf[:-8]
         if kind == "sticker":
-            log("收集贴图：%s" % collect_sticker(url, str(m.get("name") or ""), force=True))
+            collect_async(url, str(m.get("name") or ""), True, "收集贴图")
         elif kind == "image":
-            log("看到图片：%s" % collect_sticker(url, "", force=False))
+            collect_async(url, "", False, "看到图片")
 
 
 def scope_of(params: dict) -> str:
