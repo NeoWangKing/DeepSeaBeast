@@ -120,9 +120,37 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="deepsea-beast")
     ap.add_argument("config", nargs="?",
                     default=None, help="配置文件（默认自动找 core__custom__.toml / core.toml）")
+    ap.add_argument("--list-scopes", action="store_true",
+                    help="列出磁盘上留过痕迹的会话（排查用）")
+    ap.add_argument("--reset-scope", default="", metavar="KEY",
+                    help="清掉某个会话的上下文（s 开头的引用，或 g123/p123 原始 key）")
+    ap.add_argument("--dry", action="store_true", help="配合 --reset-scope：只看会删什么")
     ap.add_argument("--channel", default="",
                     help="留空=按配置全开；填名字=只开那一个（如 cli），名字由 adapters/ 定义")
     a = ap.parse_args()
+
+    # 运维命令：不启动核心，处理完就退出
+    if a.list_scopes or a.reset_scope:
+        from . import maintenance
+        cfg = cfg_mod.load(a.config)
+        if a.list_scopes:
+            rows = maintenance.list_scopes(cfg.data_dir)
+            if not rows:
+                print("磁盘上还没有任何会话痕迹")
+            for r in rows:
+                print("%-18s %-10s %s" % (r["ref"], "/".join(r["what"]), r["label"]))
+        if a.reset_scope:
+            res = maintenance.reset_scope(cfg.data_dir, a.reset_scope, dry=a.dry)
+            if res.get("error"):
+                print(res["error"])
+                return
+            print("会话 %s：" % res["ref"])
+            if not res["removed"]:
+                print("  没有需要清的东西")
+            for line in res["removed"]:
+                print("  %s %s" % ("会删" if res["dry"] else "已删", line))
+        return
+
     try:
         asyncio.run(run(a.config, a.channel))
     except KeyboardInterrupt:
