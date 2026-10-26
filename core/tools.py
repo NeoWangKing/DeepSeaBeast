@@ -178,7 +178,15 @@ POKE_BACK = ToolSpec(
     requires={"poke"},
 )
 
-DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, POKE_BACK, SEND_FILE, SEND_IMAGE,
+POKE_SAME = ToolSpec(
+    name="poke_same", label="跟着戳一下",
+    description="看见有人戳了某人一下，你也跟着戳那个人一下。"
+                "只在真的看到这种场面时用，别凭空戳人。",
+    parameters={"type": "object", "properties": {}},
+    requires={"poke"},
+)
+
+DEFAULT_SPECS = [DECIDE, SEND_MESSAGE, SEND_FACE, LIST_FACES, POKE_BACK, POKE_SAME, SEND_FILE, SEND_IMAGE,
                  ADD_TODO, LIST_TODOS, DONE_TODO, DROP_TODO, FINISH]
 
 
@@ -288,6 +296,8 @@ class Turn:
                 return self._do_list_faces(args)
             if name == "poke_back":
                 return await self._do_poke_back(args)
+            if name == "poke_same":
+                return await self._do_poke_same(args)
             if name == "send_file":
                 return await self._do_send_file(args)
             if name == "send_image":
@@ -404,6 +414,19 @@ class Turn:
         if not ok:
             return "没戳出去：%s" % (err or "通道不支持")
         return "戳了一下"
+
+    async def _do_poke_same(self, args: dict[str, Any]) -> str:
+        """跟着戳"刚被别人戳的那个人"（焦点对象由通道填）。"""
+        if self.ctx is not None and self.ctx.should_stop():
+            return "这一轮已经结束了，不要再戳"
+        focus = getattr(self.msg, "focus", None)
+        if focus is None or not getattr(focus, "id", 0):
+            return "这会儿没有可以跟着戳的人"
+        seg = Segment("poke", text="[戳一戳]", data={"user": int(focus.id)})
+        ok, err = await self._send_message_out([seg])
+        if not ok:
+            return "没戳出去：%s" % (err or "通道不支持")
+        return "戳了%s一下" % (getattr(focus, "name", "") or "对方")
 
     def _do_list_faces(self, args: dict[str, Any]) -> str:
         names = self.faces_catalog or []

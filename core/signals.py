@@ -23,6 +23,7 @@ WEIGHTS: dict[str, float] = {
     "unanswered": 2.0,       # 有人说话 2 分钟没人接（避免冷场尴尬）
     "cold_room": 1.0,        # 群里安静一阵后的第一条
     "dialogue": 2.0,         # 正在跟她对话的人
+    "poke_seen": 1.5,        # 看见有人戳了别人一下（人类会跟着戳同一个）
     "recent_speak": -3.0,    # 她 30 秒内刚说过
     "chatter": -2.0,         # 群里很吵
     "budget": -1.0,          # 接近每小时上限
@@ -91,6 +92,10 @@ def compute(scene: Scene, msg, identity_names: list[str], dialogue_active: bool,
     sig: dict[str, float] = {}
 
     sig["addressed"] = 1.0 if getattr(msg, "addressed", False) else 0.0
+    # 看见"戳一戳"：有人戳了某人，她自己可能跟着戳一下
+    _segs = getattr(getattr(msg, "message", None), "segments", None) or []
+    is_poke = any(getattr(s_, "kind", "") == "poke" for s_ in _segs)
+    sig["poke_seen"] = 1.0 if (is_poke and getattr(msg, "focus", None)) else 0.0
     sig["dialogue"] = 1.0 if dialogue_active else 0.0
 
     # 问句：问号、或者开头是疑问词
@@ -127,6 +132,9 @@ def compute(scene: Scene, msg, identity_names: list[str], dialogue_active: bool,
         hints.append("你刚刚才说过话")
     if sig["dialogue"]:
         hints.append("正在跟你聊的人又说话了")
+    if sig["poke_seen"]:
+        who = getattr(getattr(msg, "focus", None), "name", "") or "对方"
+        hints.append("有人刚戳了「%s」一下，你也可以跟着戳" % who)
     return sig, hints
 
 

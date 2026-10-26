@@ -90,7 +90,10 @@ class InboundMessage:
     # 这条消息是不是冲她来的——**由通道判断**（QQ 的 @、微信的引用、
     # 聊天室里叫名字、终端里说话都算），核心只读结论，不认识"@"是什么
     addressed: bool = False
-    addressed_by: str = ""        # at / name / quote / always / none（排查用）
+    addressed_by: str = ""        # at / name / quote / always / none / poke（排查用）
+    # 这条消息"关于谁"——比如某人戳了某人，被戳的那个就是焦点。
+    # 通道负责填，核心只当"有个对象"用（决定要不要跟着戳同一个）
+    focus: Sender | None = None
     is_wake: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 

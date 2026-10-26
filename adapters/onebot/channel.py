@@ -266,19 +266,33 @@ class OneBotChannel:
         if str(raw.get("sub_type") or "") not in ("poke", "Poke"):
             return
         target = int(raw.get("target_id") or 0)
-        if not self.bot_id or target != int(self.bot_id):
+        if not target:
             return
         poker = int(raw.get("user_id") or 0)
         gid = int(raw.get("group_id") or 0)
         chat = ChatRef.group(gid) if gid else ChatRef.private(poker)
         sender_raw = raw.get("sender") or {}
         name = str(sender_raw.get("card") or sender_raw.get("nickname") or "")
-        log.info("[onebot] 被戳了一下：%s 在 %s", poker, chat.key)
-        msg = InboundMessage(
-            chat=chat, sender=Sender(id=poker, name=name),
-            message=Message(segments=[Segment(kind="poke", text="[戳了你一下]")],
-                            raw=raw),
-            message_id="", addressed=True, addressed_by="poke", raw=raw)
+        me = bool(self.bot_id) and target == int(self.bot_id)
+
+        if me:
+            # 戳的是她 → 等于被叫到
+            log.info("[onebot] 被戳了一下：%s 在 %s", poker, chat.key)
+            msg = InboundMessage(
+                chat=chat, sender=Sender(id=poker, name=name),
+                message=Message(segments=[Segment(kind="poke", text="[戳了你一下]")],
+                                raw=raw),
+                message_id="", addressed=True, addressed_by="poke", raw=raw)
+        else:
+            # 戳的是别人 → 她"看见了"这件事（能不能跟着戳，由门控和模型判断）
+            tname = str(raw.get("target_name") or "").strip() or str(target)
+            log.info("[onebot] 看到戳一戳：%s 戳了 %s", poker, tname)
+            msg = InboundMessage(
+                chat=chat, sender=Sender(id=poker, name=name),
+                message=Message(segments=[Segment(
+                    kind="poke", text="[戳了「%s」一下]" % tname, data={"target": target})]),
+                message_id="", addressed=False, addressed_by="",
+                focus=Sender(id=target, name=tname), raw=raw)
         asyncio.create_task(self._on_message(msg))
 
     # ── 发：OutboundMessage → OneBot 动作 ──

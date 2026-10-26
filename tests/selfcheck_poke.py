@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from adapters.onebot.channel import OneBotChannel  # noqa: E402
 from adapters.onebot.event import Event  # noqa: E402
-from core.channel import ChatRef, Message, OutboundMessage, Segment  # noqa: E402
+from core.channel import ChatRef, Message, OutboundMessage, Segment, Sender  # noqa: E402
 
 FAIL: list[str] = []
 
@@ -68,14 +68,22 @@ async def main() -> int:
         ck("说话人是戳她的人", m.sender.id == 200000001, str(m.sender.id))
 
     print()
-    print("== 戳她以外的人 → 不管 ==")
+    print("== 戳别人 → 她看见了，不标被叫到，但记住焦点 ==")
     got.clear()
     ev2 = Event(post_type="notice", self_id=3237702352, raw={
         "post_type": "notice", "notice_type": "notify", "sub_type": "poke",
-        "group_id": 100000001, "user_id": 200000002, "target_id": 999999})
+        "group_id": 100000001, "user_id": 200000002, "target_id": 300000003,
+        "target_name": "灵其啊"})
     await ch._handle_notice(ev2)
     await asyncio.sleep(0.05)
-    ck("不产生消息", got == [], str(len(got)))
+    ck("产生一条消息", len(got) == 1, str(len(got)))
+    if got:
+        m2 = got[0]
+        ck("不算被叫到", m2.addressed is False, str(m2.addressed))
+        ck("文本说明是谁戳了谁", "戳了「灵其啊」一下" in m2.text, m2.text)
+        ck("焦点是被戳的那个人",
+           m2.focus is not None and m2.focus.id == 300000003,
+           str(getattr(m2.focus, "id", None)))
 
     print()
     print("== 戳回去：走 send_poke ==")
@@ -89,6 +97,35 @@ async def main() -> int:
     ck("调的是 send_poke", action == "send_poke", action)
     ck("目标对", params.get("user_id") == 200000001, str(params))
     ck("群里带 group_id", params.get("group_id") == 100000001, str(params))
+
+    print()
+    print("== 跟着戳同一个：poke_same 用焦点对象 ==")
+    from core.channel import InboundMessage
+    from core.tools import Turn
+    got.clear()
+    ev3 = Event(post_type="notice", self_id=3237702352, raw={
+        "post_type": "notice", "notice_type": "notify", "sub_type": "poke",
+        "group_id": 100000001, "user_id": 200000002, "target_id": 300000003,
+        "target_name": "灵其啊"})
+    await ch._handle_notice(ev3)
+    await asyncio.sleep(0.05)
+    seen = got[0]
+    fake.calls.clear()
+    turn = Turn(ch, seen, None, abilities={"text", "poke"})
+    out = await turn.dispatch("poke_same", {})
+    ck("工具说戳到了", "戳了" in out, out)
+    action, params = fake.calls[-1]
+    ck("戳的是被戳的那个人（不是戳人的那个）",
+       action == "send_poke" and params.get("user_id") == 300000003, str(params))
+
+    print()
+    print("== 没有焦点时 poke_same 不乱戳 ==")
+    plain = InboundMessage(chat=ChatRef.group(100000001),
+                           sender=Sender(id=200000002, name="a"),
+                           message=Message.from_text("随便聊聊"), message_id="1")
+    turn2 = Turn(ch, plain, None, abilities={"text", "poke"})
+    out2 = await turn2.dispatch("poke_same", {})
+    ck("拒绝戳", "没有可以跟着戳" in out2, out2)
 
     print()
     print("== 核心工具：只有能戳的通道才看得见 ==")
