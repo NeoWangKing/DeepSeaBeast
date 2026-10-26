@@ -22,6 +22,7 @@ from .llm import LLMConfig
 from .memory import MemoryStore
 from .pipeline import GateConfig, Pipeline
 from .scoperef import ScopeRegistry, scope_ref
+from .policy import resolve
 from .prompt import build_scene, render
 from .scope import Scope
 from .face_stats import FaceStats
@@ -54,6 +55,9 @@ class Runtime:
         self.todo_tick_sec = float(tc.get("tick_sec", 60))
         self._chats: dict[str, object] = {}     # 不透明引用 → chat（到点唤醒要发回去）
         self._last_said: dict[str, str] = {}    # 每个会话最近一轮她说了什么
+        self.gate = gate or GateConfig()        # 门控配置（策略/开关都从这来）
+        self._policy_of: dict[str, object] = {}  # 会话 → ChatPolicy
+        self._hints: dict[str, list[str]] = {}   # 会话 → 最近一次的场面提示
         self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
         self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
@@ -79,6 +83,25 @@ class Runtime:
                 log.exception("注册上下文插件失败")
         self._flush: dict[str, asyncio.Task] = {}
 
+    # ── 策略辅助 ──
+    def _policy(self, chat) -> object:
+        return resolve(self.gate.default_preset, self.gate.chats, chat.kind, chat.id)
+
+    def _store_allowed(self, chat) -> bool:
+        """memory=off 的会话：不写 recent、不发插件事件。"""
+        return self._policy(chat).store_memory
+
+    def _hints_of(self, ref: str) -> list[str]:
+        return list(self._hints.get(ref) or [])
+
+    def _identity_names(self, chat) -> list[str]:
+        """这个会话里别人可能怎么叫她（打分和"提到名字"信号用）。"""
+        try:
+            info = self.channel.identity(chat) if hasattr(self.channel, "identity") else {}
+            return [str(x) for x in (info.get("aliases") or []) if x]
+        except Exception:
+            return []
+
     # ── 收 ──
     async def on_message(self, msg: InboundMessage) -> None:
         now = time.time()
@@ -86,15 +109,17 @@ class Runtime:
         key = self._ref_of(msg)
         _info = (self.channel.scope_info(msg.chat)
                  if hasattr(self.channel, "scope_info") else {})
-        await self._emit("message.received", {
+        store = self._store_allowed(msg.chat)
+        if store:
+            await self._emit("message.received", {
             # 插件只拿不透明引用 + 人话标签，不拿平台 id
-            "scope": {"ref": key, "kind": msg.chat.kind,
-                      "label": str(_info.get("label") or ""),
-                      "name": str(_info.get("name") or "")},
-            "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
-            "text": msg.text, "addressed": bool(msg.addressed), "ts": now,
-            # 带媒体清单（贴图/图片等）：插件想收就收，核心不判断用途
-            "media": _media_of(msg)})
+                "scope": {"ref": key, "kind": msg.chat.kind,
+                          "label": str(_info.get("label") or ""),
+                          "name": str(_info.get("name") or "")},
+                "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
+                "text": msg.text, "addressed": bool(msg.addressed), "ts": now,
+                # 带媒体清单（贴图/图片等）：插件想收就收，核心不判断用途
+                "media": _media_of(msg)})
         # 同一个人又说话了：上一条"等着重放"的计时直接作废，由这条重新计时
         pending_flush = self._flush.get(key)
         if pending_flush is not None and not pending_flush.done():
@@ -107,10 +132,13 @@ class Runtime:
             prev.cancel("新消息打断")
             log.info("[%s] 回合 %s 被打断（她正在说，群里又来了话）", key, prev.id)
 
+        policy = resolve(self.gate.default_preset, self.gate.chats, msg.chat.kind, msg.chat.id)
+        self._policy_of[key] = policy
         ctx = TurnContext(id=new_turn_id(), scope_key=key, cfg=self.turn_cfg, chat=msg.chat)
         self._active[key] = ctx
         try:
-            out = self.pipeline.run(msg, now)
+            out = self.pipeline.run(msg, now, identity_names=self._identity_names(msg.chat))
+            self._hints[key] = list(getattr(out, "hints", []) or [])
             log.info("[%s] 回合 %s 判断 %r → %s（%s%s）", key, ctx.id, msg.text[:24],
                      out.kind, out.stage or "-", ("：" + out.reason) if out.reason else "")
             if out.kind == "defer":
@@ -123,7 +151,8 @@ class Runtime:
             await self._notify("on_message", msg)
             said = await self._call_reply(msg, ctx)
             self._last_said[key] = said or ""
-            self._record_turn(msg, said)
+            if store:
+                self._record_turn(msg, said)
             if said:
                 self.pipeline.note_replied(msg, time.time())
                 log.info("[%s] 回合 %s 完成：%r", key, ctx.id, said[:40])
@@ -178,7 +207,8 @@ class Runtime:
                   if hasattr(self.channel, "identity") else {})
         b.scene = build_scene(msg, where=where,
                               self_name=str(_ident.get("name") or ""),
-                              aliases=list(_ident.get("aliases") or []))
+                              aliases=list(_ident.get("aliases") or []),
+                              hints=self._hints_of(ref))
         b.abilities = sorted(self.abilities_for(msg.chat))
         prof = self._channel_profile(msg.chat)
         b.style = str(prof.get("style") or "")
@@ -188,7 +218,8 @@ class Runtime:
         b.max_chars = int((prof.get("limits") or {}).get("max_chars", 4500) or 4500)
         if "face" in b.abilities:
             b.faces_top = self.faces.top(ref, fallback=list(inline.get("faces") or [])[:12])
-        b.recent = self.recent.get(ref)
+        _pol = self._policy(msg.chat)
+        b.recent = self.recent.get(ref) if _pol.history else []   # history=off 不带聊天记录
         await self.registry.collect(b)
         b.trim()
         return b
@@ -214,7 +245,8 @@ class Runtime:
                     plugins=self.plugins, ctx=ctx,
                     abilities=self.abilities_for(msg.chat),
                     faces_catalog=self._face_catalog(msg.chat),
-                    todos=self.todos, scope_key=self._ref_of(msg))
+                    todos=self.todos, scope_key=self._ref_of(msg),
+                    tools_mode=self._policy(msg.chat).tools)
         line = turn.skill_text()
         if line:                       # 能力清单放在当前消息之前，紧贴着这轮
             messages.insert(len(messages) - 1, {"role": "system", "content": line})

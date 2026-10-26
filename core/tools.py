@@ -37,6 +37,21 @@ class ToolSpec:
     status: str = "ready"
 
 
+# 纯聊天也需要的最小工具集（tools=none 时只留这些）
+CHAT_ONLY = {"decide", "send_message", "finish"}
+# chat_only：加轻量表达（表情），但不能发文件/贴图/待办
+CHAT_EXPRESSIVE = CHAT_ONLY | {"send_face", "list_faces"}
+
+
+def visible(specs: list[ToolSpec], mode: str) -> list[ToolSpec]:
+    """按会话的 tools 开关过滤：all / chat_only / none。"""
+    mode = str(mode or "all")
+    if mode == "all":
+        return list(specs)
+    allow = CHAT_EXPRESSIVE if mode == "chat_only" else CHAT_ONLY
+    return [s for s in specs if s.name in allow]
+
+
 def schema(specs: list[ToolSpec], abilities: set[str]) -> list[dict[str, Any]]:
     """按渠道能力 + 验证状态过滤后，转成 OpenAI function schema。"""
     out: list[dict[str, Any]] = []
@@ -183,12 +198,13 @@ class Turn:
                  specs: list[ToolSpec] | None = None, max_sends: int = 4,
                  plugins=None, abilities: set[str] | None = None,
                  ctx=None, faces_catalog: list[str] | None = None,
-                 todos=None, scope_key: str = "") -> None:
+                 todos=None, scope_key: str = "", tools_mode: str = "all") -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
         self.persona = persona
-        self.specs = list(specs or DEFAULT_SPECS)
+        self.tools_mode = str(tools_mode or "all")
+        self.specs = visible(list(specs or DEFAULT_SPECS), self.tools_mode)
         self.ctx = ctx                          # TurnContext（预算/取消/追踪）
         self.max_sends = int(getattr(ctx, "cfg").max_sends) if ctx is not None else max_sends
         self.plugins = plugins            # PluginManager（可选）
@@ -208,7 +224,7 @@ class Turn:
     def skill_text(self) -> str:
         """合并核心工具和插件工具，渲染成"你手上现在能做"那一行。"""
         specs = list(self.specs)
-        if self.plugins is not None:
+        if self.plugins is not None and self.tools_mode == "all":
             for t in getattr(self.plugins, "tools", {}).values():
                 specs.append(ToolSpec(name=t.name, description=t.description,
                                       parameters={}, requires=set(t.requires),
@@ -226,7 +242,7 @@ class Turn:
     def schemas(self) -> list[dict[str, Any]]:
         ab = self.abilities
         out = schema(self.specs, ab)
-        if self.plugins is not None:
+        if self.plugins is not None and self.tools_mode == "all":
             out.extend(self.plugins.schemas(ab))
         return out
 

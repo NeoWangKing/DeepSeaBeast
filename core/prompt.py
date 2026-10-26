@@ -94,7 +94,8 @@ def render(bundle: ContextBundle) -> list[dict[str, Any]]:
 
 
 def build_scene(msg, *, where: str = "", self_name: str = "",
-                aliases: list[str] | None = None) -> str:
+                aliases: list[str] | None = None,
+                hints: list[str] | None = None) -> str:
     """场景段：**由通道告诉我们"这是哪儿、我在这儿叫什么"**，核心只负责拼装。
 
     核心不认识 QQ/终端——它只知道"有个地方叫 where，我在这儿被叫作 self_name"。
@@ -103,6 +104,9 @@ def build_scene(msg, *, where: str = "", self_name: str = "",
     who = msg.sender.name or "对方"
     sid = ("（%s）" % msg.sender.id) if msg.sender.id else ""
     parts = ["当前场景：%s" % (where or "一对一对话")]
+    if hints:
+        # 门控算出来的"场面"，让模型自己判断该不该接、怎么接
+        parts.append("场面：" + " · ".join(hints[:3]))
     if self_name:
         line = "在这里你叫「%s」" % self_name
         others = [a for a in (aliases or []) if a and a != self_name][:3]

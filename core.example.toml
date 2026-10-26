@@ -42,12 +42,44 @@ max_sec = 4.0
 jitter = 0.2
 
 [gate]
-force_mode = "off"              # off=只认 @；peak/offpeak=按概率接话
+# ── 门控（2026-10 重构）─────────────────────────────────────────────
+# 三档位，只决定"要不要问模型"，回不回仍由模型判断：
+#   strict   只理被叫到的消息；其余直接丢，连记录都不落
+#   balanced 被叫到必问；没被叫时按"发言额度 + 场面打分"决定
+#   loose    每条都问模型（成本最高，靠 max_decide_per_hour 兜底）
+# 旧键 force_mode / speak_groups / only_when_addressed 仍能用，会自动翻译成 chats。
+default_preset = "strict"          # 没单独配的会话用哪一档
+
+# 发言额度（像"还有几次开口机会"，用完就安静一阵）
+credit_max = 3
+credit_refill_min = 15             # 每 15 分钟回 1 点
+
+# 打分阈值：场面分超过它才值得问模型（带 ±1 随机抖动）
+score_threshold = 2.0
+# 每小时最多问几次模型（成本硬上限，防失控）
+max_decide_per_hour = 30
+
+# 连续对话：她开口后，同一个人继续说就不用重新打分
+dialogue_window_sec = 120
+dialogue_max_turns = 6
+dialogue_min_interval_sec = 2.5
+dialogue_refill_boost = 2.0
+
+# 按会话覆盖：键是 "通道种类:会话id"，可读、可注释
+# [gate.chats."group:100000001"]
+# preset = "loose"        # 调试群：每条都交给她判断
+# memory = "full"         # off / scope / full
+# history = true          # 上下文里带不带最近的聊天记录
+# tools = "all"           # all / chat_only / none（纯聊天）
+# continuation = true     # 允许"她开口后接着聊"
+# quiet_hours = ["01:00-08:00"]
+#
+# [gate.chats."group:100000004"]     # 豹群这类：只认 @，且完全不留痕
+# preset = "strict"
+# memory = "off"
+# history = false
+
 allowed_groups = [100000001]   # 留空 = 所有群都管
-at_only_groups = []               # 写在里面的群只理被叫到的消息
-speak_groups = [100000001]       # 这些群不用 @ 也按 reply_probability 参与
-dialogue_window_sec = 120            # 她开口后这么久内，跟同一个人继续聊不再抽样（0=关闭）
-dialogue_min_interval_sec = 3         # 连续对话中的最小间隔（比 min_interval_sec 松）
 private_owner_only = false   # false = 私聊都理（靠频率限制防刷）
 merge_window_sec = 10
 typing_wait_sec = 8         # 每说一句就重新计时

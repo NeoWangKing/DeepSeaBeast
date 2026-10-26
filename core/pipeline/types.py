@@ -46,6 +46,8 @@ class MessageCtx:
     msg: InboundMessage
     now: float
     text: str = ""
+    identity_names: list[str] = field(default_factory=list)   # 这个会话里她叫什么
+    hints: list[str] = field(default_factory=list)            # 场面提示（喂给模型）
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property

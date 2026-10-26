@@ -1,20 +1,35 @@
-"""四个门控阶段。
+"""门控各阶段：白名单 → 策略过滤 → 打分 → decide → 记录。
 
-约定：每个函数都**不**修改全局状态以外的副作用；返回 StageResult。
-顺序见 pipeline.py —— 改动顺序会改变行为，慎动。
+设计（2026-10-26 重构）：
+  · 每个会话一份 ChatPolicy（core/policy.py），档位只管"进不进 decide"
+  · 没被叫到时用**发言额度 + 场面打分**决定要不要问模型（core/signals.py）
+  · 连续对话是一个状态机（dialogue_peer / dialogue_until / dialogue_turns）
+  · 回不回始终由 decide（模型）判断——这里只拦"不值得问"的消息，不替她决定说什么
 """
 
 from __future__ import annotations
 
+import logging
 import random
+import time
 
-from ..kinds import exempt_from_rate, gate_mode, policy
+from .. import signals as sig_mod
+from ..kinds import exempt_from_rate
+from ..policy import resolve
 from ..typing import looks_unfinished
 from .config import GateConfig
 from .state import ChatState
 from .types import Decision, MessageCtx, StageResult
 
+log = logging.getLogger("gate")
 
+
+def policy_of(ctx: MessageCtx, cfg: GateConfig):
+    """这个会话的门控策略（每次现算，配置改了立即生效）。"""
+    return resolve(cfg.default_preset, cfg.chats, ctx.msg.chat.kind, ctx.msg.chat.id)
+
+
+# ── ① 白名单 ──────────────────────────────────────────
 def stage_allowlist(ctx: MessageCtx, cfg: GateConfig) -> StageResult:
     """白名单 / 私聊权限：不在管辖范围就彻底不管。"""
     msg = ctx.msg
@@ -26,21 +41,15 @@ def stage_allowlist(ctx: MessageCtx, cfg: GateConfig) -> StageResult:
             return StageResult("drop", "私聊只理主人")
         return StageResult("pass", "私聊")
     if kind == "room":
-        # 房间没有"白名单"的概念：连进哪个房间就是跟谁说话（由通道配置决定）
         return StageResult("pass", "房间")
     if cfg.allowed_groups and msg.chat.id not in cfg.allowed_groups:
         return StageResult("drop", "群不在白名单")
     return StageResult("pass", "群在白名单")
 
 
+# ── ② 连发合并 ────────────────────────────────────────
 def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:
-    """连发合并 / 等她说完整。
-
-    三种情况：
-      ① 话没说完（"我跟你"）      → defer 等着，超时再正常回
-      ② 上一串还没回，她又补一句   → 和前文合并；补完整了就立刻回合并后的内容
-      ③ 说完整了                  → 直接放行
-    """
+    """连发合并 / 等她说完整。"""
     msg = ctx.msg
     text = ctx.text
     same = state.merge_sender == msg.sender.id
@@ -52,12 +61,10 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
         state.merge_ts = ctx.now
         merged = state.merge_buf
         waited = ctx.now - state.merge_first_ts
-        # 每来一句都重新计时（merge_ts 已更新）；这里只挡"一直不说完"的人
         if looks_unfinished(text) and waited < cfg.typing_max_wait_sec:
             return StageResult("defer", "她还在说，再等 %0.0fs" % cfg.typing_wait_sec, merged)
         return StageResult("pass", "合并后一起回", merged)
 
-    # 新的一串
     state.merge_buf = text
     state.merge_ts = ctx.now
     state.merge_first_ts = ctx.now
@@ -67,72 +74,129 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
     return StageResult("pass", "说完了")
 
 
+# ── ③ 连续对话判断 ────────────────────────────────────
 def in_dialogue(state: ChatState, ctx: MessageCtx) -> bool:
     """她刚跟这个说话人聊过，且还在窗口内。"""
     return bool(state.dialogue_until and ctx.now <= state.dialogue_until
                 and state.dialogue_peer == ctx.msg.sender.id)
 
 
-def stage_rate_limit(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:
-    """频率：最小间隔 / 同一人连发抑制 / 每小时上限。@她 的消息不做连发抑制。"""
-    state.roll_hour(ctx.now)
-    if state.hour_count >= cfg.max_auto_per_hour:
-        return StageResult("drop", "本小时额度用完（%d/%d）" % (state.hour_count, cfg.max_auto_per_hour))
-    # 被叫到、主人说话、以及"人少的场合"（策略表决定）都不该被"刚说过话"挡住
-    exempt = bool(ctx.msg.addressed or ctx.msg.sender.is_owner
-                  or exempt_from_rate(ctx.msg.chat.kind))
-    talking = in_dialogue(state, ctx)          # 连续对话中：条件放宽
-    gap = ctx.now - state.last_reply_ts
-    min_gap = cfg.dialogue_min_interval_sec if talking else cfg.min_interval_sec
-    if state.last_reply_ts and gap < min_gap and not exempt:
-        return StageResult("drop", "刚说过话（%.1fs < %.0fs）" % (gap, min_gap))
-    if (not exempt and not talking and state.last_reply_to == ctx.msg.sender.id
-            and state.last_reply_ts and gap < cfg.burst_suppress_sec):
-        return StageResult("drop", "同一人连发，这轮只回一条")
-    return StageResult("pass", "频率 OK")
+def dialogue_expired(state: ChatState, ctx: MessageCtx) -> bool:
+    return bool(state.dialogue_until) and ctx.now > state.dialogue_until
 
 
-def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision:
-    """决定回不回。M2 是规则版；M3 会把这一步换成 LLM 的 decide 工具。"""
+# ── ④ 策略过滤：静默时段 / 只认被叫 / 硬上限 ────────────
+def stage_policy(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:
     msg = ctx.msg
-    mode = gate_mode(msg.chat.kind)
+    pol = policy_of(ctx, cfg)
 
-    if mode == "always":
-        return Decision("reply", "私人场合", "这里一律回（%s）" % msg.chat.kind)
+    # 静默时段
+    if pol.quiet_now(time.strftime("%H:%M", time.localtime(ctx.now))):
+        return StageResult("drop", "静默时段")
+
+    # strict：只认被叫到（其余连 decide 都不进，也不落任何记录）
+    if pol.mode == "strict" and not msg.addressed:
+        return StageResult("drop", "严格模式：只理被叫到的消息")
+
+    state.roll_hour(ctx.now)
+    if state.decide_count >= cfg.max_decide_per_hour:
+        return StageResult("drop", "本小时 decide 次数用完（%d）" % cfg.max_decide_per_hour)
+    if state.hour_count >= cfg.max_auto_per_hour:
+        return StageResult("drop", "本小时回复额度用完（%d）" % cfg.max_auto_per_hour)
+    return StageResult("pass", "策略通过")
+
+
+# ── ⑤ 打分：要不要问她 ────────────────────────────────
+def stage_score(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResult:
+    """没被叫到时，用额度 + 场面打分决定要不要进 decide。"""
+    msg = ctx.msg
+    pol = policy_of(ctx, cfg)
+
+    # 对话进行中：直接用
+    if pol.continuation and in_dialogue(state, ctx):
+        return StageResult("pass", "对话进行中")
+
+    # 补满额度（对话中回充更快）
+    refill_sec = cfg.credit_refill_min * 60.0
+    if pol.continuation and state.dialogue_until:
+        refill_sec = max(30.0, refill_sec / max(1.0, cfg.dialogue_refill_boost))
+    state.refill(ctx.now, cfg.credit_max, refill_sec)
+
+    names = list(getattr(ctx, "identity_names", []) or [])
+    s, hints = sig_mod.compute(state.scene, msg, names,
+                              dialogue_active=in_dialogue(state, ctx),
+                              budget_ratio=state.decide_count / max(1, cfg.max_decide_per_hour),
+                              now=ctx.now)
+    ctx.hints = hints
+
+    # loose：不做代码层拦截，每条都交给模型；只把"该少说点"的信号喂给它
+    if pol.mode == "loose":
+        return StageResult("pass", "宽松：每条都问模型")
+
+    # 被叫到：一定进（额度不足也让它进，人不会因为"配额"装没听见）
+    if msg.addressed:
+        return StageResult("pass", "被叫到")
+
+    if state.credit < 1.0:
+        return StageResult("drop", "发言额度不足（%.1f）" % state.credit)
+
+    total = sig_mod.score(s, pol.weights)
+    threshold = cfg.score_threshold + random.uniform(-1.0, 1.0)
+    ctx.hints = hints
+    if total >= threshold:
+        return StageResult("pass", "打分通过 %.1f≥%.1f" % (total, threshold))
+    return StageResult("drop", "打分没过 %.1f<%.1f" % (total, threshold))
+
+
+# ── ⑥ 由模型决定 ──────────────────────────────────────
+def stage_decide(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> Decision:
+    """最终决定权在模型；这里只记录"为什么问它"。"""
+    msg = ctx.msg
+    state.decide_count += 1
     if msg.addressed:
         return Decision("reply", "被叫到", msg.addressed_by or "被点名")
     if in_dialogue(state, ctx):
         return Decision("reply", "对话进行中", "刚接过话，继续说")
-    if mode == "auto":
-        # 没有"被叫"这回事的场合（聊天室/频道），每条都交给她自己判断
-        return Decision("reply", "这里有人在说话", "这种会话不靠被叫，交给她判断")
-    # addressed_or_sample：没被叫到时按策略抽样
-    sample = policy(msg.chat.kind).get("sample")
-    if sample is not None:
-        # 这种会话有自己的接话概率（房间这类），不看全局 force_mode
-        p = float(sample)
-    else:
-        if cfg.force_mode == "off":
-            # 全局只认 @；但 speak_groups 里的群例外——不被叫也按概率参与
-            if msg.chat.id not in cfg.speak_groups:
-                return Decision("silence", "", "只理被叫到的消息")
-        if cfg.only_when_addressed and msg.chat.id in cfg.only_when_addressed:
-            return Decision("silence", "", "这个会话只理被叫到的消息")
-        p = cfg.offpeak_probability if cfg.force_mode == "offpeak" else cfg.reply_probability
-    if random.random() < p:
-        return Decision("reply", "", "抽中了（p=%.2f）" % p)
-    return Decision("silence", "", "没抽中（p=%.2f）" % p)
+    return Decision("reply", "", "场面值得接一句")
 
 
+# ── ⑦ 她说完了 ────────────────────────────────────────
 def note_replied(state: ChatState, ctx: MessageCtx, cfg: GateConfig | None = None) -> None:
-    """她开口之后更新状态（频率、连发抑制都用它）。"""
+    pol = policy_of(ctx, cfg) if cfg else None
     state.last_reply_ts = ctx.now
     state.last_reply_to = ctx.msg.sender.id
-    state.roll_hour(ctx.now)
     state.hour_count += 1
+    state.scene.note_replied(ctx.now)
+    state.scene.last_speak_ts = ctx.now
+
+    # 额度：对话中少扣一点（连续聊不该那么贵）
+    cost = 0.5 if (pol and pol.continuation and in_dialogue(state, ctx)) else 1.0
+    state.credit = max(0.0, state.credit - cost)
+
+    # 连续对话
+    if pol is not None and pol.continuation:
+        if in_dialogue(state, ctx):
+            state.dialogue_turns += 1
+        else:
+            state.dialogue_peer = ctx.msg.sender.id
+            state.dialogue_turns = 1
+        state.dialogue_until = ctx.now + cfg.dialogue_window_sec if cfg else ctx.now
+        state.dialogue_silent = 0
+
+    # 连发合并收尾
     state.merge_buf = ""
     state.merge_ts = 0.0
+    state.merge_first_ts = 0.0
     state.merge_sender = 0
-    if cfg is not None and cfg.dialogue_window_sec > 0:
-        state.dialogue_peer = ctx.msg.sender.id
-        state.dialogue_until = ctx.now + cfg.dialogue_window_sec
+
+
+def note_silence(state: ChatState, ctx: MessageCtx) -> None:
+    """她决定不说话：对话里连续沉默两次就结束这段对话（话题聊不下去）。"""
+    if not in_dialogue(state, ctx):
+        return
+    state.dialogue_silent += 1
+    if state.dialogue_silent >= 2:
+        state.dialogue_until = 0.0
+        state.dialogue_peer = 0
+        state.dialogue_turns = 0
+        state.dialogue_silent = 0

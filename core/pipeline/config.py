@@ -36,6 +36,21 @@ class GateConfig:
     force_mode: str = "off"
     # 这些群即使 force_mode="off"、即使没被 @，也按 reply_probability 参与
     speak_groups: list[int] = field(default_factory=list)
+    # ── 2026-10 门控重构：每会话策略 ──
+    # 默认档位：strict（只认被叫到）/ balanced（被叫必问，否则打分）/ loose（每条都问，受打分约束）
+    default_preset: str = "balanced"
+    # 每会话覆盖：[gate.chats."group:100000001"] preset/memory/history/tools/continuation
+    chats: dict = field(default_factory=dict)
+    # 发言额度：最多攒几点、每多少分钟回充 1 点
+    credit_max: float = 3.0
+    credit_refill_min: float = 15.0
+    # 打分阈值（带 ±1 抖动）
+    score_threshold: float = 2.0
+    # 每小时最多进几次 decide（成本硬上限）
+    max_decide_per_hour: int = 30
+    # 连续对话：最多几个来回、窗口多久、对话中的最小间隔、额度回充加速
+    dialogue_max_turns: int = 6
+    dialogue_refill_boost: float = 2.0
     # 连续对话：她开口后这么久内，跟"同一个人"继续聊不再抽样（0 = 关闭）
     dialogue_window_sec: float = 0.0
     # 连续对话中的最小间隔（比 min_interval_sec 松，多轮才接得上）
@@ -43,6 +58,9 @@ class GateConfig:
 
     @classmethod
     def from_dict(cls, d: dict) -> GateConfig:
+        """读 [gate] 段；旧键（force_mode/speak_groups/only_when_addressed）
+        自动翻译成新格式，老配置不用改也能跑。"""
+        d = dict(d or {})
         def _i(key: str, default: int) -> int:
             try:
                 return int(d.get(key, default))
@@ -55,11 +73,35 @@ class GateConfig:
             except Exception:
                 return default
 
+        chats = dict(d.get("chats") or {})
+        preset = str(d.get("default_preset") or "")
+        if not chats or not preset:
+            # 旧格式兼容：speak_groups → loose；only_when_addressed → strict
+            speak = [int(x) for x in (d.get("speak_groups") or [])]
+            only = [int(x) for x in (d.get("only_when_addressed")
+                                     or d.get("at_only_groups") or [])]
+            for gid in speak:
+                chats.setdefault("group:%d" % gid, {"preset": "loose"})
+            for gid in only:
+                if gid not in speak:
+                    chats.setdefault("group:%d" % gid, {"preset": "strict"})
+            if not preset:
+                preset = "balanced" if str(d.get("force_mode") or "off") != "off" \
+                    else "strict"
+
         return cls(
             allowed_groups=[int(x) for x in (d.get("allowed_groups") or [])],
             only_when_addressed=[int(x) for x in (d.get("only_when_addressed")
                                                   or d.get("at_only_groups") or [])],
             speak_groups=[int(x) for x in (d.get("speak_groups") or [])],
+            default_preset=preset,
+            chats=chats,
+            credit_max=_f("credit_max", 3.0),
+            credit_refill_min=_f("credit_refill_min", 15.0),
+            score_threshold=_f("score_threshold", 2.0),
+            max_decide_per_hour=_i("max_decide_per_hour", 30),
+            dialogue_max_turns=_i("dialogue_max_turns", 6),
+            dialogue_refill_boost=_f("dialogue_refill_boost", 2.0),
             dialogue_window_sec=_f("dialogue_window_sec", 0.0),
             dialogue_min_interval_sec=_f("dialogue_min_interval_sec", 3.0),
             private_owner_only=bool(d.get("private_owner_only", False)),

@@ -22,6 +22,7 @@ class Outcome:
     text: str = ""              # defer 时合并后的文本
     decision: Decision = field(default_factory=Decision)
     stage: str = ""             # 在哪一段定下来的（排错用）
+    hints: list[str] = field(default_factory=list)   # 场面提示（喂给模型，也进日志）
 
     def __bool__(self) -> bool:
         return self.kind == "reply"
@@ -40,14 +41,17 @@ class Pipeline:
     def state_for(self, key: str) -> ChatState:
         return self.store.get(key)
 
-    def run(self, msg, now: float, *, skip: tuple[str, ...] = ()) -> Outcome:
+    def run(self, msg, now: float, *, skip: tuple[str, ...] = (),
+            identity_names: list[str] | None = None) -> Outcome:
         """跑一遍管线。skip 用来在"重放合并文本"时跳过 merge 段。"""
-        ctx = MessageCtx(msg=msg, now=now, text=msg.text)
+        ctx = MessageCtx(msg=msg, now=now, text=msg.text,
+                         identity_names=list(identity_names or []))
         state = self.state_for(_skey(msg))
 
         steps = [
             ("allowlist", lambda: stages.stage_allowlist(ctx, self.cfg)),
-            ("rate_limit", lambda: stages.stage_rate_limit(ctx, state, self.cfg)),
+            ("policy", lambda: stages.stage_policy(ctx, state, self.cfg)),
+            ("score", lambda: stages.stage_score(ctx, state, self.cfg)),
         ]
         for name, fn in steps:
             if name in skip:
@@ -60,6 +64,10 @@ class Pipeline:
         d = stages.stage_decide(ctx, state, self.cfg)
         if not d:
             return Outcome(kind="silence", reason=d.reason, decision=d, stage="decide")
+        if d.action == "silence":
+            stages.note_silence(state, ctx)
+            return Outcome(kind="silence", reason=d.reason, decision=d, stage="decide",
+                           hints=list(ctx.hints))
 
         # 合并放在"决定要回"之后：只有真要回的连发才值得攒，
         # 否则被拦下的消息会污染缓冲，把下一条该回的也吞掉（2026-10-22 测出来的）
@@ -72,7 +80,8 @@ class Pipeline:
                 return Outcome(kind="reply", reason=m.reason, text=m.text,
                                decision=d, stage="merge")   # 用合并后的整体文本
 
-        return Outcome(kind="reply", reason=d.reason, decision=d, stage="decide")
+        return Outcome(kind="reply", reason=d.reason, decision=d, stage="decide",
+                       hints=list(ctx.hints))
 
     def note_replied(self, msg, now: float) -> None:
         """她真的发出去了之后调一次。"""
