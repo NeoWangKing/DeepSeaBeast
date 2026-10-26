@@ -48,6 +48,12 @@ class Pipeline:
                          identity_names=list(identity_names or []))
         state = self.state_for(_skey(msg))
 
+        # 场面缓冲：每条消息都要记，否则"冷场/被晾/很吵"这些信号全是假的
+        # （2026-10-27 发现：重构时漏了写入，cold_room 恒为 1、unanswered 恒为 0）
+        state.scene.note_incoming(now, msg.sender.id, msg.text)
+        if any(getattr(seg, "kind", "") == "poke" for seg in msg.message.segments):
+            state.scene.note_poke(now, msg.sender.id)
+
         steps = [
             ("allowlist", lambda: stages.stage_allowlist(ctx, self.cfg)),
             ("policy", lambda: stages.stage_policy(ctx, state, self.cfg)),
@@ -78,7 +84,8 @@ class Pipeline:
                 return Outcome(kind="defer", reason=m.reason, text=m.text, stage="merge")
             if m.text and m.text.strip() != ctx.text.strip():
                 return Outcome(kind="reply", reason=m.reason, text=m.text,
-                               decision=d, stage="merge")   # 用合并后的整体文本
+                               decision=d, stage="merge",
+                               hints=list(ctx.hints))   # 用合并后的整体文本
 
         return Outcome(kind="reply", reason=d.reason, decision=d, stage="decide",
                        hints=list(ctx.hints))

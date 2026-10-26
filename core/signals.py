@@ -44,10 +44,19 @@ class Scene:
 
     def __init__(self, keep: int = 40) -> None:
         self.buf: deque = deque(maxlen=keep)     # (ts, sender_id, text, answered)
+        self.pokes: deque = deque(maxlen=20)     # (ts, poker)；她被戳的记录
         self.last_room_quiet: float = 0.0
 
     def note_incoming(self, ts: float, sender_id: int, text: str) -> None:
         self.buf.append([ts, sender_id, str(text or ""), False])
+
+    def note_poke(self, ts: float, poker: int) -> None:
+        """有人戳了她一下。记下来，好让她知道"这是第几次"。"""
+        self.pokes.append((ts, int(poker or 0)))
+
+    def poke_count(self, ts: float, poker: int, window: float = 600.0) -> int:
+        return sum(1 for t, who in self.pokes
+                   if ts - t <= window and (not poker or who == int(poker)))
 
     def note_replied(self, ts: float) -> None:
         """她开口 = 最后一条未被接的话算被接了。"""
@@ -132,6 +141,13 @@ def compute(scene: Scene, msg, identity_names: list[str], dialogue_active: bool,
         hints.append("你刚刚才说过话")
     if sig["dialogue"]:
         hints.append("正在跟你聊的人又说话了")
+    is_poke_me = is_poke and bool(getattr(msg, "addressed", False))
+    if is_poke_me:
+        n = scene.poke_count(now, getattr(getattr(msg, "sender", None), "id", 0))
+        if n >= 2:
+            hints.append("这个人最近十分钟已经戳了你 %d 次，再装没看见就太不像话了" % n)
+        else:
+            hints.append("他戳了你一下（第一次戳，回不回随你）")
     if sig["poke_seen"]:
         who = getattr(getattr(msg, "focus", None), "name", "") or "对方"
         hints.append("有人刚戳了「%s」一下，你也可以跟着戳" % who)

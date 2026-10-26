@@ -51,6 +51,9 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
     """连发合并 / 等她说完整。"""
     msg = ctx.msg
     text = ctx.text
+    # 戳一戳是一个个独立动作，不是"话没说完"，不该被合并成一句
+    if any(getattr(seg, "kind", "") == "poke" for seg in msg.message.segments):
+        return StageResult("pass", "戳一戳不合并")
     same = state.merge_sender == msg.sender.id
     # 只要她还没在这之后开口，就继续攒着——超时但没回话也不能把上一句丢了
     # （踩过：问句被判"没说完"挂起重放，8 秒后新消息进来把它整段顶掉）

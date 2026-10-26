@@ -148,6 +148,24 @@ async def main() -> int:
        str([c[0] for c in fake.calls]))
 
     print()
+    print("== 被戳次数会累加（第一次可无视，反复戳要给一句）==")
+    from core.pipeline import GateConfig, Pipeline
+    p_gate = Pipeline(GateConfig.from_dict({"default_preset": "loose"}))
+    import time as _t
+    t0 = _t.time()
+    hints = []
+    for i in range(3):
+        got.clear()
+        await ch._handle_notice(Event(post_type="notice", self_id=3237702352, raw={
+            "post_type": "notice", "notice_type": "notify", "sub_type": "poke",
+            "group_id": 100000001, "user_id": 200000001, "target_id": 3237702352}))
+        await asyncio.sleep(0.03)
+        r = p_gate.run(got[0], t0 + i * 5)
+        hints.append(" | ".join(r.hints))
+    ck("第 2 次起提示已经戳了 N 次", any("已经戳了你 2 次" in h for h in hints), str(hints))
+    ck("戳一戳不被合并", all("戳了" in h or "回不回随你" in h for h in hints), str(hints))
+
+    print()
     print("== 核心工具：只有能戳的通道才看得见 ==")
     from core.tools import DEFAULT_SPECS, schema
     names = [s["function"]["name"] for s in schema(DEFAULT_SPECS, {"text", "poke"})]
