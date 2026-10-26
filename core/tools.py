@@ -216,7 +216,8 @@ class Turn:
                  specs: list[ToolSpec] | None = None, max_sends: int = 4,
                  plugins=None, abilities: set[str] | None = None,
                  ctx=None, faces_catalog: list[str] | None = None,
-                 todos=None, scope_key: str = "", tools_mode: str = "all") -> None:
+                 todos=None, scope_key: str = "", tools_mode: str = "all",
+                 plugin_ctx: dict[str, Any] | None = None) -> None:
         self.channel = channel
         self.msg = msg
         self.llm = llm
@@ -238,6 +239,8 @@ class Turn:
         self.errors: list[str] = []
         self.todos = todos                      # TodoStore（可选）
         self.scope_key = scope_key or str(getattr(msg.chat, "key", "") or "")
+        # 给插件用的上下文：不透明引用 + 人格卡 + 通道（插件据此分"是谁的表情包"）
+        self.plugin_ctx: dict[str, Any] = dict(plugin_ctx or {})
         self._spec_by_name = {s.name: s for s in self.specs}
 
     def skill_text(self) -> str:
@@ -270,7 +273,7 @@ class Turn:
         if name not in self._spec_by_name:
             if self.plugins is not None and self.plugins.has(name):
                 try:
-                    res = await self.plugins.call(name, args)
+                    res = await self.plugins.call(name, args, turn=self.plugin_ctx)
                     # 协议 v1：{"ok": true, "data": ...} / {"ok": false, "error": ...}
                     if isinstance(res, dict) and "ok" in res:
                         if not res.get("ok"):

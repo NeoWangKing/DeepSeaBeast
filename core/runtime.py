@@ -58,7 +58,7 @@ class Runtime:
         self.gate = gate or GateConfig()        # 门控配置（策略/开关都从这来）
         self._policy_of: dict[str, object] = {}  # 会话 → ChatPolicy
         self._hints: dict[str, list[str]] = {}   # 会话 → 最近一次的场面提示
-        self._names_cache: dict[str, tuple[float, list[str]]] = {}   # 会话 → 她认的称呼
+        self._names_cache: dict[str, tuple[float, list[str], str]] = {}  # 会话 → (时间, 称呼, 卡名)
         self._said_recent: dict[str, list[str]] = {}                 # 会话 → 她最近说过的话
         self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
@@ -119,11 +119,17 @@ class Runtime:
                 "channel": {"name": getattr(self.channel, "name", "")},
             }, timeout=5)
             names = [str(x) for x in ((res or {}).get("aliases") or []) if x]
+            card = str((res or {}).get("card") or "")
         except Exception as e:
             log.debug("取人格称呼失败（忽略）：%r", e)
-            names = []
-        self._names_cache[key] = (now, names)
+            names, card = [], ""
+        self._names_cache[key] = (now, names, card)
         return names
+
+    def _persona_card(self, ref: str) -> str:
+        """这个会话用哪张人格卡（插件按它给自己的表情包分类）。"""
+        cached = self._names_cache.get(ref)
+        return str(cached[2]) if cached else ""
 
     def _recent_said(self, ref: str) -> list[str]:
         return list(self._said_recent.get(ref) or [])[:3]
@@ -170,6 +176,8 @@ class Runtime:
                           "name": str(_info.get("name") or "")},
                 "sender": {"id": msg.sender.id, "name": msg.sender.name or ""},
                 "text": msg.text, "addressed": bool(msg.addressed), "ts": now,
+                # 这个会话用哪张人格卡：插件据此把收到的东西归到对应人格名下
+                "persona": {"card": self._persona_card(key)},
                 # 带媒体清单（贴图/图片等）：插件想收就收，核心不判断用途
                 "media": _media_of(msg)})
         # 同一个人又说话了：上一条"等着重放"的计时直接作废，由这条重新计时
@@ -301,7 +309,12 @@ class Runtime:
                     abilities=self.abilities_for(msg.chat),
                     faces_catalog=self._face_catalog(msg.chat),
                     todos=self.todos, scope_key=self._ref_of(msg),
-                    tools_mode=self._policy(msg.chat).tools)
+                    tools_mode=self._policy(msg.chat).tools,
+                    plugin_ctx={"scope": {"ref": self._ref_of(msg),
+                                          "kind": msg.chat.kind,
+                                          "id": msg.chat.id},
+                                "persona": {"card": self._persona_card(self._ref_of(msg))},
+                                "channel": {"name": getattr(self.channel, "name", "")}})
         line = turn.skill_text()
         if line:                       # 能力清单放在当前消息之前，紧贴着这轮
             messages.insert(len(messages) - 1, {"role": "system", "content": line})

@@ -98,6 +98,7 @@ class PluginManager:
     async def call(self, tool: str, arguments: dict[str, Any],
                    timeout: float | None = None,
                    turn: dict[str, Any] | None = None) -> Any:
+        """turn = 回合上下文（scope / persona / channel），插件据此决定"这是谁的场合"。"""
         t = self.tools.get(tool)
         if t is None:
             raise PluginError("没有这个插件工具：%s" % tool)
