@@ -114,6 +114,18 @@ r = p.run(mk("二。", at=True), time.time() + 1)
 ck("decide 次数到顶 → drop", "decide" in r.reason, r.reason)
 
 print()
+print("== 种类兜底：全局 strict 不该让私聊/房间哑掉 ==")
+from core.policy import resolve as _resolve  # noqa: E402
+
+ck("私聊兜底 balanced", _resolve("strict", {}, "private", 1).mode == "balanced")
+ck("房间兜底 loose", _resolve("strict", {}, "room", 0).mode == "loose")
+ck("群保持 strict", _resolve("strict", {}, "group", 9).mode == "strict")
+ck("显式覆盖优先", _resolve("strict", {chat_key("group", 9): {"preset": "loose"}},
+                            "group", 9).mode == "loose")
+p_priv = Pipeline(cfg(default_preset="strict"))
+ck("strict 下私聊照样回", p_priv.run(mk("你好。", private=True), time.time()).kind != "drop")
+
+print()
 print("== 场面信号（避免冷场）==")
 from core.signals import Scene, compute, score  # noqa: E402
 

@@ -137,6 +137,10 @@ def stage_score(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
     if msg.addressed:
         return StageResult("pass", "被叫到")
 
+    # 一对一和本地：本来就是冲她来的，不需要打分
+    if msg.chat.kind in ("local", "private"):
+        return StageResult("pass", "一对一")
+
     if state.credit < 1.0:
         return StageResult("drop", "发言额度不足（%.1f）" % state.credit)
 

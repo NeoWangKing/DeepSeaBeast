@@ -19,6 +19,8 @@ PRESETS: dict[str, dict] = {
     "loose": {"mode": "loose", "continuation": True},
 }
 DEFAULT_PRESET = "balanced"
+# 按会话种类的兜底档位：私聊/房间不该因为全局 strict 就哑掉
+KIND_DEFAULTS = {"local": "balanced", "private": "balanced", "room": "loose"}
 
 # 功能开关的默认值
 DEFAULTS = {
@@ -76,8 +78,14 @@ def chat_key(kind: str, chat_id: int) -> str:
 
 
 def resolve(default_preset: str, overrides: dict, kind: str, chat_id: int) -> ChatPolicy:
-    """算出这个会话的最终策略。"""
-    base_name = str(default_preset or DEFAULT_PRESET)
+    """算出这个会话的最终策略。
+
+    优先级：显式会话覆盖 > 种类兜底（私聊/房间）> 全局 default_preset。
+    私聊和房间有自己的天性——不该被全局的"只认 @"一刀切干掉。
+    """
+    ov0 = (overrides or {}).get(chat_key(kind, chat_id)) or {}
+    base_name = str(ov0.get("preset") or KIND_DEFAULTS.get(str(kind))
+                    or default_preset or DEFAULT_PRESET)
     base = dict(DEFAULTS)
     base.update(PRESETS.get(base_name, PRESETS[DEFAULT_PRESET]))
 
