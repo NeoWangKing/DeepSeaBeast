@@ -1,22 +1,22 @@
 {
-  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > 自动建档。{channel}/{id}/{name} 会被替换。\n命名：卡片目录用代号（Skadi / Kal'tsit / groups/debug），**不要用群号/QQ号**；群号只出现在这个映射文件里。\n首次运行会把本文件复制成 mapping__custom__.json（插件数据目录），之后只改那份。",
+  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > 自动建档。{channel}/{id}/{name} 会被替换。\n命名：卡目录一律用代号（Skadi / general/friend / groups/debug），**不要用群号/QQ号**；群号只出现在这个映射文件里。\n首次运行会把本文件复制成 mapping__custom__.json（插件数据目录），之后只改那份。",
   "by_group": {
-    "100000001": "system_prompt_friend.txt",
-    "100000002": "system_prompt_tool.txt",
-    "100000003": "project_assistant.txt",
+    "100000001": "general/friend",
+    "100000002": "general/tool",
+    "100000003": "general/project-assistant",
     "100000010": "groups/example"
   },
   "by_private": {
-    "200000001": "system_prompt_private.txt",
-    "200000002": "private_warm.txt"
+    "200000001": "general/private",
+    "200000002": "general/private-warm"
   },
   "by_channel": {
-    "cli": "terminal.txt",
-    "tcp": "terminal.txt",
-    "socket": "terminal_script.txt"
+    "cli": "general/terminal",
+    "tcp": "general/terminal",
+    "socket": "general/terminal-script"
   },
-  "private_default": "system_prompt_private.txt",
-  "default": "system_prompt_sharp.txt",
+  "private_default": "general/private",
+  "default": "general/xiaojingyu",
   "append_common": true,
   "filing": {
     "group": "groups/{id}.md",

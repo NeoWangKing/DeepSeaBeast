@@ -45,10 +45,10 @@ async def main() -> int:
         f.write("梗模式：轻松接梗，别硬玩。")
     with open(os.path.join(data_dir, "mapping__custom__.json"), "w", encoding="utf-8") as f:
         json.dump({"by_group": {"100000001": "fixture-group",
-                                "100000004": "system_prompt_friend.txt"},
-                   "by_private": {"200000001": "system_prompt_private.txt"},
-                   "by_channel": {"cli": "terminal.txt", "tcp": "terminal.txt",
-                                  "socket": "terminal_script.txt"}}, f, ensure_ascii=False)
+                                "100000004": "general/friend"},
+                   "by_private": {"200000001": "general/private"},
+                   "by_channel": {"cli": "general/terminal", "tcp": "general/terminal",
+                                  "socket": "general/terminal-script"}}, f, ensure_ascii=False)
 
     mgr = PluginManager()
     await mgr.load({"name": "personas", "command": [py, "plugins/personas/main.py"],
@@ -101,10 +101,10 @@ async def main() -> int:
     with open(_os.path.join(std, "meme-mode.md"), "w", encoding="utf-8") as f:
         f.write("梗模式：接梗。")
     set_mapping({"by_group": {"100000001": "fixture-group", "100000009": "std",
-                              "100000004": "system_prompt_friend.txt"},
-                 "by_private": {"200000001": "system_prompt_private.txt"},
-                 "by_channel": {"cli": "terminal.txt", "tcp": "terminal.txt",
-                                "socket": "terminal_script.txt"}})
+                              "100000004": "general/friend"},
+                 "by_private": {"200000001": "general/private"},
+                 "by_channel": {"cli": "general/terminal", "tcp": "general/terminal",
+                                "socket": "general/terminal-script"}})
     await reload_plugin()
     p_std, _ = await persona_for(mk("group", 100000009))
     ck("优先用 export/system-prompt.txt", "我是标准卡" in p_std, p_std[:30])
