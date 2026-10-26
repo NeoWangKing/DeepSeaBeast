@@ -224,7 +224,7 @@ def looks_like_sticker(data: bytes) -> tuple[bool, str]:
     if not w or not h:
         return False, ""
     ratio = w / float(h)
-    if 0.72 <= ratio <= 1.4 and min(w, h) <= 320 and len(data) <= 512 * 1024:
+    if 0.72 <= ratio <= 1.4 and min(w, h) <= 400 and len(data) <= 768 * 1024:
         return True, "小方图 %dx%d" % (w, h)
     return False, "%dx%d" % (w, h)
 
@@ -259,13 +259,21 @@ def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
         st = {"hour": hour, "count": 0, "md5": st.get("md5") or []}
     if int(st.get("count") or 0) >= COLLECT_PER_HOUR:
         return "本小时收够了（%d 张）" % COLLECT_PER_HOUR
-    try:
-        import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "DeepSeaBeast/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = r.read(COLLECT_MAX_BYTES + 1)
-    except Exception as e:
-        return "下载失败：%r" % (e,)
+    import urllib.request
+    last_err = None
+    data = b""
+    for attempt in range(3):          # QQ 图床偶尔 SSL 握手超时，重试两次基本能过
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "DeepSeaBeast/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                data = r.read(COLLECT_MAX_BYTES + 1)
+            last_err = None
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(1.0 + attempt)
+    if last_err is not None:
+        return "下载失败（试了 3 次）：%r" % (last_err,)
     return _store_bytes(data, name, force)
 
 
