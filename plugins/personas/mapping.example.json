@@ -1,10 +1,9 @@
 {
-  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > 自动建档。{channel}/{id}/{name} 会被替换。\n命名：卡片目录用代号（Skadi / Kal'tsit / groups/debug），**不要用群号/QQ号**；群号只出现在这个映射文件里。\n首次运行会把本文件复制成 mapping__custom__.json（插件数据目录），之后只改那份。",
+  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > 自动建档。{channel}/{id}/{name} 会被替换。\n首次运行会把这个 example 复制成 mapping__custom__.json（在插件数据目录），之后只改那份；仓库里的 example 只是默认值参考。",
   "by_group": {
     "100000001": "system_prompt_friend.txt",
     "100000002": "system_prompt_tool.txt",
-    "100000003": "project_assistant.txt",
-    "100000010": "groups/example"
+    "100000003": "project_assistant.txt"
   },
   "by_private": {
     "200000001": "system_prompt_private.txt",
