@@ -26,6 +26,13 @@ DATA = os.environ.get("DEEPSEA_PLUGIN_DATA") or os.path.join(BASE, "data")
 CARDS = os.path.join(DATA, "cards")
 # 用户那份放数据目录（部署更新的白名单永远不碰 data/）；仓库里只有 example
 CUSTOM_MAPPING = os.path.join(DATA, "mapping__custom__.json")
+SETTINGS = os.path.join(DATA, "settings__custom__.json")
+SETTINGS_DEFAULT = {
+    "cards_dirs": [],          # 额外卡目录（比如研究仓库 ~/Projects/persona_cards）
+    "meme_mode": False,        # 是否追加 meme-mode.md / memes.md
+    "include_examples": False, # 是否追加 dialogue-examples.md
+    "max_chars": 12000,        # 一张卡拼完的上限（超了按顺序丢尾部）
+}
 LEGACY_MAPPING = os.path.join(BASE, "mapping.json")
 EXAMPLE_MAPPING = os.path.join(BASE, "mapping.example.json")
 
@@ -33,6 +40,43 @@ EXAMPLE_MAPPING = os.path.join(BASE, "mapping.example.json")
 def log(msg: str) -> None:
     sys.stderr.write("[personas] %s\n" % msg)
     sys.stderr.flush()
+
+
+_SETTINGS_CACHE: dict | None = None
+
+
+def load_settings() -> dict:
+    """用户私有设置；没有就生成一份默认的（之后只改这份）。"""
+    global _SETTINGS_CACHE
+    if _SETTINGS_CACHE is not None:
+        return _SETTINGS_CACHE
+    d = dict(SETTINGS_DEFAULT)
+    if not os.path.exists(SETTINGS):
+        try:
+            os.makedirs(DATA, exist_ok=True)
+            with open(SETTINGS, "w", encoding="utf-8") as f:
+                json.dump(SETTINGS_DEFAULT, f, ensure_ascii=False, indent=2)
+            log("生成了 %s（卡目录/梗模式等设置改这里）" % SETTINGS)
+        except Exception as e:
+            log("写不了设置文件：%r" % (e,))
+    else:
+        try:
+            with open(SETTINGS, encoding="utf-8") as f:
+                d.update(json.load(f) or {})
+        except Exception as e:
+            log("读不了设置文件：%r" % (e,))
+    _SETTINGS_CACHE = d
+    return d
+
+
+def card_dirs() -> list[str]:
+    """卡片仓库：运行时卡 > 仓库内置卡 > 用户挂的外部目录。"""
+    dirs = [CARDS, BUILTIN_CARDS]
+    for extra in (load_settings().get("cards_dirs") or []):
+        p = os.path.expanduser(str(extra))
+        if p and p not in dirs:
+            dirs.append(p)
+    return dirs
 
 
 def ensure_custom_mapping() -> str:
@@ -63,31 +107,79 @@ def load_mapping() -> dict:
         return {}
 
 
+# 目录卡里的"正文"按这个顺序找第一个存在的（export 里是编译好的成品）
+_BASE_FILES = ("export/system-prompt.txt", "persona.md", "prompt.txt")
+# 只有这些才会追加进提示词；其余（profile/sources/cross-references/README…）是给人看的资料
+_APPEND_ALWAYS = ("voice.md", "rules.md")
+_APPEND_MEME = ("meme-mode.md", "memes.md")
+_APPEND_EXAMPLES = ("examples.md", "dialogue-examples.md")
+
+
+def _read_text(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
 def _read_dir_card(path: str) -> str:
-    """目录卡：prompt.txt 作正文，其余 *.md 按固定顺序追加（memes → meme-mode → 其它）。"""
+    """目录卡：先找正文（export/system-prompt.txt > persona.md > prompt.txt），
+    再按需追加风格/规则/梗模式/示例，最后按 max_chars 截断并留日志。
+
+    **只追加白名单里的文件**：像 profile.md / cross-references.md / sources.md
+    这种考据资料，塞进提示词只会烧 token，不追加。
+    """
     if not os.path.isdir(path):
         return ""
-    parts = []
-    prompt = os.path.join(path, "prompt.txt")
-    if os.path.exists(prompt):
-        with open(prompt, encoding="utf-8") as f:
-            parts.append(f.read().strip())
-    preferred = ["memes.md", "meme-mode.md"]
-    rest = sorted(n for n in os.listdir(path)
-                  if n.endswith(".md") and n not in preferred)
-    for n in preferred + rest:
-        p = os.path.join(path, n)
-        if os.path.isfile(p):
-            with open(p, encoding="utf-8") as f:
-                parts.append(f.read().strip())
-    return "\n\n".join(p for p in parts if p)
+    st = load_settings()
+    used: list[str] = []
+    base_name = ""
+    body = ""
+    for name in _BASE_FILES:
+        body = _read_text(os.path.join(path, name))
+        if body:
+            base_name = name
+            used.append(name)
+            break
+    if not body:
+        return ""
+
+    parts = [body]
+    for name in _APPEND_ALWAYS:
+        t = _read_text(os.path.join(path, name))
+        if t:
+            parts.append(t)
+            used.append(name)
+    if st.get("meme_mode"):
+        for name in _APPEND_MEME:
+            t = _read_text(os.path.join(path, name))
+            if t:
+                parts.append(t)
+                used.append(name)
+    if st.get("include_examples"):
+        for name in _APPEND_EXAMPLES:
+            t = _read_text(os.path.join(path, name))
+            if t:
+                parts.append(t)
+                used.append(name)
+
+    text = "\n\n".join(p for p in parts if p)
+    limit = int(st.get("max_chars") or 12000)
+    if len(text) > limit:
+        log("卡片 %s 太长（%d > %d 字），按顺序截断" % (os.path.basename(path), len(text), limit))
+        text = text[:limit]
+    log("卡片 %s：正文用 %s，追加 %s，共 %d 字"
+        % (os.path.basename(path), base_name,
+           ("、".join(used[1:]) if len(used) > 1 else "无"), len(text)))
+    return text
 
 
 def read_card(name: str) -> str:
     """先找运行时卡，再找仓库内置卡。目录卡与老的单文件卡都支持。"""
     if not name:
         return ""
-    for base in (CARDS, BUILTIN_CARDS):
+    for base in card_dirs():
         path = os.path.join(base, name)
         if os.path.isdir(path):
             card = _read_dir_card(path)

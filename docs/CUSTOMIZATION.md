@@ -58,6 +58,10 @@
 群号 → 卡片的对应关系写在 `data/plugins/personas/mapping__custom__.json`，
 首次运行会从仓库的 `mapping.example.json` 复制一份，之后只改那份。
 
+卡的规范（一张卡 = 一个目录，`export/system-prompt.txt` 优先当正文）见
+`plugins/personas/README.md`；外部卡目录挂在
+`data/plugins/personas/settings__custom__.json` 的 `cards_dirs` 里。
+
 ## 6. 想看模板变了什么
 
 ```bash

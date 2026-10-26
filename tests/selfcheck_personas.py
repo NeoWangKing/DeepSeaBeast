@@ -62,6 +62,24 @@ async def main() -> int:
     for p in providers:
         reg.add(p)
 
+    import json as _json, os as _os
+
+    async def reload_plugin():
+        """插件跑在子进程里，改设置后要重载才能生效。"""
+        nonlocal mgr, reg
+        await mgr.close()
+        mgr = PluginManager()
+        await mgr.load({"name": "personas", "command": [py, "plugins/personas/main.py"],
+                        "cwd": str(ROOT), "timeout": 10, "priority": 5,
+                        "can_persona": True, "data_dir": data_dir}, base_dir=str(ROOT))
+        reg = ContextRegistry()
+        for p in mgr.context_providers():
+            reg.add(p)
+
+    def set_mapping(d: dict):
+        with open(_os.path.join(data_dir, "mapping__custom__.json"), "w", encoding="utf-8") as f:
+            _json.dump(d, f, ensure_ascii=False)
+
     async def persona_for(msg, channel="onebot"):
         b = ContextBundle(scope_key=msg.chat.key, scope_kind=msg.chat.kind,
                           scope_id=msg.chat.id, sender_id=msg.sender.id,
@@ -69,6 +87,38 @@ async def main() -> int:
                           channel_name=channel)
         await reg.collect(b)
         return (b.persona or ""), render(b)
+
+    print()
+    print("== 卡片目录规范（export 优先 / 白名单追加 / 梗模式开关）==")
+    std = _os.path.join(data_dir, "cards", "std")
+    _os.makedirs(_os.path.join(std, "export"), exist_ok=True)
+    with open(_os.path.join(std, "export", "system-prompt.txt"), "w", encoding="utf-8") as f:
+        f.write("正文：我是标准卡。")
+    with open(_os.path.join(std, "profile.md"), "w", encoding="utf-8") as f:
+        f.write("考据资料，不该进提示词。")
+    with open(_os.path.join(std, "voice.md"), "w", encoding="utf-8") as f:
+        f.write("说话风格：短句。")
+    with open(_os.path.join(std, "meme-mode.md"), "w", encoding="utf-8") as f:
+        f.write("梗模式：接梗。")
+    set_mapping({"by_group": {"100000001": "fixture-group", "100000009": "std",
+                              "100000004": "system_prompt_friend.txt"},
+                 "by_private": {"200000001": "system_prompt_private.txt"},
+                 "by_channel": {"cli": "terminal.txt", "tcp": "terminal.txt",
+                                "socket": "terminal_script.txt"}})
+    await reload_plugin()
+    p_std, _ = await persona_for(mk("group", 100000009))
+    ck("优先用 export/system-prompt.txt", "我是标准卡" in p_std, p_std[:30])
+    ck("profile.md 不追加", "考据资料" not in p_std, p_std[:60])
+    ck("voice.md 会追加", "说话风格" in p_std, p_std[-30:])
+    ck("梗模式默认不开", "梗模式" not in p_std, p_std[-30:])
+
+    st = _json.loads(open(_os.path.join(data_dir, "settings__custom__.json"), encoding="utf-8").read())
+    st["meme_mode"] = True
+    with open(_os.path.join(data_dir, "settings__custom__.json"), "w", encoding="utf-8") as f:
+        _json.dump(st, f, ensure_ascii=False)
+    await reload_plugin()
+    p_std2, _ = await persona_for(mk("group", 100000009))
+    ck("开梗模式后追加 meme-mode.md", "梗模式" in p_std2, p_std2[-30:])
 
     print()
     print("== 群人格 ==")
