@@ -27,6 +27,9 @@ TAIL_MARKS = ("，", ",", "、", "…", "...", "：", ":")
 # 结尾是这些语气词且句子不长 → 一般是完整的问句/应答
 COMPLETE_PARTICLES = ("吗", "呢", "吧", "嘛", "啊", "呀", "啦", "哦", "哈", "了")
 
+# 这些疑问词出现在句子里 → 就是个问句，不用等下文（"你现在是谁"）
+QUESTION_WORDS = ("谁", "什么", "啥", "怎么", "咋", "为什么", "哪", "多少", "几时",
+                  "多大", "多久", "是不是", "能不能", "要不要", "有没有", "可不可以")
 # 结尾是这些符号，说明说完了
 END_MARKS = ("。", "？", "?", "！", "!", "~", "～", "）", ")", "”", "\"", ".")
 # 短但完整的常见话
@@ -61,6 +64,8 @@ def looks_unfinished(text: str, min_short: int = 6) -> bool:
         return False
     if len(t) <= 8 and t.endswith(COMPLETE_PARTICLES):
         return False          # "然后呢" / "吃了吗" / "走吧"
+    if len(t) >= 3 and any(w in t for w in QUESTION_WORDS):
+        return False          # 是个问句，问完就问完了
     if t.endswith(TAIL_MARKS):
         return True
     if t.endswith(TAIL_WORDS):

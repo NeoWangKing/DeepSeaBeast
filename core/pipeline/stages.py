@@ -53,8 +53,11 @@ def stage_merge(ctx: MessageCtx, state: ChatState, cfg: GateConfig) -> StageResu
     msg = ctx.msg
     text = ctx.text
     same = state.merge_sender == msg.sender.id
-    fresh = bool(state.merge_buf) and same and \
-        (ctx.now - state.merge_ts) <= cfg.typing_wait_sec
+    # 只要她还没在这之后开口，就继续攒着——超时但没回话也不能把上一句丢了
+    # （踩过：问句被判"没说完"挂起重放，8 秒后新消息进来把它整段顶掉）
+    no_reply_since = state.last_reply_ts <= (state.merge_first_ts or 0)
+    fresh = bool(state.merge_buf) and same and (
+        (ctx.now - state.merge_ts) <= cfg.typing_wait_sec or no_reply_since)
 
     if fresh:
         state.merge_buf = (state.merge_buf + " " + text).strip()[:400]

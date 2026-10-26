@@ -63,6 +63,22 @@ ck("strict 没被叫 → drop", p.run(mk("随便聊聊"), time.time()).kind == "
 ck("strict 被叫到 → reply", p.run(mk("在吗", at=True), time.time()).kind != "drop")
 
 print()
+print("== 连发合并：问句不该被当成没说完 ==")
+from core.typing import looks_unfinished  # noqa: E402
+
+ck("「你现在是谁」算说完", looks_unfinished("你现在是谁") is False)
+ck("「今天吃啥」算说完", looks_unfinished("今天吃啥") is False)
+ck("「我跟你」算没说完", looks_unfinished("我跟你") is True)
+ck("「然后」算没说完", looks_unfinished("然后") is True)
+
+p_m = Pipeline(cfg(default_preset="loose", typing_wait_sec=8))
+t = time.time()
+r_a = p_m.run(mk("我跟你", at=True), t)
+ck("第一句先挂着", r_a.kind == "defer", r_a.reason)
+r_b = p_m.run(mk("说个事。", at=True), t + 30)     # 远超 8 秒窗口
+ck("隔很久后的第二句仍会合并上一句", "我跟你" in (r_b.text or ""), repr(r_b.text))
+
+print()
 print("== 连续对话 ==")
 p = Pipeline(cfg())
 t0 = time.time()

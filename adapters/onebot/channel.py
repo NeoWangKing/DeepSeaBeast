@@ -175,6 +175,12 @@ class OneBotChannel:
                                           "url": str(data.get("url") or ""),
                                           "file": str(data.get("file") or "")}))
                 continue
+            if x.type == "at":
+                who = str(data.get("name") or "").strip()
+                qq = str(data.get("qq") or "")
+                label = who or ("她" if qq and qq == str(self.bot_id) else "某人")
+                segs.append(Segment(kind="at", text="@" + label, data=data))
+                continue
             if x.type == "face":
                 fid = str(data.get("id") or "")
                 data["name"] = qq_faces.name_of(fid)
