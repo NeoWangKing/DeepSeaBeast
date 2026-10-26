@@ -49,7 +49,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp core.example.toml core.toml      # 端口 / 机器人 QQ / LLM key
 
 make chat        # 命令行直接聊（不需要 QQ）
-                 # 也可以同时接 QQ：core.toml 里 [adapters.*] 都 enabled
+                 # 也可以同时接 QQ：core__custom__.toml 里 [adapters.*] 都 enabled
 make selfcheck   # 一体自测：核心 + 假 SnowLuma 往返
 make test        # 全部自测（管线/工具/插件/记忆/模型）
 make bot         # OneBot 模式（等 SnowLuma 连上来）

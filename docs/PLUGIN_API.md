@@ -63,7 +63,7 @@
 ```json
 {"scope": {"kind": "group|private|local", "id": <平台给的 id>, "key": "<稳定唯一键>",
            "label": "<人话类别，如 群聊/私聊/终端>", "name": "<平台显示名，可能为空>"},
- "sender": {"id": 3245938285, "name": "灵其啊"},
+ "sender": {"id": 200000001, "name": "灵其啊"},
  "channel": {"name": "onebot"}}          // 这条消息从哪个 adapter 来的
 ```
 
@@ -74,8 +74,8 @@
 {"id": 7, "method": "call_tool", "params": {
     "name": "echo_say",
     "arguments": {"text": "你好"},
-    "turn": {"id": "t-20261023-001", "scope": {"kind": "group", "id": 1109525246},
-             "sender": {"id": 3245938285, "name": "灵其啊"}}
+    "turn": {"id": "t-20261023-001", "scope": {"kind": "group", "id": 100000001},
+             "sender": {"id": 200000001, "name": "灵其啊"}}
 }}
 
 // 插件 → 核心
@@ -122,8 +122,8 @@
 {"method": "event", "params": {
     "event": "message.received",
     "data": {
-      "scope": {"kind": "group", "id": 1109525246, "key": "g1109525246"},
-      "sender": {"id": 3245938285, "name": "灵其啊"},
+      "scope": {"kind": "group", "id": 100000001, "key": "g100000001"},
+      "sender": {"id": 200000001, "name": "灵其啊"},
       "text": "这个群是干嘛的",
       "at_me": true,
       "ts": 1792700000.0

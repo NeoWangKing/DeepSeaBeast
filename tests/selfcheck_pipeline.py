@@ -25,7 +25,7 @@ def ck(name: str, cond: bool, extra: str = "") -> None:
         FAIL.append(name)
 
 
-def mk(text: str, *, gid: int = 1109525246, uid: int = 111, at: bool = False,
+def mk(text: str, *, gid: int = 100000001, uid: int = 111, at: bool = False,
        owner: bool = False, private: bool = False) -> InboundMessage:
     chat = ChatRef.private(uid) if private else ChatRef.group(gid)
     return InboundMessage(chat=chat, sender=Sender(uid, "测试", is_owner=owner),
@@ -34,8 +34,8 @@ def mk(text: str, *, gid: int = 1109525246, uid: int = 111, at: bool = False,
 
 CFG = GateConfig.from_dict({
     "force_mode": "off",
-    "allowed_groups": [1109525246],
-    "at_only_groups": [1109525246],
+    "allowed_groups": [100000001],
+    "at_only_groups": [100000001],
     "merge_window_sec": 10,
     "burst_suppress_sec": 30,
     "min_interval_sec": 8,
@@ -52,16 +52,16 @@ print("== 只认 @ / 概率 ==")
 p = Pipeline(CFG)
 ck("群里没 @ → silence", p.run(mk("今天天气不错。"), time.time()).kind == "silence")
 p_sp = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 1.0,
-                                      "speak_groups": [1109525246]}))
+                                      "speak_groups": [100000001]}))
 ck("speak_groups 内的群：没 @ 也能接", p_sp.run(mk("今天天气不错。"), time.time()).kind == "reply")
 p_sp0 = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 0.0,
-                                       "speak_groups": [1109525246]}))
+                                       "speak_groups": [100000001]}))
 ck("speak_groups 内但概率=0 → 不接", p_sp0.run(mk("今天天气不错。"), time.time()).kind == "silence")
 p_sp_other = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 1.0,
-                                            "speak_groups": [1109525246]}))
+                                            "speak_groups": [100000001]}))
 ck("speak_groups 外的群：没 @ 仍然不接", p_sp_other.run(mk("今天天气不错。", gid=123456), time.time()).kind in ("drop", "silence"))
 p_sp_at = Pipeline(GateConfig.from_dict({"force_mode": "off", "reply_probability": 1.0,
-                                         "speak_groups": [1109525246], "at_only_groups": [1109525246]}))
+                                         "speak_groups": [100000001], "at_only_groups": [100000001]}))
 ck("at_only 优先于 speak_groups", p_sp_at.run(mk("今天天气不错。"), time.time()).kind == "silence")
 p2 = Pipeline(GateConfig.from_dict({"force_mode": "peak", "reply_probability": 1.0}))
 ck("概率=1 时非 @ 也回", p2.run(mk("今天天气不错。"), time.time()).kind == "reply")
@@ -83,8 +83,8 @@ ck("隔久了重新开始", r3.kind == "reply")
 print()
 print("== 频率 ==")
 _cfg_loose = GateConfig.from_dict({
-    "force_mode": "off", "allowed_groups": [1109525246],
-    "at_only_groups": [1109525246], "private_owner_only": True,
+    "force_mode": "off", "allowed_groups": [100000001],
+    "at_only_groups": [100000001], "private_owner_only": True,
     "merge_window_sec": 10, "burst_suppress_sec": 30,
     "min_interval_sec": 8, "max_auto_per_hour": 10,
 })
@@ -98,8 +98,8 @@ p.note_replied(mk("喂，在吗", uid=222, at=True), now + 1)
 
 # 额度：单独用一个 max_auto_per_hour=2 的配置测
 p_cap = Pipeline(GateConfig.from_dict({
-    "force_mode": "off", "allowed_groups": [1109525246],
-    "at_only_groups": [1109525246], "min_interval_sec": 0,
+    "force_mode": "off", "allowed_groups": [100000001],
+    "at_only_groups": [100000001], "min_interval_sec": 0,
     "burst_suppress_sec": 0, "max_auto_per_hour": 2,
 }))
 t2 = time.time()
@@ -146,7 +146,7 @@ ck("显式开启 owner_only 时才拦陌生人",
 
 print()
 print("== 连续对话 ==")
-CFG_D = dict(force_mode="off", allowed_groups=[1109525246], reply_probability=0.0,
+CFG_D = dict(force_mode="off", allowed_groups=[100000001], reply_probability=0.0,
              min_interval_sec=8, burst_suppress_sec=30, max_auto_per_hour=99,
              dialogue_window_sec=90, dialogue_min_interval_sec=3)
 t0 = time.time()

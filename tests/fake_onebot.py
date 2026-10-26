@@ -24,7 +24,7 @@ async def main(url: str = "ws://127.0.0.1:6200") -> None:
         # 2) 再发一条"被 @ 的群消息"
         await ws.send(json.dumps({
             "post_type": "message", "message_type": "group",
-            "self_id": 3237702352, "user_id": 3245938285, "group_id": 1109525246,
+            "self_id": 3237702352, "user_id": 200000001, "group_id": 100000001,
             "message_id": 10001, "time": 1792239000,
             "sender": {"card": "灵其啊", "nickname": "灵其啊"},
             "message": [{"type": "at", "data": {"qq": "3237702352"}},

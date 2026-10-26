@@ -24,7 +24,7 @@ from core.runtime import Runtime  # noqa: E402
 
 PORT = 6299
 BOT = 3237702352
-OWNER = 3245938285
+OWNER = 200000001
 
 
 async def _async(v):
@@ -38,8 +38,8 @@ def step(msg: str) -> None:
 async def main() -> int:
     channel = OneBotChannel(host="127.0.0.1", port=PORT, allow_self_ids=[BOT],
                             owner_ids=[OWNER], bot_id=BOT)
-    gate = GateConfig.from_dict({"force_mode": "off", "allowed_groups": [1109525246],
-                                 "at_only_groups": [1109525246],
+    gate = GateConfig.from_dict({"force_mode": "off", "allowed_groups": [100000001],
+                                 "at_only_groups": [100000001],
                                  "min_interval_sec": 0, "burst_suppress_sec": 0})
     async def _fake_reply(m):
         await runtime.say(m.chat, "测试回复：%s" % m.text, quote_id=m.message_id)
@@ -57,7 +57,7 @@ async def main() -> int:
             step("假 SnowLuma 已连上")
             await ws.send(json.dumps({
                 "post_type": "message", "message_type": "group",
-                "self_id": BOT, "user_id": OWNER, "group_id": 1109525246,
+                "self_id": BOT, "user_id": OWNER, "group_id": 100000001,
                 "message_id": 10001, "sender": {"card": "灵其啊"},
                 "message": [{"type": "at", "data": {"qq": str(BOT)}},
                             {"type": "text", "data": {"text": " 在吗"}}],

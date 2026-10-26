@@ -88,12 +88,12 @@ max_sends   = 4       # 最多几条气泡
 所有日志都带 `turn id`：
 
 ```
-[runtime] [g1109525246] 回合 t-20261023-002543-b1d5 判断 '在吗' → reply
+[runtime] [g100000001] 回合 t-20261023-002543-b1d5 判断 '在吗' → reply
 [agent]   t-20261023-002543-b1d5 工具 decide(...) → 行，按这个回：…
 [agent]   token：命中 3328 / 总计 4349（76%）
 [agent]   t-20261023-002543-b1d5 工具 send_message("在的") → 已发出（1/4）
-[runtime] [g1109525246] 回合 t-20261023-002543-b1d5 完成：'在的'
-[runtime] [g1109525246] t-20261023-002543-b1d5 rounds=3 sends=1 tokens=4349 elapsed=2.1s
+[runtime] [g100000001] 回合 t-20261023-002543-b1d5 完成：'在的'
+[runtime] [g100000001] t-20261023-002543-b1d5 rounds=3 sends=1 tokens=4349 elapsed=2.1s
 ```
 
 排查一条消息的全过程：

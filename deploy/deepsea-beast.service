@@ -9,7 +9,7 @@ User=deepsea
 Group=deepsea
 WorkingDirectory=/opt/deepsea
 # 不带 --channel：让 core.toml 的 [adapters.*] 决定开哪些通道（onebot + socket）
-ExecStart=/opt/deepsea/.venv/bin/python -m core core.toml
+ExecStart=/opt/deepsea/.venv/bin/python -m core
 Restart=always
 RestartSec=3
 MemoryMax=768M

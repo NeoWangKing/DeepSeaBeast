@@ -24,7 +24,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 BUILTIN_CARDS = os.path.join(BASE, "cards")
 DATA = os.environ.get("DEEPSEA_PLUGIN_DATA") or os.path.join(BASE, "data")
 CARDS = os.path.join(DATA, "cards")
-MAPPING = os.path.join(BASE, "mapping.json")
+# 用户那份放数据目录（部署更新的白名单永远不碰 data/）；仓库里只有 example
+CUSTOM_MAPPING = os.path.join(DATA, "mapping__custom__.json")
+LEGACY_MAPPING = os.path.join(BASE, "mapping.json")
+EXAMPLE_MAPPING = os.path.join(BASE, "mapping.example.json")
 
 
 def log(msg: str) -> None:
@@ -32,12 +35,31 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
+def ensure_custom_mapping() -> str:
+    """第一次跑：把 example 复制成用户私有的一份（之后永不再动）。"""
+    if os.path.exists(CUSTOM_MAPPING):
+        return CUSTOM_MAPPING
+    for src in (EXAMPLE_MAPPING, LEGACY_MAPPING):
+        if os.path.exists(src):
+            os.makedirs(DATA, exist_ok=True)
+            with open(src, encoding="utf-8") as f:
+                body = f.read()
+            with open(CUSTOM_MAPPING, "w", encoding="utf-8") as f:
+                f.write(body)
+            log("生成了 %s（照着 example 的默认值，改这个文件）" % CUSTOM_MAPPING)
+            return CUSTOM_MAPPING
+    return ""
+
+
 def load_mapping() -> dict:
+    path = ensure_custom_mapping()
+    if not path:
+        return {}
     try:
-        with open(MAPPING, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        log("读不到 mapping.json：%r" % (e,))
+        log("读不到 %s：%r" % (path, e))
         return {}
 
 

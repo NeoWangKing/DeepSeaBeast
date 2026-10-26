@@ -1,4 +1,9 @@
-"""配置：core.toml（核心）+ plugins/<name>.toml（插件各管各的）。"""
+"""配置：core__custom__.toml（用户私有）+ plugins/<name>.toml（插件各管各的）。
+
+命名约定（参考 Nyxuri 的 __custom__ 协议）：
+  仓库里只有带默认值的模板；用户那份一律叫 `*__custom__.*`，
+  部署/更新永不覆盖它，只报告模板新增了哪些键。
+"""
 
 from __future__ import annotations
 
@@ -30,10 +35,25 @@ class CoreConfig:
     send: dict = field(default_factory=dict)      # [send] 失败重试策略
 
 
-def load(path: str | Path = "core.toml") -> CoreConfig:
-    """读 core.toml；文件不存在时用默认值（方便零配置跑起来）。"""
-    p = Path(path)
-    if not p.exists():
+CUSTOM_NAMES = ("core__custom__.toml", "core.toml")   # 后者是旧名字，兼容
+
+
+def find_config(start: str | Path = ".") -> Path | None:
+    """按优先级找用户配置：core__custom__.toml > core.toml。"""
+    base = Path(start)
+    if base.is_file():
+        return base if base.exists() else None
+    for name in CUSTOM_NAMES:
+        p = base / name
+        if p.exists():
+            return p
+    return None
+
+
+def load(path: str | Path | None = None) -> CoreConfig:
+    """读用户配置；找不到就用默认值（方便零配置跑起来）。"""
+    p = Path(path) if path else find_config(".")
+    if p is None or not p.exists():
         return CoreConfig()
     raw = tomllib.loads(p.read_text(encoding="utf-8"))
     _guard_top_level(raw, p)

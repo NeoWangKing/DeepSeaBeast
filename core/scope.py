@@ -33,5 +33,5 @@ class Scope:
 
     @property
     def dirname(self) -> str:
-        """目录名：cli / p3245938285 / g1109525246。"""
+        """目录名：cli / p200000001 / g100000001。"""
         return self.key

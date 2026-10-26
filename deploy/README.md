@@ -7,18 +7,27 @@
 ```
 /opt/deepsea/                核心代码（git 里同步过来）
   .venv/                     python3.11 + websockets
-  core.toml                  本机配置（不进 git；模板见 core.example.toml）
+  core__custom__.toml        本机配置（不进 git；模板见 deploy/core.__custom__.toml）
   .secrets/deepseek.key      LLM key（600，astrbot 可读）
   data/                      记忆 / recent / 缓存（不进 git）
 ```
 
 ## 配置文件
 
-服务器配置模板在 `deploy/server.core.toml`（不含密钥明文）。**它不会被 sync.sh 覆盖**：
+服务器配置模板在 **`deploy/core.__custom__.toml`**（不含任何真实账号/群号/密钥）。
+
+`sync.sh` 的规则（第一次部署时自动生成，之后永不覆盖）：
 
 ```bash
-sudo -u deepsea cp deploy/server.core.toml /opt/deepsea/core.toml
+# 首次：自动生成（不需要你手动 cp）
+./deploy/sync.sh
+#   → /opt/deepsea/core__custom__.toml（从模板复制，请你改这一份）
+
+# 之后每次更新
+#   → core__custom__.toml 一个字都不动，只报告"模板新增了哪些键"
 ```
+
+改配置只改 `/opt/deepsea/core__custom__.toml`，**不要改仓库里的模板**。
 
 关键项：
 - `[adapters.onebot] enabled = true` —— 没有它核心会报"没有启用任何通道"直接退出
@@ -29,7 +38,7 @@ sudo -u deepsea cp deploy/server.core.toml /opt/deepsea/core.toml
 
 ```bash
 # 1. 同步代码（本机执行）
-# 用脚本（自动排除 core.toml / .secrets / data，不会覆盖服务器配置）
+# 用脚本（自动排除 __custom__* / .secrets / data，不会覆盖你的配置）
 ./deploy/sync.sh
 DEEPSEA_HOST=<user>@<服务器> DEEPSEA_KEY=<你的私钥> ./deploy/sync.sh
 

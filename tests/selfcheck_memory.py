@@ -45,7 +45,7 @@ class Provider:
                             persona=self.persona)
 
 
-def mk(msg_text: str = "在吗", gid: int = 1109525246) -> InboundMessage:
+def mk(msg_text: str = "在吗", gid: int = 100000001) -> InboundMessage:
     return InboundMessage(chat=ChatRef.group(gid), sender=Sender(1, "灵其啊"),
                           message=Message.from_text(msg_text), message_id="1", addressed=True)
 
@@ -65,7 +65,7 @@ async def main() -> int:
 
         print()
         print("== scope 层隔离 ==")
-        g1, g2 = Scope.from_chat(ChatRef.group(1109525246)), Scope.from_chat(ChatRef.group(869622030))
+        g1, g2 = Scope.from_chat(ChatRef.group(100000001)), Scope.from_chat(ChatRef.group(100000004))
         mem.learn_scope(g1, "rules", "这群是调你的屋子。")
         mem.learn_scope(g1, "impression", "这个群在聊终末地。")
         mem.learn_scope(g1, "jargon", {"terms": [{"term": "yjwl", "meaning": "鹰角网络"}]})
@@ -152,12 +152,12 @@ async def main() -> int:
 
         print()
         print("== recent 落盘 + 重启读回 ==")
-        recent.append("g1109525246", "灵其啊", "你好", 1, 1.0)
-        recent.append("g1109525246", "我", "在的", 0, 2.0)
+        recent.append("g100000001", "灵其啊", "你好", 1, 1.0)
+        recent.append("g100000001", "我", "在的", 0, 2.0)
         again = RecentStore(td / "recent")          # 模拟重启
-        rows = again.get("g1109525246")
+        rows = again.get("g100000001")
         ck("重启后能读回", len(rows) == 2 and rows[-1][1] == "在的", str(rows))
-        ck("另一个会话不受影响", again.get("g869622030") == [])
+        ck("另一个会话不受影响", again.get("g100000004") == [])
     finally:
         shutil.rmtree(td, ignore_errors=True)
 

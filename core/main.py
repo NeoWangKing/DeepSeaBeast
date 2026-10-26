@@ -118,7 +118,8 @@ async def run(config_path: str, channel_name: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="deepsea-beast")
-    ap.add_argument("config", nargs="?", default="core.toml")
+    ap.add_argument("config", nargs="?",
+                    default=None, help="配置文件（默认自动找 core__custom__.toml / core.toml）")
     ap.add_argument("--channel", default="",
                     help="留空=按配置全开；填名字=只开那一个（如 cli），名字由 adapters/ 定义")
     a = ap.parse_args()

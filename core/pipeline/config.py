@@ -1,4 +1,4 @@
-"""门控配置（core.toml 的 [gate] 段）。"""
+"""门控配置（core__custom__.toml 的 [gate] 段）。"""
 
 from __future__ import annotations
 

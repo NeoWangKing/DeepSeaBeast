@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 from core.config import load as load_config  # noqa: E402
 from core.llm import chat, chat_tools, LLMConfig  # noqa: E402
 
-cfg_core = load_config(ROOT / "core.toml")
+cfg_core = load_config(ROOT / "core__custom__.toml")
 llm_cfg = LLMConfig.from_dict(getattr(cfg_core, "llm", {}) or {})
 key = llm_cfg.resolve_key()
 print("模型：%s @ %s | key: %s" % (llm_cfg.model, llm_cfg.base_url,

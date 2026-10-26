@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """把旧数据（用原始会话 key 命名）迁移成用"不透明引用"命名。
 
-旧：data/recent/g1109525246.json、data/memory/scope/g1109525246/、
-    data/plugins/memory/spaces/g1109525246.json …
+旧：data/recent/g100000001.json、data/memory/scope/g100000001/、
+    data/plugins/memory/spaces/g100000001.json …
 新：同名文件/目录换成 s<hash>（= blake2b("通道名\\0原始key")）
 
 通道推断：

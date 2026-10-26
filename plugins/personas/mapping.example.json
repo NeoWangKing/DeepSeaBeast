@@ -1,0 +1,29 @@
+{
+  "_说明": "按优先级选卡：具体群/具体人 > 通道种类 > 自动建档。{channel}/{id}/{name} 会被替换。\n首次运行会把这个 example 复制成 mapping__custom__.json（在插件数据目录），之后只改那份；仓库里的 example 只是默认值参考。",
+  "by_group": {
+    "100000001": "system_prompt_friend.txt",
+    "100000002": "system_prompt_tool.txt",
+    "100000003": "project_assistant.txt"
+  },
+  "by_private": {
+    "200000001": "system_prompt_private.txt",
+    "200000002": "private_warm.txt"
+  },
+  "by_channel": {
+    "cli": "terminal.txt",
+    "tcp": "terminal.txt",
+    "socket": "terminal_script.txt"
+  },
+  "private_default": "system_prompt_private.txt",
+  "default": "system_prompt_sharp.txt",
+  "append_common": true,
+  "filing": {
+    "group": "groups/{id}.md",
+    "private": "privates/{id}.md",
+    "local": "channels/{channel}.md"
+  },
+  "template": "_template.txt",
+  "append_common_except": [
+    "100000001"
+  ]
+}

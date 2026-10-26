@@ -24,10 +24,10 @@ def ck(name: str, cond: bool, extra: str = "") -> None:
 
 def main() -> int:
     print("== 引用是确定的 ==")
-    a = scope_ref("onebot", "g1109525246")
-    b = scope_ref("onebot", "g1109525246")
+    a = scope_ref("onebot", "g100000001")
+    b = scope_ref("onebot", "g100000001")
     ck("同通道同 key → 同引用", a == b, a)
-    ck("引用里没有原始 id", "1109525246" not in a, a)
+    ck("引用里没有原始 id", "100000001" not in a, a)
 
     print()
     print("== 不同通道不会串 ==")
@@ -41,7 +41,7 @@ def main() -> int:
     print("== 登记表只给人看 ==")
     td = Path(tempfile.mkdtemp())
     reg = ScopeRegistry(td)
-    reg.remember(a, "onebot", "g1109525246", kind="group", label="群聊", name="测试群")
+    reg.remember(a, "onebot", "g100000001", kind="group", label="群聊", name="测试群")
     desc = reg.describe(a)
     ck("能反查到人话身份", "群聊" in desc and "测试群" in desc, desc)
     ck("登记表落盘", (td / "scopes.json").exists())
@@ -69,7 +69,7 @@ def main() -> int:
         d = tempfile.mkdtemp()
         rt = Runtime(Ch(), GateConfig.from_dict({"force_mode": "peak", "reply_probability": 1.0}),
                      [1], reply_fn=lambda m, c=None: _ans(), data_dir=d)
-        m = InboundMessage(chat=ChatRef.group(1109525246), sender=Sender(1, "灵其啊"),
+        m = InboundMessage(chat=ChatRef.group(100000001), sender=Sender(1, "灵其啊"),
                            message=Message.from_text("在吗。"), message_id="1", addressed=True)
         await rt.on_message(m)
         return d
@@ -82,7 +82,7 @@ def main() -> int:
     for root, _dirs, files in os.walk(d):
         for f in files:
             names.append(os.path.join(root, f))
-    leaked = [p for p in names if "1109525246" in p]
+    leaked = [p for p in names if "100000001" in p]
     ck("文件名里没有群号", not leaked, str(leaked))
     ck("recent 用引用命名", any("/recent/s" in p for p in names), str([os.path.relpath(p, d) for p in names]))
 

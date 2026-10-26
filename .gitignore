@@ -7,3 +7,10 @@ data/
 
 # 本地/服务器各自的配置（含路径与个人信息），模板见 core.example.toml
 core.toml
+
+# 用户私有（部署时生成，更新永不覆盖）
+__custom__*
+*__custom__.*
+# 配置备份不进仓库
+core.toml.*
+*.bak-*
