@@ -231,6 +231,7 @@ class Turn:
         self.abilities = set(abilities) if abilities is not None \
             else set(getattr(channel, "abilities", set()))
         self.decision: dict[str, Any] | None = None
+        self.poked: bool = False            # 这一轮戳过了（不连戳）
         self.sent: list[str] = []
         self.finished = False
         self.finish_reason = ""
@@ -403,6 +404,8 @@ class Turn:
     async def _do_poke_back(self, args: dict[str, Any]) -> str:
         if self.ctx is not None and self.ctx.should_stop():
             return "这一轮已经结束了，不要再戳"
+        if self.poked:
+            return "这一轮已经戳过了，别连戳"
         try:
             target = int(args.get("user") or self.msg.sender.id or 0)
         except Exception:
@@ -413,12 +416,15 @@ class Turn:
         ok, err = await self._send_message_out([seg])
         if not ok:
             return "没戳出去：%s" % (err or "通道不支持")
+        self.poked = True
         return "戳了一下"
 
     async def _do_poke_same(self, args: dict[str, Any]) -> str:
         """跟着戳"刚被别人戳的那个人"（焦点对象由通道填）。"""
         if self.ctx is not None and self.ctx.should_stop():
             return "这一轮已经结束了，不要再戳"
+        if self.poked:
+            return "这一轮已经戳过了，别连戳"
         focus = getattr(self.msg, "focus", None)
         if focus is None or not getattr(focus, "id", 0):
             return "这会儿没有可以跟着戳的人"
@@ -426,6 +432,7 @@ class Turn:
         ok, err = await self._send_message_out([seg])
         if not ok:
             return "没戳出去：%s" % (err or "通道不支持")
+        self.poked = True
         return "戳了%s一下" % (getattr(focus, "name", "") or "对方")
 
     def _do_list_faces(self, args: dict[str, Any]) -> str:

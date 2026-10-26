@@ -128,6 +128,26 @@ async def main() -> int:
     ck("拒绝戳", "没有可以跟着戳" in out2, out2)
 
     print()
+    print("== 自己戳出去的回传 → 不再触发新回合（防无限循环）==")
+    got.clear()
+    ev_self = Event(post_type="notice", self_id=3237702352, raw={
+        "post_type": "notice", "notice_type": "notify", "sub_type": "poke",
+        "group_id": 100000001, "user_id": 3237702352, "target_id": 200000001})
+    await ch._handle_notice(ev_self)
+    await asyncio.sleep(0.05)
+    ck("不产生消息", got == [], str(len(got)))
+
+    print()
+    print("== 一轮最多戳一次 ==")
+    turn3 = Turn(ch, plain, None, abilities={"text", "poke"})
+    fake.calls.clear()
+    await turn3.dispatch("poke_back", {"user": 200000001})
+    out3 = await turn3.dispatch("poke_back", {"user": 200000001})
+    ck("第二次被拒", "已经戳过" in out3, out3)
+    ck("只戳了一次", len([c for c in fake.calls if c[0] == "send_poke"]) == 1,
+       str([c[0] for c in fake.calls]))
+
+    print()
     print("== 核心工具：只有能戳的通道才看得见 ==")
     from core.tools import DEFAULT_SPECS, schema
     names = [s["function"]["name"] for s in schema(DEFAULT_SPECS, {"text", "poke"})]

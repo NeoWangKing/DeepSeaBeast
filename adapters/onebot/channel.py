@@ -31,6 +31,7 @@ class OneBotChannel:
                  verify_timeout_ms: int = 3000) -> None:
         self._server = OneBotServer(host, port, allow_self_ids)
         self._owner_ids = set(owner_ids or [])
+        self._member_names: dict[tuple[int, int], str] = {}   # (群号, QQ) → 名字
         self._seen_notices: set[tuple[str, str]] = set()   # 已见过的 notice 形状
         self._my_names: dict[str, str] = {}        # chat.key → 她自己在这个群的名片
         self._scope_names: dict[str, str] = {}     # chat.key → 群名（给 scope_info 用）
@@ -85,6 +86,25 @@ class OneBotChannel:
             except Exception:
                 pass
             await asyncio.sleep(2)
+
+    async def _name_of(self, chat, user_id: int) -> str:
+        """查一个人在群里的名字（缓存），查不到就退回 QQ 号。"""
+        key = (chat.id, int(user_id))
+        if key in self._member_names:
+            return self._member_names[key]
+        name = ""
+        try:
+            r = await self._server.call_action(
+                "get_group_member_info",
+                {"group_id": chat.id, "user_id": int(user_id), "no_cache": False},
+                timeout=8)
+            d = r.get("data") or {}
+            name = str(d.get("card") or d.get("nickname") or "").strip()
+        except Exception as e:
+            log.debug("查群成员名字失败（忽略）：%s", e)
+        if name:
+            self._member_names[key] = name
+        return name or str(user_id)
 
     async def _fetch_my_card(self, chat) -> None:
         """查她**自己**在这个群的群名片（不是别人的名字）。"""
@@ -269,6 +289,8 @@ class OneBotChannel:
         if not target:
             return
         poker = int(raw.get("user_id") or 0)
+        if self.bot_id and poker == int(self.bot_id):
+            return          # 自己戳出去的动作会被回传回来，不算"看见别人戳"
         gid = int(raw.get("group_id") or 0)
         chat = ChatRef.group(gid) if gid else ChatRef.private(poker)
         sender_raw = raw.get("sender") or {}
@@ -285,7 +307,8 @@ class OneBotChannel:
                 message_id="", addressed=True, addressed_by="poke", raw=raw)
         else:
             # 戳的是别人 → 她"看见了"这件事（能不能跟着戳，由门控和模型判断）
-            tname = str(raw.get("target_name") or "").strip() or str(target)
+            tname = (str(raw.get("target_name") or "").strip()
+                     or await self._name_of(chat, target))
             log.info("[onebot] 看到戳一戳：%s 戳了 %s", poker, tname)
             msg = InboundMessage(
                 chat=chat, sender=Sender(id=poker, name=name),
