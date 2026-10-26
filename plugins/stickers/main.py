@@ -224,7 +224,8 @@ def looks_like_sticker(data: bytes) -> tuple[bool, str]:
     if not w or not h:
         return False, ""
     ratio = w / float(h)
-    if 0.72 <= ratio <= 1.4 and min(w, h) <= 400 and len(data) <= 768 * 1024:
+    # QQ 表情包常见 240~500px 方形；大图是照片/立绘，不收
+    if 0.72 <= ratio <= 1.4 and min(w, h) <= 640 and len(data) <= 1024 * 1024:
         return True, "小方图 %dx%d" % (w, h)
     return False, "%dx%d" % (w, h)
 
@@ -259,14 +260,11 @@ def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
         st = {"hour": hour, "count": 0, "md5": st.get("md5") or []}
     if int(st.get("count") or 0) >= COLLECT_PER_HOUR:
         return "本小时收够了（%d 张）" % COLLECT_PER_HOUR
-    import urllib.request
     last_err = None
     data = b""
-    for attempt in range(2):          # QQ 图床偶尔 SSL 握手超时，重试一次基本能过
+    for attempt in range(2):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "DeepSeaBeast/1.0"})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                data = r.read(COLLECT_MAX_BYTES + 1)
+            data = _download(url)
             last_err = None
             break
         except Exception as e:
@@ -275,6 +273,37 @@ def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
     if last_err is not None:
         return "下载失败（试了 2 次）：%r" % (last_err,)
     return _store_bytes(data, name, force)
+
+
+def _download(url: str) -> bytes:
+    """取图。两个坑（都在腾讯图床上踩过）：
+
+    1. **DNS 只给 IPv6**，而这台机器没有 IPv6 路由 → 必须强制 IPv4
+    2. **完整 GET 会卡住不动**，但 Range 请求正常返回 206
+       → 一律带 Range 头（反正我们有体积上限）
+    """
+    import http.client
+    import socket
+    import ssl
+    import urllib.request
+
+    real_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+        return real_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+    socket.getaddrinfo = _ipv4_only
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://qun.qq.com/",
+            "Range": "bytes=0-%d" % COLLECT_MAX_BYTES,
+        })
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=8, context=ctx) as r:
+            return r.read(COLLECT_MAX_BYTES + 1)
+    finally:
+        socket.getaddrinfo = real_getaddrinfo
 
 
 def _store_bytes(data: bytes, name: str = "", force: bool = False) -> str:
