@@ -316,6 +316,7 @@ SETTINGS = os.path.join(DATA, "settings__custom__.json")
 SETTINGS_DEFAULT = {
     # 人格卡仓库：仓库内的卡 + 用户自己的卡（服务器上放 data/persona_cards）
     "card_dirs": [os.path.join(os.path.dirname(BASE), "personas", "cards"),
+                  os.path.normpath(os.path.join(DATA, "..", "..", "persona_cards")),
                   os.path.join(DATA, "persona_cards"),
                   "~/Projects/persona_cards"],
 }
