@@ -58,7 +58,8 @@ class Runtime:
         self.gate = gate or GateConfig()        # 门控配置（策略/开关都从这来）
         self._policy_of: dict[str, object] = {}  # 会话 → ChatPolicy
         self._hints: dict[str, list[str]] = {}   # 会话 → 最近一次的场面提示
-        self._names_cache: dict[str, tuple[float, list[str], str]] = {}  # 会话 → (时间, 称呼, 卡名)
+        # 会话 → (时间, 称呼, 卡名, 表情包偏好)；人格相关的都缓存在一起
+        self._names_cache: dict[str, tuple[float, list[str], str, list[str]]] = {}
         self._said_recent: dict[str, list[str]] = {}                 # 会话 → 她最近说过的话
         self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
@@ -120,16 +121,21 @@ class Runtime:
             }, timeout=5)
             names = [str(x) for x in ((res or {}).get("aliases") or []) if x]
             card = str((res or {}).get("card") or "")
+            likes = [str(x) for x in ((res or {}).get("stickers") or []) if x]
         except Exception as e:
-            log.debug("取人格称呼失败（忽略）：%r", e)
-            names, card = [], ""
-        self._names_cache[key] = (now, names, card)
+            log.debug("取人格信息失败（忽略）：%r", e)
+            names, card, likes = [], "", []
+        self._names_cache[key] = (now, names, card, likes)
         return names
 
     def _persona_card(self, ref: str) -> str:
-        """这个会话用哪张人格卡（插件按它给自己的表情包分类）。"""
         cached = self._names_cache.get(ref)
         return str(cached[2]) if cached else ""
+
+    def _persona_stickers(self, ref: str) -> list[str]:
+        """这张卡偏爱哪些表情包标签（库还是公用的，只是排序偏好）。"""
+        cached = self._names_cache.get(ref)
+        return list(cached[3]) if cached else []
 
     def _recent_said(self, ref: str) -> list[str]:
         return list(self._said_recent.get(ref) or [])[:3]
@@ -313,7 +319,8 @@ class Runtime:
                     plugin_ctx={"scope": {"ref": self._ref_of(msg),
                                           "kind": msg.chat.kind,
                                           "id": msg.chat.id},
-                                "persona": {"card": self._persona_card(self._ref_of(msg))},
+                                "persona": {"card": self._persona_card(self._ref_of(msg)),
+                                            "stickers": self._persona_stickers(self._ref_of(msg))},
                                 "channel": {"name": getattr(self.channel, "name", "")}})
         line = turn.skill_text()
         if line:                       # 能力清单放在当前消息之前，紧贴着这轮

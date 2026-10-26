@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""贴图按人格分包：收集打上当前人格的包，发送优先本卡自己的图。"""
+"""表情包：**一个公用库** + 人格卡只声明"偏爱哪些标签"（偏好排序，不分区）。"""
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import importlib.util
-import json
 import os
 import sys
 import tempfile
@@ -17,7 +18,7 @@ FAIL: list[str] = []
 
 
 def ck(name: str, cond: bool, extra: str = "") -> None:
-    print("  %-46s %s %s" % (name, "OK" if cond else "FAIL", extra))
+    print("  %-46s %s %s" % (name, "OK" if cond else "FAIL", extra[:70]))
     if not cond:
         FAIL.append(name)
 
@@ -30,63 +31,102 @@ def load_plugin(data_dir: str):
     return m
 
 
+def png(tag: bytes) -> bytes:
+    return (b"\x89PNG\r\n\x1a\n" + b"\x00" * 4 + (200).to_bytes(4, "big")
+            + (200).to_bytes(4, "big") + tag * 32)
+
+
 def main() -> int:
-    td = tempfile.mkdtemp()
-    # 造两套卡目录，各有几张图
-    cards = Path(td) / "cards"
+    td = Path(tempfile.mkdtemp())
+    cards = td / "cards"
     for card, files in (("Skadi", ["a.png", "b.png"]), ("Amiya", ["c.png"])):
         d = cards / card / "assets"
         d.mkdir(parents=True)
         for fn in files:
-            # 内容要各不相同，否则会被 md5 去重掉（真实场景里也是这样）
-            (d / fn).write_bytes(b"\x89PNG\r\n\x1a\n" + (card + fn).encode() * 8)
-    m = load_plugin(str(Path(td) / "data"))
-    m.load_settings()["card_dirs"] = [str(cards)]
+            (d / fn).write_bytes(png((card + fn).encode()))
+
+    m = load_plugin(str(td / "data"))
     m._SETTINGS_CACHE = {"card_dirs": [str(cards)]}
 
-    print("== 导入人格卡自带的图 ==")
+    print("== 导入人格卡图片：进公用库，只打标签 ==")
     r = m.import_card_pack("Skadi")
-    ck("导入成功", r.get("ok") is True, str(r)[:60])
+    ck("导入成功", r.get("ok") is True, str(r.get("data", {}).get("text"))[:50])
     idx = m.load_index()
-    skadi = [it for it in idx["items"] if it.get("pack") == "Skadi"]
-    ck("Skadi 包里有 2 张", len(skadi) == 2, str(len(skadi)))
-    ck("导入的直接可用", all(it.get("status") == "ok" for it in skadi), "")
+    ck("库里 2 张", len(idx["items"]) == 2, str(len(idx["items"])))
+    ck("都带 skadi 标签",
+       all("skadi" in [t.lower() for t in it.get("tags") or []] for it in idx["items"]), "")
+    ck("没有 pack 字段（不按人格分区）",
+       all("pack" not in it for it in idx["items"]), "")
     r2 = m.import_card_pack("Skadi")
-    ck("重复导入不重复加", len(m.load_index()["items"]) == 2, str(r2["data"]["text"]))
+    ck("重复导入不重复加", len(m.load_index()["items"]) == 2,
+       str(r2.get("data", {}).get("text"))[:40])
     m.import_card_pack("Amiya")
-    ck("Amiya 单独一个包",
-       len([it for it in m.load_index()["items"] if it.get("pack") == "Amiya"]) == 1)
+    ck("Amiya 的图也进同一个库", len(m.load_index()["items"]) == 3, "")
 
     print()
-    print("== 发送优先本卡 ==")
-    it = m.pick("", "Skadi")
-    ck("Skadi 会话拿到 Skadi 的图", it and it.get("pack") == "Skadi",
-       str(it.get("pack") if it else None))
-    it2 = m.pick("", "Amiya")
-    ck("Amiya 会话拿到 Amiya 的图", it2 and it2.get("pack") == "Amiya",
-       str(it2.get("pack") if it2 else None))
+    print("== 偏好排序：符合人设的排前面，但别的图照样能用 ==")
+    it = m.pick("", ["skadi"])
+    ck("有 skadi 偏好时优先挑 skadi 的图", "skadi" in [t.lower() for t in it.get("tags") or []],
+       str(it.get("tags")))
+    it2 = m.pick("", ["something-random"])
+    ck("偏好对不上也能挑到图（不会没图可发）", it2 is not None, str(it2.get("tags")))
+    it3 = m.pick("", [])
+    ck("没有偏好时正常挑", it3 is not None, str(it3.get("tags")))
 
     print()
-    print("== 收集时打上当前人格的包 ==")
-    import base64
-    def png_url(tag: bytes) -> str:
-        png = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 4 + (200).to_bytes(4, "big")
-               + (200).to_bytes(4, "big") + tag * 64)
-        return "data:image/png;base64," + base64.b64encode(png).decode()
-
-    url = png_url(b"k")
-    msg = m.collect_sticker(url, "test", force=True, pack="Kal'tsit")
+    print("== 收集进公用库 ==")
+    msg = m.collect_sticker("data:image/png;base64," + base64.b64encode(png(b"new")).decode(),
+                            "test", force=True)
     ck("收集成功", "收进来了" in msg, msg[:40])
     newest = m.load_index()["items"][-1]
-    ck("带着 Kal'tsit 的包", newest.get("pack") == "Kal'tsit", str(newest.get("pack")))
+    ck("没有 pack 字段", "pack" not in newest, str(list(newest.keys())[:6]))
+    ck("默认待打标", newest.get("status") == "pending", str(newest.get("status")))
 
     print()
-    print("== 没有本卡的图时退回通用图 ==")
-    m.collect_sticker(png_url(b"g"), "x", force=True, pack="")
-    generic = [it for it in m.load_index()["items"] if not it.get("pack")]
-    ck("通用图存在", len(generic) >= 1, str(len(generic)))
-    it3 = m.pick("", "Nobody")
-    ck("陌生人格也能挑到图（退通用）", it3 is not None, str(it3.get("pack") if it3 else None))
+    print("== 核心把人格卡 + 表情包偏好传给插件 ==")
+    from core.channel import ChatRef, InboundMessage, Message, Sender
+    from core.tools import Turn
+
+    class FakePlugins:
+        def __init__(self):
+            self.turns = []
+
+        def has(self, name):
+            return True
+
+        async def call(self, name, args, timeout=None, turn=None):
+            self.turns.append({"name": name, "turn": turn})
+            return {"ok": True, "data": "ok"}
+
+    class FakeCh:
+        name = "onebot"
+        abilities = {"text", "sticker"}
+
+        async def send(self, out):
+            from core.channel import SendResult
+            return SendResult(ok=True)
+
+    fp = FakePlugins()
+    msg_in = InboundMessage(chat=ChatRef.group(1), sender=Sender(id=7, name="a"),
+                            message=Message.from_text("笑死"), message_id="1")
+    turn = Turn(FakeCh(), msg_in, None, plugins=fp,
+                plugin_ctx={"persona": {"card": "Skadi", "stickers": ["skadi"]},
+                            "scope": {"ref": "sxxx"}})
+    asyncio.run(turn.dispatch("send_sticker", {"query": "笑死"}))
+    seen = fp.turns[-1]["turn"] if fp.turns else {}
+    ck("插件收到人格卡名", (seen.get("persona") or {}).get("card") == "Skadi", str(seen)[:50])
+    ck("插件收到表情包偏好", (seen.get("persona") or {}).get("stickers") == ["skadi"],
+       str(seen)[:50])
+    ck("插件收到会话引用", (seen.get("scope") or {}).get("ref") == "sxxx", str(seen)[:50])
+
+    print()
+    print("== 两个插件互不依赖 ==")
+    src_personas = (ROOT / "plugins/personas/main.py").read_text(encoding="utf-8")
+    src_stickers = (ROOT / "plugins/stickers/main.py").read_text(encoding="utf-8")
+    ck("人格插件不 import 表情包插件", "stickers" not in src_personas.split("def ")[0],
+       "")
+    ck("表情包插件不读人格卡目录",
+       "personas" not in src_stickers.replace("personas\", \"cards", ""), "")
 
     print()
     if FAIL:

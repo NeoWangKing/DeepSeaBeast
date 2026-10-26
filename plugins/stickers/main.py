@@ -98,24 +98,28 @@ def card_of(params: dict) -> str:
     return str((turn.get("persona") or {}).get("card") or "")
 
 
-def pick(query: str, pack: str = "") -> dict | None:
-    """挑一张贴图。**本卡自己的优先**，其次是通用的（pack 为空）。"""
+def pick(query: str, prefer: list[str] | None = None) -> dict | None:
+    """从**唯一一个公用库**里挑一张。人格只是"偏好"——符合人设的排前面，
+    但别的图照样能用（不给谁划分地盘，两个插件互不依赖）。"""
     idx = load_index()
     items = [it for it in idx["items"] if alive(it)]
     if not items:
         return None
-    if pack:
-        mine = [it for it in items if str(it.get("pack") or "") == pack]
-        generic = [it for it in items if not it.get("pack")]
-        items = mine + generic or items
     q = tokens(query)
     now = time.time()
-    scored = [(score(it, q, now), it) for it in items]
-    scored = [(s, it) for s, it in scored if s > 0]
-    if not scored:
+    likes = {str(x).lower() for x in (prefer or []) if str(x).strip()}
+    out = []
+    for it in items:
+        base = score(it, q, now)
+        tags = {str(t).lower() for t in (it.get("tags") or [])}
+        if likes and tags & likes:
+            base += 3.0           # 符合这个人设的图优先，但不排除其它
+        if base > 0:
+            out.append((base, it))
+    if not out:
         return None
-    scored.sort(key=lambda x: -x[0])
-    return scored[0][1]
+    out.sort(key=lambda x: -x[0])
+    return out[0][1]
 
 
 def nearest(query: str, n: int = 5) -> list[str]:
@@ -225,8 +229,7 @@ def looks_like_sticker(data: bytes) -> tuple[bool, str]:
     return False, "%dx%d" % (w, h)
 
 
-def collect_sticker(url: str, name: str = "", force: bool = False,
-                    pack: str = "") -> str:
+def collect_sticker(url: str, name: str = "", force: bool = False) -> str:
     """下载别人发的贴图存进库里（标 pending，没打标之前用不上）。
 
     返回一句话说明结果，给日志用。
@@ -238,7 +241,7 @@ def collect_sticker(url: str, name: str = "", force: bool = False,
             data = _b64.b64decode(url.split(",", 1)[1])
         except Exception:
             return "data URL 解不开"
-        return _store_bytes(data, name, force, pack)
+        return _store_bytes(data, name, force)
     if url.startswith("file://"):
         url = url[7:]
     if url and not url.startswith(("http://", "https://")) and os.path.isfile(url):
@@ -246,7 +249,7 @@ def collect_sticker(url: str, name: str = "", force: bool = False,
             data = open(url, "rb").read()
         except OSError as e:
             return "读不到文件：%r" % (e,)
-        return _store_bytes(data, name, force, pack)
+        return _store_bytes(data, name, force)
     if not url.startswith(("http://", "https://")):
         return "没有可下载的地址"
     now = time.time()
@@ -263,11 +266,10 @@ def collect_sticker(url: str, name: str = "", force: bool = False,
             data = r.read(COLLECT_MAX_BYTES + 1)
     except Exception as e:
         return "下载失败：%r" % (e,)
-    return _store_bytes(data, name, force, pack)
+    return _store_bytes(data, name, force)
 
 
-def _store_bytes(data: bytes, name: str = "", force: bool = False,
-                 pack: str = "") -> str:
+def _store_bytes(data: bytes, name: str = "", force: bool = False) -> str:
     """校验 + 去重 + 落库（http 下载、本地文件、data URL 共用）。"""
     now = time.time()
     st = _collect_state()
@@ -295,7 +297,6 @@ def _store_bytes(data: bytes, name: str = "", force: bool = False,
     with open(os.path.join(LIB, fn), "wb") as f:
         f.write(data)
     idx["items"].append({"id": sid, "file": fn, "desc": "", "tags": [],
-                         "pack": str(pack or ""),
                          "name": str(name or "")[:40], "md5": md5,
                          "size": len(data), "group": "", "added_at": now,
                          "used": 0, "last_used": 0, "status": "pending"})
@@ -354,7 +355,7 @@ def _card_dirs() -> list[str]:
 
 
 def import_card_pack(card: str) -> dict:
-    """把某张人格卡目录里的图片导进库里，打上这张卡的包名。"""
+    """把人卡拉目录里的图片导进**公用库**，只给它们打一个标签（不隔离成独立库）。"""
     card = str(card or "").strip().strip("/")
     if not card:
         return {"ok": False, "error": "要指定卡名，比如 Skadi"}
@@ -393,14 +394,14 @@ def import_card_pack(card: str) -> dict:
                     f.write(data)
                 idx["items"].append({
                     "id": sid, "file": nf, "desc": os.path.splitext(fn)[0],
-                    "tags": [card.lower()], "pack": card, "name": fn,
+                    "tags": [card.lower()], "name": fn,
                     "md5": md5, "size": size, "group": "", "added_at": time.time(),
                     "used": 0, "last_used": 0, "status": "ok"})
                 added += 1
     if added:
         save_index(idx)
-    return {"ok": True, "data": {"text": "%s：导入了 %d 张图（%d 张已在库里）"
-                                         % (card, added, 0)}}
+    return {"ok": True, "data": {"text": "从 %s 导入了 %d 张图（标签 %s，公用库里）"
+                                         % (card, added, card.lower())}}
 
 
 def mark_used(it: dict) -> None:
@@ -422,9 +423,15 @@ def short(desc: str, n: int = 24) -> str:
 
 
 # ── 工具 ──────────────────────────────────────────────
+def prefers_of(params: dict) -> list[str]:
+    """当前人格偏爱哪些标签（核心在 turn.persona.stickers 里给）。"""
+    turn = params.get("turn") or {}
+    return [str(x) for x in ((turn.get("persona") or {}).get("stickers") or []) if str(x).strip()]
+
+
 def do_send_sticker(args: dict, params: dict | None = None) -> dict:
     query = str(args.get("query") or args.get("name") or "").strip()
-    it = pick(query, card_of(params or {}))
+    it = pick(query, prefers_of(params or {}))
     if it is None:
         near = nearest(query, 5)
         if near:
@@ -501,7 +508,8 @@ TOOLS = [
          "index": {"type": "number", "description": "倒数第几张，默认 1（最近那张）"}}},
      "requires": ["sticker"], "label": "收下最近那张图", "kind": "control"},
     {"name": "import_card_stickers", "description": "把某张人格卡目录里自带的图片"
-                                                  "（assets/stickers）导进库，归到这张卡名下。"
+                                                  "（assets/stickers）导进公用表情包库，"
+                                                  "并给它们打上这张卡的标签。"
                                                   "人说「把斯卡蒂的图导进来」时用。",
      "parameters": {"type": "object", "properties": {
          "card": {"type": "string", "description": "卡名，如 Skadi / Kal'tsit"}},
@@ -528,14 +536,10 @@ def on_event(event: str, data: dict) -> None:
         buf.append({"url": url, "kind": kind, "name": str(m.get("name") or ""),
                     "ts": time.time()})
         del buf[:-8]
-        pack = str((data.get("persona") or {}).get("card") or "")
         if kind == "sticker":
-            log("收集贴图（%s）：%s" % (pack or "通用",
-                                   collect_sticker(url, str(m.get("name") or ""),
-                                                   force=True, pack=pack)))
+            log("收集贴图：%s" % collect_sticker(url, str(m.get("name") or ""), force=True))
         elif kind == "image":
-            log("看到图片（%s）：%s" % (pack or "通用",
-                                   collect_sticker(url, "", force=False, pack=pack)))
+            log("看到图片：%s" % collect_sticker(url, "", force=False))
 
 
 def scope_of(params: dict) -> str:

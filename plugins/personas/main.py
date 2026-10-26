@@ -200,6 +200,31 @@ def card_aliases(name: str) -> list[str]:
     return []
 
 
+def card_stickers(name: str) -> list[str]:
+    """这张卡偏爱哪些表情包标签（`stickers.txt`，一行一个）。
+
+    注意：**库是公用的**，这里只是"偏好"——符合人设的排前面，
+    不符合的照样能用。两个插件互不依赖：表情包插件不认识人格，人格卡也不认识图。
+    """
+    if not name:
+        return []
+    for base in card_dirs():
+        path = os.path.join(base, name, "stickers.txt")
+        if not os.path.isfile(path):
+            continue
+        out: list[str] = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    t = line.strip()
+                    if t and not t.startswith("#") and t not in out:
+                        out.append(t)
+        except Exception:
+            return []
+        return out
+    return []
+
+
 def read_card(name: str) -> str:
     """先找运行时卡，再找仓库内置卡。目录卡与老的单文件卡都支持。"""
     if not name:
@@ -290,7 +315,8 @@ def handle(method: str, params: dict):
         mp = load_mapping()
         scope = params.get("scope") or {}
         picked = pick(scope, mp, str((params.get("channel") or {}).get("name") or ""))
-        return {"card": picked, "aliases": card_aliases(picked)}
+        return {"card": picked, "aliases": card_aliases(picked),
+                "stickers": card_stickers(picked)}
     if method == "ping":
         return {"pong": True}
     if method == "shutdown":
