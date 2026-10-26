@@ -106,6 +106,17 @@ class PluginManager:
             raise PluginError("插件 %s 没在运行" % t.plugin)
         return await proc.call_tool(tool, arguments, timeout, turn)
 
+    async def request(self, plugin: str, method: str, params: dict[str, Any] | None = None,
+                      timeout: float | None = None) -> Any:
+        """直接问插件一件事（不走工具，不占模型的工具列表）。"""
+        proc = self._procs.get(plugin)
+        if proc is None:
+            raise PluginError("插件 %s 没在运行" % plugin)
+        return await proc.call(method, params or {}, timeout)
+
+    def has_plugin(self, name: str) -> bool:
+        return name in self._procs
+
     def has(self, tool: str) -> bool:
         return tool in self.tools
 

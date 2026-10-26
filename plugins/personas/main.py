@@ -175,6 +175,31 @@ def _read_dir_card(path: str) -> str:
     return text
 
 
+def card_aliases(name: str) -> list[str]:
+    """这张卡认哪些称呼（`aliases.txt`，一行一个，# 开头是注释）。
+
+    为什么放卡里：称呼应当跟着人格走——换成斯卡蒂以后，"大肥鱼"就不该再叫得应了。
+    @ 是通道自己的事（QQ 群名片改不了），那条路不经过这里。
+    """
+    if not name:
+        return []
+    for base in card_dirs():
+        path = os.path.join(base, name, "aliases.txt")
+        if not os.path.isfile(path):
+            continue
+        out: list[str] = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    t = line.strip()
+                    if t and not t.startswith("#") and t not in out:
+                        out.append(t)
+        except Exception:
+            return []
+        return out
+    return []
+
+
 def read_card(name: str) -> str:
     """先找运行时卡，再找仓库内置卡。目录卡与老的单文件卡都支持。"""
     if not name:
@@ -260,7 +285,12 @@ def get_context(params: dict) -> dict:
 def handle(method: str, params: dict):
     if method == "hello":
         return {"name": "personas", "version": "3.0", "protocol": 1,
-                "capabilities": ["context"], "events": [], "tools": [], "jobs": []}
+                "capabilities": ["context", "names"], "events": [], "tools": [], "jobs": []}
+    if method == "names":
+        mp = load_mapping()
+        scope = params.get("scope") or {}
+        picked = pick(scope, mp, str((params.get("channel") or {}).get("name") or ""))
+        return {"card": picked, "aliases": card_aliases(picked)}
     if method == "ping":
         return {"pong": True}
     if method == "shutdown":

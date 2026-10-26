@@ -31,7 +31,8 @@ class OneBotChannel:
                  verify_timeout_ms: int = 3000) -> None:
         self._server = OneBotServer(host, port, allow_self_ids)
         self._owner_ids = set(owner_ids or [])
-        self._scope_names: dict[str, str] = {}     # chat.key → 昵称（来自事件）
+        self._my_names: dict[str, str] = {}        # chat.key → 她自己在这个群的名片
+        self._scope_names: dict[str, str] = {}     # chat.key → 群名（给 scope_info 用）
         self._group_names: dict[str, str] = {}     # chat.key → 群名（查 get_group_info）
         self._bot_name: str = ""                   # 机器人昵称（连接时查 get_login_info）
         self.bot_id = int(bot_id)
@@ -48,7 +49,7 @@ class OneBotChannel:
 
     def identity(self, chat) -> dict:
         """在这个群里她叫什么：群名片 > 昵称 > QQ 号。"""
-        name = self._scope_names.get(chat.key) or self._bot_name
+        name = self._my_names.get(chat.key) or self._bot_name
         aliases: list[str] = []
         for x in (self._bot_name, name, str(self.bot_id or "")):
             if x and x not in aliases:
@@ -83,6 +84,23 @@ class OneBotChannel:
             except Exception:
                 pass
             await asyncio.sleep(2)
+
+    async def _fetch_my_card(self, chat) -> None:
+        """查她**自己**在这个群的群名片（不是别人的名字）。"""
+        if not self.bot_id:
+            return
+        try:
+            r = await self._server.call_action(
+                "get_group_member_info",
+                {"group_id": chat.id, "user_id": int(self.bot_id), "no_cache": True},
+                timeout=10)
+            d = r.get("data") or {}
+            name = str(d.get("card") or d.get("nickname") or "").strip()
+            if name:
+                self._my_names[chat.key] = name
+                log.info("我在这个群的名片：%s → %s", chat.key, name)
+        except Exception as e:
+            log.debug("取自己的群名片失败（忽略）：%s", e)
 
     async def _fetch_group_name(self, chat) -> None:
         """群名不在 message 事件里，用 get_group_info 查一次；查不到就留着空。"""
@@ -187,9 +205,10 @@ class OneBotChannel:
                 segs.append(Segment(kind="face", text=qq_faces.to_token(fid), data=data))
             else:
                 segs.append(Segment(kind=x.type, text=x.text, data=data))
-        name = str(ev.sender_name or "")
-        if name:
-            self._scope_names[chat.key] = name
+        # 注意：这里**不能**把发送者名字当成"她自己的名字"存起来
+        # （踩过：identity() 于是告诉模型"在这里你叫「灵其啊」"）
+        if ev.message_type == "group" and chat.key not in self._my_names:
+            asyncio.create_task(self._fetch_my_card(chat))
         if ev.message_type == "group" and chat.key not in self._group_names:
             asyncio.create_task(self._fetch_group_name(chat))
         text = str(ev.message.text or "")

@@ -58,6 +58,7 @@ class Runtime:
         self.gate = gate or GateConfig()        # 门控配置（策略/开关都从这来）
         self._policy_of: dict[str, object] = {}  # 会话 → ChatPolicy
         self._hints: dict[str, list[str]] = {}   # 会话 → 最近一次的场面提示
+        self._names_cache: dict[str, tuple[float, list[str]]] = {}   # 会话 → 她认的称呼
         self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
         self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
@@ -91,6 +92,35 @@ class Runtime:
         """memory=off 的会话：不写 recent、不发插件事件。"""
         return self._policy(chat).store_memory
 
+    async def _persona_names(self, msg) -> list[str]:
+        """这个会话里她认哪些称呼——**跟着人格卡走**（缓存 60 秒）。
+
+        为什么要核心来判断：称呼是人格的属性，不是通道的属性。
+        @ 仍然由通道处理（QQ 群名片改不了），这里只管"文字里叫她的名字"。
+        """
+        if self.plugins is None or not self.plugins.has_plugin("personas"):
+            return []
+        key = self._ref_of(msg)
+        now = time.time()
+        cached = self._names_cache.get(key)
+        if cached and now - cached[0] < 60:
+            return list(cached[1])
+        try:
+            info = (self.channel.scope_info(msg.chat)
+                    if hasattr(self.channel, "scope_info") else {})
+            res = await self.plugins.request("personas", "names", {
+                "scope": {"kind": msg.chat.kind, "id": msg.chat.id, "key": key,
+                          "label": str(info.get("label") or ""),
+                          "name": str(info.get("name") or "")},
+                "channel": {"name": getattr(self.channel, "name", "")},
+            }, timeout=5)
+            names = [str(x) for x in ((res or {}).get("aliases") or []) if x]
+        except Exception as e:
+            log.debug("取人格称呼失败（忽略）：%r", e)
+            names = []
+        self._names_cache[key] = (now, names)
+        return names
+
     def _hints_of(self, ref: str) -> list[str]:
         return list(self._hints.get(ref) or [])
 
@@ -109,6 +139,12 @@ class Runtime:
         key = self._ref_of(msg)
         _info = (self.channel.scope_info(msg.chat)
                  if hasattr(self.channel, "scope_info") else {})
+        pnames = await self._persona_names(msg)
+        if pnames and not msg.addressed:
+            hit = next((n for n in pnames if n and n in msg.text), "")
+            if hit:
+                msg = replace(msg, addressed=True, addressed_by="name")
+                log.info("[%s] 文字里叫了她：%s", key, hit)
         store = self._store_allowed(msg.chat)
         if store:
             await self._emit("message.received", {
@@ -137,7 +173,8 @@ class Runtime:
         ctx = TurnContext(id=new_turn_id(), scope_key=key, cfg=self.turn_cfg, chat=msg.chat)
         self._active[key] = ctx
         try:
-            out = self.pipeline.run(msg, now, identity_names=self._identity_names(msg.chat))
+            out = self.pipeline.run(msg, now,
+                                    identity_names=pnames or self._identity_names(msg.chat))
             self._hints[key] = list(getattr(out, "hints", []) or [])
             log.info("[%s] 回合 %s 判断 %r → %s（%s%s）", key, ctx.id, msg.text[:24],
                      out.kind, out.stage or "-", ("：" + out.reason) if out.reason else "")

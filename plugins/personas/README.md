@@ -30,6 +30,23 @@ cards/<代号>/
 为什么只追加白名单：`persona_cards/Skadi/profile.md` 有 17KB 考据、`cross-references.md` 5KB——
 全塞进提示词只会烧 token，对"像不像她"没有帮助。
 
+## 她认哪些称呼：`aliases.txt`
+
+**称呼跟着人格卡走**：
+
+```
+cards/groups/debug/aliases.txt   ← 这张卡认的称呼
+  斯卡蒂
+  Skadi
+```
+
+- 卡里有 `aliases.txt` → **只认里面列的**（换成斯卡蒂以后，"大肥鱼"就喊不答应了）
+- 卡里没有 → 不认任何文字称呼，**只认 @**（@ 是通道的事：QQ 群名片改不了，
+  所以那条路不经过人格卡）
+
+判断在**核心**做：门控拿到称呼列表后检查消息文本，命中就当"被叫到"。
+通道只负责 at 段/引用回复这类平台机制。
+
 ## 用户设置（私有）
 
 `$DEEPSEA_PLUGIN_DATA/settings__custom__.json`（首次自动生成，更新不覆盖）：
