@@ -170,8 +170,8 @@ LIST_FACES = ToolSpec(
 
 POKE_BACK = ToolSpec(
     name="poke_back", label="戳一戳",
-    description="戳一下对方（相当于「拍一拍」）。被戳时可以戳回去，"
-                "或者想引起某人注意时用。不是发消息——只会有一个戳的动作。",
+    description="戳一下对方（相当于「拍一拍」）。只在你自己想戳的时候用——"
+                "被戳了**不代表**要戳回去，反应由你的性格决定。不是发消息，只有一个戳的动作。",
     parameters={"type": "object", "properties": {
         "user": {"type": "number",
                  "description": "戳谁；不填就是刚才跟你说话的那个人"}}},
