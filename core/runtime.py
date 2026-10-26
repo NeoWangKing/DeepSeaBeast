@@ -59,6 +59,7 @@ class Runtime:
         self._policy_of: dict[str, object] = {}  # 会话 → ChatPolicy
         self._hints: dict[str, list[str]] = {}   # 会话 → 最近一次的场面提示
         self._names_cache: dict[str, tuple[float, list[str]]] = {}   # 会话 → 她认的称呼
+        self._said_recent: dict[str, list[str]] = {}                 # 会话 → 她最近说过的话
         self.scopes = ScopeRegistry(data_dir)
         self._active: dict[str, TurnContext] = {}     # scope_key → 正在跑的回合
         self._last_decision: dict | None = None       # 最近一个回合的 decide 结果
@@ -68,7 +69,8 @@ class Runtime:
                       "别把代码整段贴进聊天",
                       "别单发「行吧」「好的」「我来」这种铺垫——要说的和要发的合并成一条，省回合",
                       "你会做什么只看给你的工具；工具里没有的事（画图、生图、搜索、写文件…）"
-                      "就是做不到，直接说做不到，别答应、别假装做了"]
+                      "就是做不到，直接说做不到，别答应、别假装做了",
+                      "别重复自己：同一句话、同一种反应（比如同一句吐槽）不要连着用第二次"]
         self.budget_tokens = int(budget_tokens)
         self.memory = MemoryStore(Path(data_dir) / "memory")
         self.recent = RecentStore(Path(data_dir) / "recent")
@@ -120,6 +122,18 @@ class Runtime:
             names = []
         self._names_cache[key] = (now, names)
         return names
+
+    def _recent_said(self, ref: str) -> list[str]:
+        return list(self._said_recent.get(ref) or [])[:3]
+
+    def _remember_said(self, ref: str, said: str) -> None:
+        if not said:
+            return
+        buf = self._said_recent.setdefault(ref, [])
+        first = said.splitlines()[0].strip()[:40]
+        if first and (not buf or buf[-1] != first):
+            buf.append(first)
+        del buf[:-5]
 
     def _hints_of(self, ref: str) -> list[str]:
         return list(self._hints.get(ref) or [])
@@ -188,6 +202,7 @@ class Runtime:
             await self._notify("on_message", msg)
             said = await self._call_reply(msg, ctx)
             self._last_said[key] = said or ""
+            self._remember_said(key, said or "")
             if store:
                 self._record_turn(msg, said)
             if said:
@@ -245,7 +260,8 @@ class Runtime:
         b.scene = build_scene(msg, where=where,
                               self_name=str(_ident.get("name") or ""),
                               aliases=list(_ident.get("aliases") or []),
-                              hints=self._hints_of(ref))
+                              hints=self._hints_of(ref),
+                              said_recent=self._recent_said(ref))
         b.abilities = sorted(self.abilities_for(msg.chat))
         prof = self._channel_profile(msg.chat)
         b.style = str(prof.get("style") or "")

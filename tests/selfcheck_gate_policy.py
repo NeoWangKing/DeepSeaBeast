@@ -103,6 +103,17 @@ async def main() -> int:
     ck("场景里带【场面】", "场面：" in scene and "没人接" in scene, scene[-40:])
 
     print()
+    print("== 反重复：她最近说过的话会进场景 ==")
+    rt._remember_said("s_x", "这个称呼，还是别在这里叫")
+    rt._remember_said("s_x", "这个称呼，还是别在这里叫")     # 同一条不重复记
+    rt._remember_said("s_x", "在")
+    said = rt._recent_said("s_x")
+    ck("记住最近说过的话", said == ["这个称呼，还是别在这里叫", "在"], str(said))
+    scene2 = build_scene(m2, where="QQ群", self_name="大肥鱼", said_recent=said)
+    ck("场景里提醒别重复", "别重复" in scene2, scene2[-46:])
+    ck("带了具体说过的话", "这个称呼" in scene2, scene2[-46:])
+
+    print()
     if FAIL:
         print("FAILED: %s" % "、".join(FAIL))
         return 1
