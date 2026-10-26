@@ -57,14 +57,15 @@ if [ "$CHECK" = "1" ]; then
 fi
 
 # 铺代码：排除用户私有内容（双保险，账本之外再挡一次）
-# ⚠️ --delete 会删掉目标里 payload 没有的东西，所以运行时目录必须显式排除：
-#    .venv（跑 Python 用的）、data/、.secrets/、deploy/state（账本）、所有 __custom__*
-$SSH "sudo rsync -a --delete \
+# 不用 rsync --delete：那会把用户在部署目录里自己放的文件也铲掉。
+# 旧模板文件由下面的 ledger prune 按"账本登记过的路径"精确清理。
+$SSH "sudo rsync -a \
         --exclude '__custom__*' --exclude '*__custom__*' \
         --exclude 'data/' --exclude '.secrets/' --exclude '.venv/' \
         --exclude 'deploy/state/' --exclude '__pycache__/' --exclude '*.pyc' \
         --exclude 'core.toml' \
         $RTMP/ $DEST/ && sudo chown -R $RUN_USER:$RUN_USER $DEST"
+$SSH "sudo python3 $RTMP/deploy/tools/ledger.py prune --payload $RTMP --dest $DEST"
 
 # 用户配置：只生成一次，之后永不覆盖
 $SSH "sudo bash -s" <<REMOTE

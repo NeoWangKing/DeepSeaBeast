@@ -108,6 +108,35 @@ def cmd_plan(args) -> int:
     return 0
 
 
+def cmd_prune(args) -> int:
+    """删掉"账本里有、新 payload 里没有"的文件（引擎自己的领地）。
+
+    只动账本登记的路径——用户在部署目录里自己放的文件，账本没有记录，永远不删。
+    这样就不用 `rsync --delete`（那玩意会连用户文件一起铲）。
+    """
+    payload, dest = Path(args.payload), Path(args.dest)
+    ledger = load_ledger(dest).get("files") or {}
+    new = walk(payload)
+    gone = [r for r in ledger if r not in new]
+    removed = 0
+    for rel in gone:
+        p = dest / rel
+        try:
+            if p.is_file():
+                p.unlink()
+                removed += 1
+            # 顺手清空目录（如果空了）
+            parent = p.parent
+            while parent != dest and parent.is_dir() and not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
+        except OSError:
+            pass
+    if removed:
+        print("→ 清掉 %d 个旧模板文件（账本登记过、新版已不含）" % removed)
+    return 0
+
+
 def cmd_record(args) -> int:
     payload, dest = Path(args.payload), Path(args.dest)
     files = walk(payload)
@@ -172,7 +201,7 @@ def cmd_check_custom(args) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("plan", "record"):
+    for name in ("plan", "record", "prune"):
         s = sub.add_parser(name)
         s.add_argument("--payload", required=True)
         s.add_argument("--dest", required=True)
@@ -180,7 +209,8 @@ def main() -> int:
     s.add_argument("--custom", required=True)
     s.add_argument("--template", required=True)
     args = ap.parse_args()
-    return {"plan": cmd_plan, "record": cmd_record, "check-custom": cmd_check_custom}[args.cmd](args)
+    return {"plan": cmd_plan, "record": cmd_record, "prune": cmd_prune,
+            "check-custom": cmd_check_custom}[args.cmd](args)
 
 
 if __name__ == "__main__":
