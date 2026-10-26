@@ -43,6 +43,19 @@ cards/<代号>/
 }
 ```
 
+## 命名规矩：用代号，不用编号
+
+```
+cards/Skadi/               ✅ 角色卡用角色代号
+cards/kaltsit/             ✅
+cards/groups/debug/        ✅ 群卡用"用途代号"，群号只写在 mapping 里
+cards/groups/miss-rai.txt  ✅
+cards/1109525246/          ❌ 用群号当目录名（分不清谁是谁）
+```
+
+`groups/` 放"某个群的专属卡"，`channels/` 是自动建档的通道卡。
+群号 ↔ 卡片的对应关系**只存在于 mapping 文件里**，目录名永远是人话。
+
 ## 卡片仓库（按优先级）
 
 1. `$DEEPSEA_PLUGIN_DATA/cards/` —— 你自己的卡（群卡、私人卡、导入的角色卡）
