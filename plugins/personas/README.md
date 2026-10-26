@@ -58,9 +58,14 @@ cards/1109525246/          ❌ 用群号当目录名（分不清谁是谁）
 
 ## 卡片仓库（按优先级）
 
-1. `$DEEPSEA_PLUGIN_DATA/cards/` —— 你自己的卡（群卡、私人卡、导入的角色卡）
-2. `plugins/personas/cards/` —— 仓库里随包发的通用卡
-3. `settings.cards_dirs` 里列的外部目录 —— 比如研究仓库 `~/Projects/persona_cards`
+1. `$DEEPSEA_PLUGIN_DATA/cards/` —— **只放跟这台部署绑定的**（自动建档的 `channels/`、临时实验卡）
+2. `plugins/personas/cards/` —— **人格卡本体都在这**：角色卡（`Skadi/`、`Kal'tsit/`、`Amiya/`）、
+   群卡（`groups/debug/`）、早期单文件种子卡。**你的作品属于内容资产，进仓库、能查看、能改、能 diff**
+3. `settings.cards_dirs` 里列的外部目录 —— 研究仓库（`~/Projects/persona_cards`），
+   放原始抓取资料 `references/` 那种大文件
+
+> 判据：**卡的内容**进仓库（可版本化、可 review）；
+> **群号 ↔ 卡片的对应关系**才留在 `data/`（那是部署信息）。
 
 ## 群号 → 卡片 的对应关系
 
