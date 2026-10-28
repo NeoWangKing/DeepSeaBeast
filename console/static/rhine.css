@@ -260,6 +260,9 @@ input[type='range']:focus { outline: none; }
 .slider .val {
   flex: 0 0 auto;
   width: 56px;
+  /* 通用输入框规则里有 min-width:160px，会把读数撑开、把滑条整体推右 */
+  min-width: 0;
+  max-width: 56px;
   text-align: right;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
