@@ -190,7 +190,7 @@ function controlFor(field, value, onChange) {
     paint();
     rail.append(range);
     wrap2.append(rail, readout,
-      el('span', { class: 'rl-meta', text: `${field.min} … ${field.max}` }));
+      el('span', { class: 'rl-meta hint', text: `${field.min} … ${field.max}` }));
     return wrap2;
   }
 

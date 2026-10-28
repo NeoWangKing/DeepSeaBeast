@@ -134,12 +134,12 @@ body {
 .nav a.item.on { border-left-color: var(--c-accent); background: color-mix(in srgb, var(--c-surface) 85%, transparent); }
 .nav a.item .en { letter-spacing: 0.06em; font-size: 0.6875rem; text-transform: uppercase; color: var(--c-muted); }
 
-main { padding: 30px 40px 96px; max-width: 1080px; }
+main { padding: 26px 40px 96px; max-width: 960px; }
 @media (max-width: 620px) { main { padding: 22px 18px 80px; } .top { padding: 14px 18px; } }
 
 /* ── 区块 ── */
-.block { margin-bottom: 46px; scroll-margin-top: 96px; }
-.block-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 10px; }
+.block { margin-bottom: 38px; scroll-margin-top: 96px; }
+.block-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 8px; }
 .block-head h2 {
   margin: 6px 0 0;
   font-family: var(--font-serif);
@@ -151,17 +151,29 @@ main { padding: 30px 40px 96px; max-width: 1080px; }
 /* 字段行：左标签右控件 */
 .field {
   display: grid;
-  grid-template-columns: minmax(220px, 34%) minmax(0, 1fr);
-  gap: 28px;
-  padding: 15px 2px;
+  /* 标签定宽 + 控件定宽：控件拉满整行会显得两边都是空的 */
+  grid-template-columns: 280px minmax(0, 420px);
+  justify-content: start;
+  gap: 8px 32px;
+  padding: 10px 2px;
+  align-items: center;
   border-top: 1px solid var(--c-line);
 }
 .field:last-child { border-bottom: 1px solid var(--c-line); }
 .field .lab .en { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-muted); }
 .field .lab .zh { font-size: 0.9375rem; margin-top: 3px; }
-.field .lab .help { font-size: 0.75rem; color: var(--c-muted); margin-top: 4px; line-height: 1.55; }
-.field .ctl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-@media (max-width: 720px) { .field { grid-template-columns: 1fr; gap: 8px; } }
+.field .lab .help {
+  font-size: 0.71875rem;
+  color: var(--c-muted);
+  margin-top: 3px;
+  line-height: 1.5;
+  max-width: 280px;
+}
+.field .ctl { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+@media (max-width: 860px) {
+  .field { grid-template-columns: 1fr; gap: 6px; }
+  .field .ctl { justify-content: flex-start; }
+}
 
 /* 控件：方角、发丝线，无阴影 */
 input[type='text'], input[type='number'], select {
@@ -191,12 +203,12 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 /* ── 滑条：一条细线 + 方形握柄（莱茵生命没有圆角）── */
-.slider { display: flex; align-items: center; gap: 14px; min-width: 300px; }
+.slider { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
 .slider .rail {
   position: relative;
-  flex: 1;
-  min-width: 160px;
-  height: 24px;
+  flex: 1 1 auto;
+  min-width: 120px;
+  height: 20px;
   display: flex;
   align-items: center;
 }
@@ -246,7 +258,8 @@ input[type='range']:focus { outline: none; }
 
 /* 当前值：等宽数字，可直接输入精确值 */
 .slider .val {
-  width: 74px;
+  flex: 0 0 auto;
+  width: 58px;
   text-align: right;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -254,18 +267,20 @@ input[type='range']:focus { outline: none; }
   color: var(--c-ink);
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--c-line);
-  padding: 2px 2px 3px;
+  border-radius: 0;
+  padding: 2px 0;
   outline: none;
 }
-.slider .val:focus { border-bottom-color: var(--c-accent); }
+.slider .val:hover { color: var(--c-accent); }
+.slider .val:focus { color: var(--c-accent); box-shadow: inset 0 -1px 0 var(--c-accent); }
+.slider .hint { flex: 0 0 auto; white-space: nowrap; }
 
 /* 每处控件都声明配色方案：不然暗色下滑块/选择框会退回浏览器亮色 */
 html[data-theme='light'] { color-scheme: light; }
 html[data-theme='dark'] { color-scheme: dark; }
 
 /* ── 自定义下拉（浏览器原生 select 的弹层没法改样式，只能自己画）── */
-.sel { position: relative; min-width: 200px; }
+.sel { position: relative; width: 220px; max-width: 100%; }
 .sel-trigger {
   display: flex;
   align-items: center;
