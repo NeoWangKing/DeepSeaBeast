@@ -66,6 +66,74 @@ window.addEventListener('scroll', () => {
   if (cur) markNav(cur);
 }, { passive: true });
 
+/* ── 下拉：自己画（原生 select 的弹层改不了样式，跟莱茵生命不搭）── */
+const OP_LABELS = { strict: '只认被叫到', balanced: '被叫必问·否则打分', loose: '每条都问模型' };
+
+function selectControl(field, value, onChange) {
+  const wrap = el('div', { class: 'sel' });
+  const trigger = el('button', {
+    class: 'sel-trigger', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'false',
+  }, el('span', { class: 'val', text: value || field.options[0] }), el('span', { class: 'caret' }));
+  const menu = el('div', { class: 'sel-menu', role: 'listbox', hidden: '' });
+  let cur = value || field.options[0];
+
+  const opts = field.options.map((o) => {
+    const opt = el('div', {
+      class: 'sel-opt', role: 'option', 'aria-selected': String(o === cur),
+      onclick: () => pick(o),
+    }, el('span', { text: o }), el('span', { class: 'meta', text: OP_LABELS[o] || '' }));
+    menu.append(opt);
+    return opt;
+  });
+
+  function highlight(i) {
+    opts.forEach((o, k) => o.classList.toggle('active', k === i));
+  }
+  function open() {
+    wrap.classList.add('open');
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    const i = Math.max(0, field.options.indexOf(cur));
+    highlight(i);
+    document.addEventListener('mousedown', outside, true);
+  }
+  function close() {
+    wrap.classList.remove('open');
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', outside, true);
+  }
+  function outside(e) { if (!wrap.contains(e.target)) close(); }
+  function pick(o) {
+    cur = o;
+    trigger.querySelector('.val').textContent = o;
+    opts.forEach((n) => n.setAttribute('aria-selected', String(n.textContent.startsWith(o))));
+    close();
+    onChange(o);
+  }
+
+  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+  trigger.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); menu.hidden ? open() : close(); }
+    else if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (menu.hidden) return open();
+      const curIdx = field.options.indexOf(cur);
+      const next = e.key === 'ArrowDown'
+        ? Math.min(field.options.length - 1, curIdx + 1)
+        : Math.max(0, curIdx - 1);
+      highlight(next);
+    }
+  });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); const a = opts.find((o) => o.classList.contains('active')); a?.click(); }
+  });
+
+  wrap.append(trigger, menu);
+  return wrap;
+}
+
 /* ── 字段控件 ── */
 function controlFor(field, value, onChange) {
   const wrap = el('div', { class: 'ctl' });
@@ -86,14 +154,7 @@ function controlFor(field, value, onChange) {
     return wrap;
   }
   if (field.type === 'enum') {
-    const sel = el('select');
-    for (const o of field.options) {
-      const opt = el('option', { value: o, text: o });
-      if (o === value) opt.selected = true;
-      sel.append(opt);
-    }
-    sel.addEventListener('change', () => onChange(sel.value));
-    wrap.append(sel);
+    wrap.append(selectControl(field, value, onChange));
     return wrap;
   }
   const input = el('input', {
