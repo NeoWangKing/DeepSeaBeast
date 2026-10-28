@@ -151,8 +151,8 @@ main { padding: 26px 40px 96px; max-width: 960px; }
 /* 字段行：左标签右控件 */
 .field {
   display: grid;
-  /* 标签定宽 + 控件定宽：控件拉满整行会显得两边都是空的 */
-  grid-template-columns: 280px minmax(0, 420px);
+  /* 标签定宽 + 控件定宽：所有控件都吃满这一列，左右边缘才对得齐 */
+  grid-template-columns: 280px var(--ctl-w, 360px);
   justify-content: start;
   gap: 8px 32px;
   padding: 10px 2px;
@@ -169,7 +169,7 @@ main { padding: 26px 40px 96px; max-width: 960px; }
   line-height: 1.5;
   max-width: 280px;
 }
-.field .ctl { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+.field .ctl { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; width: 100%; }
 @media (max-width: 860px) {
   .field { grid-template-columns: 1fr; gap: 6px; }
   .field .ctl { justify-content: flex-start; }
@@ -283,7 +283,7 @@ html[data-theme='light'] { color-scheme: light; }
 html[data-theme='dark'] { color-scheme: dark; }
 
 /* ── 自定义下拉（浏览器原生 select 的弹层没法改样式，只能自己画）── */
-.sel { position: relative; width: 220px; max-width: 100%; }
+.sel { position: relative; width: 100%; }
 .sel-trigger {
   display: flex;
   align-items: center;
