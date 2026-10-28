@@ -30,23 +30,11 @@
   </header>
 
   <div class="shell">
-    <nav class="nav" id="nav">
-      <div class="group">
-        <p class="rl-label">CORE / 核心</p>
-        <a class="item" href="#overview" data-sec="overview"><span>总览</span><span class="en">OVERVIEW</span></a>
-        <a class="item" href="#gate" data-sec="gate"><span>门控</span><span class="en">GATE</span></a>
-        <a class="item" href="#turn" data-sec="turn"><span>回合</span><span class="en">TURN</span></a>
-        <a class="item" href="#memory" data-sec="memory"><span>记忆</span><span class="en">MEMORY</span></a>
-        <a class="item" href="#todos" data-sec="todos"><span>待办</span><span class="en">TODOS</span></a>
-        <a class="item" href="#send" data-sec="send"><span>发送</span><span class="en">SEND</span></a>
-        <a class="item" href="#pacing" data-sec="pacing"><span>节奏</span><span class="en">PACING</span></a>
-      </div>
-      <div class="group">
-        <p class="rl-label">NEXT / 后续</p>
-        <a class="item" href="#pending" data-sec="pending"><span>通道层</span><span class="en">CHANNELS</span></a>
-        <a class="item" href="#pending" data-sec="pending"><span>插件层</span><span class="en">PLUGINS</span></a>
-        <a class="item" href="#pending" data-sec="pending"><span>运维</span><span class="en">OPS</span></a>
-      </div>
+    <nav class="nav">
+      <!-- 一级：层 -->
+      <div class="layers" id="layers"></div>
+      <!-- 二级：当前层里的子系统 -->
+      <div class="subs" id="subs"></div>
     </nav>
 
     <main id="main">

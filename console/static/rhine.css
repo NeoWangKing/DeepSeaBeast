@@ -117,9 +117,23 @@ body {
 @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .nav { position: static; border-right: 0; border-bottom: 1px solid var(--c-line); } }
 
 .nav { position: sticky; top: 73px; align-self: start; padding: 26px 0 40px; border-right: 1px solid var(--c-line); }
-.nav .group { padding: 0 24px; margin-bottom: 22px; }
-.nav .group > .rl-label { margin-bottom: 10px; }
-.nav a.item {
+/* 一级：层 */
+.nav .layers { padding: 0 0 14px; border-bottom: 1px solid var(--c-line); margin-bottom: 14px; }
+.nav a.layer {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 9px 24px 9px 22px;
+  border-left: 2px solid transparent;
+  color: var(--c-ink); text-decoration: none; font-size: 0.9375rem;
+}
+.nav a.layer .en { font-size: 0.625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-muted); }
+.nav a.layer:hover { background: color-mix(in srgb, var(--c-surface) 60%, transparent); }
+.nav a.layer.on { border-left-color: var(--c-accent); background: color-mix(in srgb, var(--c-surface) 80%, transparent); }
+.nav a.layer.off { color: var(--c-muted); cursor: default; }
+.nav a.layer.off .en::after { content: ' · 待做'; color: var(--c-muted); }
+
+/* 二级：子系统 */
+.nav .subs { padding: 0; }
+.nav .subs a.item {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -130,8 +144,8 @@ body {
   border-left: 1px solid transparent;
   font-size: 0.875rem;
 }
-.nav a.item:hover { background: color-mix(in srgb, var(--c-surface) 70%, transparent); }
-.nav a.item.on { border-left-color: var(--c-accent); background: color-mix(in srgb, var(--c-surface) 85%, transparent); }
+.nav .subs a.item:hover { background: color-mix(in srgb, var(--c-surface) 70%, transparent); }
+.nav .subs a.item.on { border-left-color: var(--c-accent); background: color-mix(in srgb, var(--c-surface) 85%, transparent); }
 .nav a.item .en { letter-spacing: 0.06em; font-size: 0.6875rem; text-transform: uppercase; color: var(--c-muted); }
 
 main { padding: 26px 40px 96px; max-width: 960px; }
@@ -406,3 +420,18 @@ table.grid td.num { font-family: var(--font-mono); font-variant-numeric: tabular
 
 .empty { color: var(--c-muted); font-size: 0.8125rem; padding: 14px 2px; }
 .banner { border-left: 1px solid var(--c-accent); padding: 8px 14px; font-size: 0.8125rem; color: var(--c-muted); }
+
+/* ── 二级页面切换：只做很轻的淡入，不做位移 ── */
+.page { animation: page-in 0.22s ease both; }
+@keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* 面包屑 */
+.crumb { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.crumb .sep { color: var(--c-line); }
+.crumb .here { color: var(--c-accent); }
+
+/* 页脚：上一层/下一层 */
+.pager { display: flex; justify-content: space-between; gap: 16px; margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--c-line); }
+.pager a { color: var(--c-ink); text-decoration: none; font-size: 0.8125rem; letter-spacing: 0.04em; }
+.pager a:hover { color: var(--c-accent); }
+.pager .next { text-align: right; margin-left: auto; }

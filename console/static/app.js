@@ -4,6 +4,7 @@ const MIN_LOADING = 300;
 const LOADING_DELAY = 350;
 
 let CORE = null;
+let STATUS = null;
 let DIRTY = new Map();      // section -> {key: value}
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -42,29 +43,55 @@ $('#theme-btn').addEventListener('click', () => {
   localStorage.setItem('dsb-theme', cur);
 });
 
-/* ── 导航高亮 ── */
-function markNav(id) {
-  document.querySelectorAll('.nav a.item').forEach((a) => {
-    a.classList.toggle('on', a.dataset.sec === id);
-  });
+/* ── 导航：一级=层，二级=子系统 ── */
+const LAYERS = [
+  { id: 'core', en: 'CORE', zh: '核心', ready: true },
+  { id: 'channels', en: 'CHANNELS', zh: '通道', ready: false },
+  { id: 'plugins', en: 'PLUGINS', zh: '插件', ready: false },
+  { id: 'ops', en: 'OPS', zh: '运维', ready: false },
+];
+const CORE_PAGES = [
+  { id: 'overview', en: 'OVERVIEW', zh: '总览' },
+  { id: 'gate', en: 'GATE', zh: '门控' },
+  { id: 'turn', en: 'TURN', zh: '回合' },
+  { id: 'memory', en: 'MEMORY', zh: '记忆' },
+  { id: 'todos', en: 'TODOS', zh: '待办' },
+  { id: 'send', en: 'SEND', zh: '发送' },
+  { id: 'pacing', en: 'PACING', zh: '节奏' },
+];
+
+function route() {
+  const raw = (location.hash || '').replace(/^#\/?/, '');
+  const [layer = 'core', page = 'overview'] = raw.split('/');
+  const L = LAYERS.find((x) => x.id === layer);
+  if (!L || !L.ready) return { layer: 'core', page: 'overview' };
+  const pages = layer === 'core' ? CORE_PAGES : [];
+  const P = pages.find((x) => x.id === page) || pages[0];
+  return { layer, page: P.id };
 }
-document.querySelectorAll('.nav a.item').forEach((a) => {
-  a.addEventListener('click', (e) => {
-    if (a.dataset.sec === 'pending') {
-      e.preventDefault();
-      document.getElementById('pending')?.scrollIntoView({ behavior: 'smooth' });
-      markNav('pending');
-      return;
-    }
-    markNav(a.dataset.sec);
-  });
-});
-window.addEventListener('scroll', () => {
-  const secs = [...document.querySelectorAll('.block[id]')];
-  let cur = secs[0]?.id;
-  for (const s of secs) if (s.getBoundingClientRect().top < 120) cur = s.id;
-  if (cur) markNav(cur);
-}, { passive: true });
+
+function renderNav(cur) {
+  const layers = $('#layers');
+  layers.textContent = '';
+  for (const L of LAYERS) {
+    const a = el('a', {
+      class: 'layer' + (L.id === cur.layer ? ' on' : '') + (L.ready ? '' : ' off'),
+      href: L.ready ? `#/${L.id}/overview` : 'javascript:void 0',
+    }, el('span', { text: L.zh }), el('span', { class: 'en', text: L.en }));
+    if (!L.ready) a.addEventListener('click', (e) => e.preventDefault());
+    layers.append(a);
+  }
+  const subs = $('#subs');
+  subs.textContent = '';
+  const pages = cur.layer === 'core' ? CORE_PAGES : [];
+  for (const P of pages) {
+    subs.append(el('a', {
+      class: 'item' + (P.id === cur.page ? ' on' : ''),
+      href: `#/${cur.layer}/${P.id}`,
+      'data-sec': P.id,
+    }, el('span', { text: P.zh }), el('span', { class: 'en', text: P.en })));
+  }
+}
 
 /* ── 下拉：自己画（原生 select 的弹层改不了样式，跟莱茵生命不搭）── */
 const OP_LABELS = { strict: '只认被叫到', balanced: '被叫必问·否则打分', loose: '每条都问模型' };
@@ -369,33 +396,76 @@ async function save(sec) {
     DIRTY.delete(sec);
     st.textContent = '已保存 · 重启核心后生效';
     st.className = 'save-state show ok';
-    await loadCore(true);
+    await loadCore();
+    renderPage(route(), STATUS);
   } catch (e) {
     st.textContent = '失败：' + e.message;
     st.className = 'save-state show err';
   }
 }
 
+/* ── 页面骨架：面包屑 + 当前页 + 上下页 ── */
+function crumb(cur) {
+  const L = LAYERS.find((x) => x.id === cur.layer);
+  const pages = cur.layer === 'core' ? CORE_PAGES : [];
+  const P = pages.find((x) => x.id === cur.page) || pages[0];
+  return el('div', { class: 'crumb' },
+    el('p', { class: 'rl-label', text: `${L.en} / ${L.zh}` }),
+    el('p', { class: 'rl-label sep', text: '/' }),
+    el('p', { class: 'rl-label here', text: `${P.en} / ${P.zh}` }),
+  );
+}
+
+function pager(cur) {
+  const pages = cur.layer === 'core' ? CORE_PAGES : [];
+  const i = pages.findIndex((x) => x.id === cur.page);
+  const prev = pages[i - 1], next = pages[i + 1];
+  const wrap = el('div', { class: 'pager' });
+  if (prev) wrap.append(el('a', { href: `#/${cur.layer}/${prev.id}`, text: `← ${prev.zh}` }));
+  if (next) wrap.append(el('a', { class: 'next', href: `#/${cur.layer}/${next.id}`, text: `${next.zh} →` }));
+  return wrap;
+}
+
+/* ── 渲染当前页（只渲染这一页，不再堆叠）── */
+function renderPage(cur, status) {
+  const main = $('#main');
+  const page = el('div', { class: 'page' });
+  page.append(crumb(cur));
+
+  if (cur.page === 'overview') {
+    page.append(overviewBlock(status));
+  } else {
+    const data = CORE.sections[cur.page];
+    if (!data) {
+      page.append(el('p', { class: 'empty', text: '没有这个页面' }));
+    } else {
+      page.append(sectionBlock(cur.page, data));
+      if (cur.page === 'gate') page.append(gateChats(CORE.chats));
+    }
+  }
+  page.append(pager(cur));
+  main.textContent = '';
+  main.append(page);
+  window.scrollTo({ top: 0 });
+}
+
 /* ── 加载 ── */
-async function loadCore(keepScroll) {
-  const y = window.scrollY;
+async function loadCore() {
   const [core, status] = await withMinLoading(Promise.all([api('/api/core'), api('/api/status')]));
   CORE = core;
-  const main = $('#main');
-  main.textContent = '';
-  main.append(overviewBlock(status));
-  for (const [key, data] of Object.entries(core.sections)) {
-    main.append(sectionBlock(key, data));
-    if (key === 'gate') main.append(gateChats(core.chats));
-  }
-  main.append(pendingBlock());
-
+  STATUS = status;
   const dot = $('#dot-core');
   const ok = (status.service || {}).active === 'active';
   dot.className = 'dot ' + (ok ? 'ok' : 'bad');
   $('#txt-core').textContent = ok ? 'CORE ACTIVE' : 'CORE ' + ((status.service || {}).active || '?');
   $('#stamp').textContent = 'v' + status.version + ' · ' + new Date(status.time * 1000).toLocaleTimeString();
-  if (keepScroll) window.scrollTo({ top: y });
+}
+
+async function navigate() {
+  if (!CORE) return;
+  const cur = route();
+  renderNav(cur);
+  renderPage(cur, STATUS);
 }
 
 async function boot() {
@@ -405,18 +475,21 @@ async function boot() {
   }, LOADING_DELAY);
   try {
     await loadCore();
+    await navigate();
   } catch (e) {
     main.innerHTML = '<div class="empty">读取失败：' + e.message + '</div>';
   } finally {
     clearTimeout(timer);
   }
-  markNav('overview');
+  window.addEventListener('hashchange', navigate);
   setInterval(async () => {
     try {
       const s = await api('/api/status');
+      STATUS = s;
       const ok = (s.service || {}).active === 'active';
       $('#dot-core').className = 'dot ' + (ok ? 'ok' : 'bad');
       $('#txt-core').textContent = ok ? 'CORE ACTIVE' : 'CORE ' + ((s.service || {}).active || '?');
+      if (route().page === 'overview') renderPage(route(), s);
     } catch (e) {}
   }, 30000);
 }
