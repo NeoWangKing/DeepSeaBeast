@@ -189,8 +189,8 @@ function controlFor(field, value, onChange) {
     });
     paint();
     rail.append(range);
-    wrap2.append(rail, readout,
-      el('span', { class: 'rl-meta hint', text: `${field.min} … ${field.max}` }));
+    // 读数紧贴轨道左侧（每行对齐成一列），范围提示放到标签下面，不再挤在轨道右边
+    wrap2.append(readout, rail);
     return wrap2;
   }
 
@@ -233,10 +233,13 @@ function sectionBlock(sec, data) {
   for (const f of data.fields) {
     const val = f.key in dirty ? dirty[f.key] : f.value;
     const [en, zh] = (f.label || '').split(' / ');
+    const hasRange = (f.type === 'int' || f.type === 'float')
+      && f.min !== undefined && f.max !== undefined;
     const lab = el('div', { class: 'lab' },
       el('div', { class: 'en', text: en || f.key }),
       el('div', { class: 'zh', text: zh || '' }),
       f.help ? el('div', { class: 'help', text: f.help }) : null,
+      hasRange ? el('div', { class: 'help range', text: `范围 ${f.min} … ${f.max}` }) : null,
     );
     const row = el('div', { class: 'field' }, lab,
       controlFor(f, val, (v) => {

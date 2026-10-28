@@ -203,7 +203,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 /* ── 滑条：一条细线 + 方形握柄（莱茵生命没有圆角）── */
-.slider { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.slider { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
 .slider .rail {
   position: relative;
   flex: 1 1 auto;
@@ -259,7 +259,7 @@ input[type='range']:focus { outline: none; }
 /* 当前值：等宽数字，可直接输入精确值 */
 .slider .val {
   flex: 0 0 auto;
-  width: 58px;
+  width: 56px;
   text-align: right;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -273,7 +273,7 @@ input[type='range']:focus { outline: none; }
 }
 .slider .val:hover { color: var(--c-accent); }
 .slider .val:focus { color: var(--c-accent); box-shadow: inset 0 -1px 0 var(--c-accent); }
-.slider .hint { flex: 0 0 auto; white-space: nowrap; }
+.field .lab .help.range { color: color-mix(in srgb, var(--c-muted) 75%, transparent); letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
 
 /* 每处控件都声明配色方案：不然暗色下滑块/选择框会退回浏览器亮色 */
 html[data-theme='light'] { color-scheme: light; }
