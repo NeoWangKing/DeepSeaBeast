@@ -157,6 +157,43 @@ function controlFor(field, value, onChange) {
     wrap.append(selectControl(field, value, onChange));
     return wrap;
   }
+  // 数值有范围 → 用滑条（细线 + 方形握柄），读数可直接输入精确值
+  if ((field.type === 'int' || field.type === 'float')
+      && field.min !== undefined && field.max !== undefined) {
+    const wrap2 = el('div', { class: 'slider' });
+    const rail = el('div', { class: 'rail' });
+    const range = el('input', {
+      type: 'range', min: String(field.min), max: String(field.max),
+      step: String(field.step || (field.type === 'int' ? 1 : 0.1)),
+      value: String(value === undefined || value === null ? field.min : value),
+    });
+    const readout = el('input', { class: 'val', type: 'text', inputmode: 'decimal' });
+    const paint = () => {
+      const lo = Number(range.min), hi = Number(range.max), v = Number(range.value);
+      const pct = hi > lo ? ((v - lo) / (hi - lo)) * 100 : 0;
+      range.style.setProperty('--pct', pct.toFixed(2) + '%');
+      readout.value = String(range.value);
+    };
+    const emit = (raw) => {
+      const v = field.type === 'int' ? parseInt(raw, 10) : parseFloat(raw);
+      if (Number.isFinite(v)) onChange(v);
+    };
+    range.addEventListener('input', () => { paint(); emit(range.value); });
+    readout.addEventListener('change', () => {
+      let v = field.type === 'int' ? parseInt(readout.value, 10) : parseFloat(readout.value);
+      if (!Number.isFinite(v)) { paint(); return; }
+      v = Math.min(Number(range.max), Math.max(Number(range.min), v));
+      range.value = String(v);
+      paint();
+      emit(v);
+    });
+    paint();
+    rail.append(range);
+    wrap2.append(rail, readout,
+      el('span', { class: 'rl-meta', text: `${field.min} … ${field.max}` }));
+    return wrap2;
+  }
+
   const input = el('input', {
     type: field.type === 'int' || field.type === 'float' ? 'number' : 'text',
     value: value === undefined || value === null ? '' : String(value),

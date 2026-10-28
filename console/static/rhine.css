@@ -190,6 +190,76 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
 }
 
+/* ── 滑条：一条细线 + 方形握柄（莱茵生命没有圆角）── */
+.slider { display: flex; align-items: center; gap: 14px; min-width: 300px; }
+.slider .rail {
+  position: relative;
+  flex: 1;
+  min-width: 160px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+/* 轨道：1px 细线，走过的部分用强调色 */
+input[type='range']::-webkit-slider-runnable-track {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    var(--c-accent) 0%,
+    var(--c-accent) var(--pct, 0%),
+    var(--c-line) var(--pct, 0%),
+    var(--c-line) 100%
+  );
+}
+input[type='range']::-moz-range-track { height: 1px; background: var(--c-line); }
+input[type='range']::-moz-range-progress { height: 1px; background: var(--c-accent); }
+/* 握柄：方形 */
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -4.5px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: 0;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+input[type='range']::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: 0;
+}
+input[type='range']:hover::-webkit-slider-thumb,
+input[type='range']:focus-visible::-webkit-slider-thumb { background: var(--c-accent); }
+input[type='range']:focus { outline: none; }
+
+/* 当前值：等宽数字，可直接输入精确值 */
+.slider .val {
+  width: 74px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  color: var(--c-ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--c-line);
+  padding: 2px 2px 3px;
+  outline: none;
+}
+.slider .val:focus { border-bottom-color: var(--c-accent); }
+
 /* 每处控件都声明配色方案：不然暗色下滑块/选择框会退回浏览器亮色 */
 html[data-theme='light'] { color-scheme: light; }
 html[data-theme='dark'] { color-scheme: dark; }
