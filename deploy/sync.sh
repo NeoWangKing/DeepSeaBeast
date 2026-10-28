@@ -32,7 +32,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # 白名单：只拷这些（core__custom__* / .secrets / data 一律不进）
-for p in core adapters plugins tests deploy docs Makefile README.md pyproject.toml requirements.txt core.example.toml; do
+for p in core adapters console plugins tests deploy docs Makefile README.md pyproject.toml requirements.txt core.example.toml; do
   [ -e "$p" ] && cp -a "$p" "$TMP"/
 done
 find "$TMP" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true

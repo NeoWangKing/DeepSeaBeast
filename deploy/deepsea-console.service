@@ -1,0 +1,16 @@
+[Unit]
+Description=DeepSeaBeast 控制台（核心层）
+After=network.target
+
+[Service]
+Type=simple
+User=deepsea
+WorkingDirectory=/opt/deepsea
+ExecStart=/opt/deepsea/.venv/bin/python -m console.server --host 127.0.0.1 --port 8765
+Environment=DSB_CONSOLE_USER=admin
+EnvironmentFile=-/opt/deepsea/.secrets/console.env
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
